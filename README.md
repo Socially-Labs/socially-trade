@@ -4,7 +4,7 @@ Paper trading is the first implementation of the Captain and Crew experience des
 
 ## Current state
 
-Phases 0-2 establish a pnpm/Turborepo workspace, shared contracts, decimal math, PostgreSQL schema, and authenticated Captain/fund endpoints. Crew accounting, market data, and the mobile app are scheduled in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
+Phases 0-3 establish a pnpm/Turborepo workspace, shared contracts, decimal math, PostgreSQL schema, authenticated Captain/fund endpoints, and virtual Crew share accounting. Market data, Captain orders, and the mobile app are scheduled in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
 
 ## Local development
 
@@ -31,11 +31,16 @@ Available endpoints:
 | GET | `/health` | Process health and paper mode |
 | GET | `/v0/me` | Create/read the authenticated paper account and its one-time virtual allowance |
 | GET | `/v0/me/paper-balance` | Available virtual USDC |
+| GET | `/v0/me/paper-positions` | Crew fund shares and estimated value |
 | POST | `/v0/captains` | Create a Captain profile |
 | GET | `/v0/captains/:captainId` | Public Captain profile |
 | POST | `/v0/funds` | Start a Captain's paper fund; requires `Idempotency-Key` |
 | GET | `/v0/funds` | Discover paper funds |
 | GET | `/v0/funds/:fundId` | Paper fund summary |
+| GET | `/v0/funds/:fundId/policy` | Current fund limits |
+| GET | `/v0/funds/:fundId/holdings` | Virtual cash and positions |
+| POST | `/v0/funds/:fundId/joins` | Join with `{ "amountUsdc": "100.000000" }`; requires `Idempotency-Key` |
+| POST | `/v0/funds/:fundId/exits` | Leave by burning `{ "shares": "10" }`; requires `Idempotency-Key` |
 | GET | `/v0/funds/:fundId/events?after=0` | Fund activity after an event sequence |
 
 `POST /v0/funds` requires a Captain profile and takes `{ "name": "Fund name", "description": "Optional strategy" }`. The server seeds it with 1,000 virtual USDC and a 30-day trial. Financial amounts are JSON decimal strings.

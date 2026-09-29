@@ -15,6 +15,8 @@ interface FundRow {
   nav_usdc: string | null;
   share_price_usdc: string | null;
   valuation_status: "CURRENT" | "UNAVAILABLE" | null;
+  priced_at: Date | null;
+  has_positions: boolean;
   ends_at: Date;
 }
 
@@ -27,18 +29,20 @@ function summary(row: FundRow): FundSummary {
     captainId: row.captain_id,
     nav: { value: row.nav_usdc ?? "0", asset: "USDC" },
     sharePrice: { value: row.share_price_usdc ?? "0", asset: "USDC" },
-    valuationStatus: row.valuation_status ?? "UNAVAILABLE",
+    valuationStatus: row.has_positions && (!row.priced_at || Date.now() - row.priced_at.getTime() > 30_000)
+      ? "UNAVAILABLE" : row.valuation_status ?? "UNAVAILABLE",
     trialEndsAt: row.ends_at.toISOString(),
   };
 }
 
 const fundReadSql = `
   SELECT f.id, f.status, f.name, f.captain_id, t.ends_at,
-         n.nav_usdc::text, n.share_price_usdc::text, n.status AS valuation_status
+         n.nav_usdc::text, n.share_price_usdc::text, n.status AS valuation_status, n.priced_at,
+         EXISTS (SELECT 1 FROM positions p WHERE p.fund_id = f.id AND p.quantity > 0) AS has_positions
   FROM funds f JOIN trials t ON t.fund_id = f.id
   LEFT JOIN LATERAL (
     SELECT nav_usdc, share_price_usdc, status FROM nav_snapshots
-    WHERE fund_id = f.id ORDER BY created_at DESC, id DESC LIMIT 1
+    WHERE fund_id = f.id ORDER BY event_sequence DESC NULLS LAST, created_at DESC LIMIT 1
   ) n ON true`;
 
 export async function listFunds(pool: DbPool, limit = 30): Promise<FundSummary[]> {
@@ -137,8 +141,8 @@ export async function createFund(
       [eventId, userUsdc, fundUsdc, issuedShares, captainShares, CAPTAIN_SEED],
     );
     await client.query(
-      `INSERT INTO nav_snapshots (id, fund_id, nav_usdc, share_price_usdc, status, priced_at)
-       VALUES ($1, $2, $3, 1, 'CURRENT', $4)`,
+      `INSERT INTO nav_snapshots (id, fund_id, nav_usdc, share_price_usdc, status, priced_at, event_sequence)
+       VALUES ($1, $2, $3, 1, 'CURRENT', $4, 1)`,
       [randomUUID(), fundId, CAPTAIN_SEED, startsAt],
     );
 
