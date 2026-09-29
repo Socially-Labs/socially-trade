@@ -18,6 +18,7 @@
     "@socially/contracts": "workspace:*",
     "@socially/db": "workspace:*",
     "@socially/domain": "workspace:*",
+    "@socially/market-data": "workspace:*",
     "decimal.js": "^10.6.0",
     "fastify": "^5.12.5",
     "jose": "^6.2.12",

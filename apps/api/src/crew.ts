@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DbPool } from "@socially/db";
 import { inTransaction } from "@socially/db";
-import { Amount, fixed, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
+import { Amount, fixed, MAX_PRICE_AGE_MS, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { accountId, type Actor } from "./auth.js";
 import { appendEvent, beginIdempotent, finishIdempotent, saveNav, valueFund } from "./accounting.js";
 import { ApiFault } from "./errors.js";
@@ -229,7 +229,7 @@ export async function myPositions(pool: DbPool, userId: string) {
     fundId: row.fund_id, name: row.name, shares: row.shares,
     estimatedValueUsdc: row.share_price_usdc
       ? fixed(new Amount(row.shares).mul(row.share_price_usdc), USDC_DECIMALS) : null,
-    valuationStatus: row.has_positions && (!row.priced_at || Date.now() - row.priced_at.getTime() > 30_000)
+    valuationStatus: row.has_positions && (!row.priced_at || Date.now() - row.priced_at.getTime() > MAX_PRICE_AGE_MS)
       ? "UNAVAILABLE" : row.valuation_status ?? "UNAVAILABLE",
     pricedAt: row.priced_at?.toISOString() ?? null,
   }));

@@ -4,7 +4,7 @@ Paper trading is the first implementation of the Captain and Crew experience des
 
 ## Current state
 
-Phases 0-3 establish a pnpm/Turborepo workspace, shared contracts, decimal math, PostgreSQL schema, authenticated Captain/fund endpoints, and virtual Crew share accounting. Market data, Captain orders, and the mobile app are scheduled in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
+Phases 0-4 establish a pnpm/Turborepo workspace, shared contracts, decimal math, PostgreSQL schema, authenticated Captain/fund endpoints, virtual Crew share accounting, and a SOL/USD price adapter. Captain orders and the mobile app are scheduled in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
 
 ## Local development
 
@@ -44,5 +44,7 @@ Available endpoints:
 | GET | `/v0/funds/:fundId/events?after=0` | Fund activity after an event sequence |
 
 `POST /v0/funds` requires a Captain profile and takes `{ "name": "Fund name", "description": "Optional strategy" }`. The server seeds it with 1,000 virtual USDC and a 30-day trial. Financial amounts are JSON decimal strings.
+
+The market-data worker requires a Pyth API key: set `PYTH_API_KEY` and run `pnpm --filter @socially/worker price:once` or `pnpm --filter @socially/worker start` after building. For a local-only observation, set `DEV_PRICE_SEED_ENABLED=true` and run `pnpm --filter @socially/worker price:seed -- 150.00`. The published assumptions are in [the v0 fill model](./docs/v0-fill-model.md).
 
 All v0 financial values are virtual. The current API does not accept orders or hold assets.

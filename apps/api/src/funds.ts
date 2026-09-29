@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { inTransaction, type DbPool } from "@socially/db";
 import { PAPER_MODE, type FundSummary } from "@socially/contracts";
-import { Amount } from "@socially/domain";
+import { Amount, MAX_PRICE_AGE_MS } from "@socially/domain";
 import { ApiFault } from "./errors.js";
 import { accountId, type Actor } from "./auth.js";
 
@@ -29,7 +29,7 @@ function summary(row: FundRow): FundSummary {
     captainId: row.captain_id,
     nav: { value: row.nav_usdc ?? "0", asset: "USDC" },
     sharePrice: { value: row.share_price_usdc ?? "0", asset: "USDC" },
-    valuationStatus: row.has_positions && (!row.priced_at || Date.now() - row.priced_at.getTime() > 30_000)
+    valuationStatus: row.has_positions && (!row.priced_at || Date.now() - row.priced_at.getTime() > MAX_PRICE_AGE_MS)
       ? "UNAVAILABLE" : row.valuation_status ?? "UNAVAILABLE",
     trialEndsAt: row.ends_at.toISOString(),
   };

@@ -26,6 +26,9 @@ importers:
       '@socially/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@socially/market-data':
+        specifier: workspace:*
+        version: link:../../packages/market-data
       decimal.js:
         specifier: ^10.6.0
         version: 10.6.0
@@ -38,6 +41,25 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.3
+        version: 26.6.3
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  apps/worker:
+    dependencies:
+      '@socially/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@socially/market-data':
+        specifier: workspace:*
+        version: link:../../packages/market-data
     devDependencies:
       '@types/node':
         specifier: ^26.6.3
@@ -80,6 +102,19 @@ importers:
         specifier: ^10.6.0
         version: 10.6.0
     devDependencies:
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/market-data:
+    dependencies:
+      '@socially/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.3
+        version: 26.6.3
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

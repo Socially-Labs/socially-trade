@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { DbClient } from "@socially/db";
-import { Amount, fixed, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
+import { Amount, fixed, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { ApiFault } from "./errors.js";
 
 export interface PositionValue {
@@ -43,7 +43,7 @@ export async function valueFund(
   const now = Date.now();
   const positions = rows.rows.map((row) => {
     const sourceTime = row.source_at?.getTime();
-    if (!row.price_usdc || sourceTime === undefined || now - sourceTime > 30_000 || sourceTime - now > 5_000) {
+    if (!row.price_usdc || sourceTime === undefined || now - sourceTime > MAX_PRICE_AGE_MS || sourceTime - now > 5_000) {
       throw new ApiFault(503, "valuation_unavailable", `Fresh price unavailable for ${row.instrument_id}`);
     }
     const position = {
@@ -85,10 +85,15 @@ export async function saveNav(
   nav: Amount,
   totalShares: Amount,
 ): Promise<void> {
+  const sharePrice = fixed(nav.div(totalShares), SHARE_DECIMALS);
   await client.query(
     `INSERT INTO nav_snapshots (id, fund_id, nav_usdc, share_price_usdc, status, priced_at, event_sequence)
      SELECT $1, $2, $3, $4, 'CURRENT', now(), event_sequence FROM funds WHERE id = $2`,
-    [randomUUID(), fundId, fixed(nav, SHARE_DECIMALS), fixed(nav.div(totalShares), SHARE_DECIMALS)],
+    [randomUUID(), fundId, fixed(nav, SHARE_DECIMALS), sharePrice],
+  );
+  await client.query(
+    "UPDATE funds SET peak_share_price = GREATEST(peak_share_price, $2::numeric) WHERE id = $1",
+    [fundId, sharePrice],
   );
 }
 
