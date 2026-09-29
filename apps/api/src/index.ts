@@ -4,6 +4,7 @@ import { ApiFault } from "./errors.js";
 import { requireActor } from "./auth.js";
 import { createFund, getFund, listFunds } from "./funds.js";
 import { joinFund, leaveFund, myPositions } from "./crew.js";
+import { cancelOrder, getOrder, listOrders, previewOrder, submitOrder } from "./orders.js";
 
 const app = Fastify({ logger: true });
 const pool = process.env.DATABASE_URL ? createPool() : null;
@@ -40,6 +41,11 @@ app.setErrorHandler((error, _request, reply) => {
   }
   if (typeof error === "object" && error !== null && "validation" in error) {
     reply.code(400).send({ error: "invalid_request", message: String(error) });
+    return;
+  }
+  if (typeof error === "object" && error !== null && "statusCode" in error &&
+      typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500) {
+    reply.code(error.statusCode).send({ error: "invalid_request", message: String(error) });
     return;
   }
   app.log.error(error);
@@ -186,6 +192,54 @@ app.post<{ Params: { fundId: string }; Body: { shares: string } }>("/v0/funds/:f
   return leaveFund(db(), actor, request.params.fundId, request.body.shares,
     idempotencyKey(request.headers["idempotency-key"]));
 });
+
+const orderBody = {
+  type: "object", required: ["side", "instrumentId", "notionalUsdc"], additionalProperties: false,
+  properties: {
+    side: { type: "string", enum: ["BUY", "SELL"] },
+    instrumentId: { type: "string", minLength: 1, maxLength: 32 },
+    notionalUsdc: { type: "string" },
+  },
+} as const;
+
+type PaperOrderBody = { side: "BUY" | "SELL"; instrumentId: string; notionalUsdc: string };
+
+app.post<{ Params: { fundId: string }; Body: PaperOrderBody }>(
+  "/v0/funds/:fundId/orders/preview", { schema: { body: orderBody } },
+  async (request) => {
+    const actor = await requireActor(request, db());
+    return previewOrder(db(), actor, request.params.fundId, request.body);
+  },
+);
+
+app.post<{ Params: { fundId: string }; Body: PaperOrderBody }>(
+  "/v0/funds/:fundId/orders", { schema: { body: orderBody } },
+  async (request, reply) => {
+    const actor = await requireActor(request, db());
+    const result = await submitOrder(db(), actor, request.params.fundId, request.body,
+      idempotencyKey(request.headers["idempotency-key"]));
+    reply.code(202);
+    return result;
+  },
+);
+
+app.get<{ Params: { fundId: string } }>("/v0/funds/:fundId/orders", async (request) => {
+  await getFund(db(), request.params.fundId);
+  return { mode: "PAPER", orders: await listOrders(db(), request.params.fundId) };
+});
+
+app.get<{ Params: { fundId: string; orderId: string } }>(
+  "/v0/funds/:fundId/orders/:orderId", async (request) => {
+    return { mode: "PAPER", order: await getOrder(db(), request.params.fundId, request.params.orderId) };
+  },
+);
+
+app.post<{ Params: { fundId: string; orderId: string } }>(
+  "/v0/funds/:fundId/orders/:orderId/cancel", async (request) => {
+    const actor = await requireActor(request, db());
+    return cancelOrder(db(), actor, request.params.fundId, request.params.orderId);
+  },
+);
 
 app.get<{ Params: { fundId: string }; Querystring: { after?: string } }>(
   "/v0/funds/:fundId/events",

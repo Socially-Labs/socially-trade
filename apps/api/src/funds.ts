@@ -41,7 +41,7 @@ const fundReadSql = `
          EXISTS (SELECT 1 FROM positions p WHERE p.fund_id = f.id AND p.quantity > 0) AS has_positions
   FROM funds f JOIN trials t ON t.fund_id = f.id
   LEFT JOIN LATERAL (
-    SELECT nav_usdc, share_price_usdc, status FROM nav_snapshots
+    SELECT nav_usdc, share_price_usdc, status, priced_at FROM nav_snapshots
     WHERE fund_id = f.id ORDER BY event_sequence DESC NULLS LAST, created_at DESC LIMIT 1
   ) n ON true`;
 

@@ -15,6 +15,7 @@ export interface Valuation {
   nav: Amount;
   sharePrice: Amount;
   positions: PositionValue[];
+  pricedAt: Date;
 }
 
 export async function valueFund(
@@ -34,18 +35,22 @@ export async function valueFund(
      FROM positions p JOIN instruments i ON i.id = p.instrument_id
      LEFT JOIN LATERAL (
        SELECT price_usdc, source_at FROM price_observations
-       WHERE instrument_id = p.instrument_id ORDER BY source_at DESC, received_at DESC LIMIT 1
+       WHERE instrument_id = p.instrument_id
+         AND (source = 'PYTH_HERMES' OR ($2::boolean AND source = 'DEV_SEED'))
+       ORDER BY source_at DESC, received_at DESC LIMIT 1
      ) o ON true
      WHERE p.fund_id = $1 AND p.quantity > 0`,
-    [fund.id],
+    [fund.id, process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true"],
   );
   let nav = new Amount(fund.cash_usdc);
   const now = Date.now();
+  let pricedAt = new Date(now);
   const positions = rows.rows.map((row) => {
     const sourceTime = row.source_at?.getTime();
     if (!row.price_usdc || sourceTime === undefined || now - sourceTime > MAX_PRICE_AGE_MS || sourceTime - now > 5_000) {
       throw new ApiFault(503, "valuation_unavailable", `Fresh price unavailable for ${row.instrument_id}`);
     }
+    if (sourceTime < pricedAt.getTime()) pricedAt = row.source_at!;
     const position = {
       instrumentId: row.instrument_id,
       quantity: new Amount(row.quantity),
@@ -58,7 +63,7 @@ export async function valueFund(
   });
   const shares = new Amount(fund.total_shares);
   if (shares.lte(0)) throw new ApiFault(409, "invalid_share_supply", "Fund has no shares");
-  return { nav, sharePrice: nav.div(shares), positions };
+  return { nav, sharePrice: nav.div(shares), positions, pricedAt };
 }
 
 export async function appendEvent(
@@ -84,12 +89,13 @@ export async function saveNav(
   fundId: string,
   nav: Amount,
   totalShares: Amount,
+  pricedAt = new Date(),
 ): Promise<void> {
   const sharePrice = fixed(nav.div(totalShares), SHARE_DECIMALS);
   await client.query(
     `INSERT INTO nav_snapshots (id, fund_id, nav_usdc, share_price_usdc, status, priced_at, event_sequence)
-     SELECT $1, $2, $3, $4, 'CURRENT', now(), event_sequence FROM funds WHERE id = $2`,
-    [randomUUID(), fundId, fixed(nav, SHARE_DECIMALS), sharePrice],
+     SELECT $1, $2, $3, $4, 'CURRENT', $5, event_sequence FROM funds WHERE id = $2`,
+    [randomUUID(), fundId, fixed(nav, SHARE_DECIMALS), sharePrice, pricedAt],
   );
   await client.query(
     "UPDATE funds SET peak_share_price = GREATEST(peak_share_price, $2::numeric) WHERE id = $1",

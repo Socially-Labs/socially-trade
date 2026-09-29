@@ -93,7 +93,7 @@ export async function joinFund(
               ($1, $4, -$7::numeric), ($1, $5, $7)`,
       [eventId, userUsdc, fundUsdc, issuance, userShares, amountUsdc, fixed(shares, SHARE_DECIMALS)],
     );
-    await saveNav(client, fundId, newNav, newSupply);
+    await saveNav(client, fundId, newNav, newSupply, valuation.pricedAt);
     const response: CrewChange = {
       mode: "PAPER", fundId, eventId, shares: fixed(shares, SHARE_DECIMALS),
       virtualUsdc: amountUsdc, sharePrice: fixed(newNav.div(newSupply), SHARE_DECIMALS),
@@ -199,7 +199,7 @@ export async function leaveFund(
       [fundId, fixed(cashPart, USDC_DECIMALS), sharesText],
     );
     const newNav = valuation.nav.minus(cashPart).minus(markedAssetsRemoved);
-    await saveNav(client, fundId, newNav, newSupply);
+    await saveNav(client, fundId, newNav, newSupply, valuation.pricedAt);
     const response: CrewChange = {
       mode: "PAPER", fundId, eventId, shares: sharesText,
       virtualUsdc: fixed(payout, USDC_DECIMALS), sharePrice: fixed(newNav.div(newSupply), SHARE_DECIMALS),

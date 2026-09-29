@@ -9,10 +9,12 @@
     "check-types": "tsc --noEmit -p tsconfig.json",
     "start": "node dist/index.js",
     "price:once": "tsx src/price-once.ts",
-    "price:seed": "tsx src/seed-price.ts"
+    "price:seed": "tsx src/seed-price.ts",
+    "orders:once": "tsx src/orders-once.ts"
   },
   "dependencies": {
     "@socially/db": "workspace:*",
+    "@socially/domain": "workspace:*",
     "@socially/market-data": "workspace:*"
   },
   "devDependencies": {

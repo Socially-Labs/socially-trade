@@ -57,6 +57,9 @@ importers:
       '@socially/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@socially/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@socially/market-data':
         specifier: workspace:*
         version: link:../../packages/market-data

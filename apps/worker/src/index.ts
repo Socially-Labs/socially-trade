@@ -1,21 +1,29 @@
 import { createPool } from "@socially/db";
 import { ingestSolPrice } from "./prices.js";
+import { markActiveFunds, processPendingOrders } from "./orders.js";
 
 const apiKey = process.env.PYTH_API_KEY;
-if (!apiKey) throw new Error("PYTH_API_KEY is required for the market-data worker");
+const devPrices = process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true";
+if (!apiKey && !devPrices) throw new Error("PYTH_API_KEY is required unless local price seeding is enabled");
 const pool = createPool();
 let running = true;
+let nextPriceFetch = 0;
 process.on("SIGTERM", () => { running = false; });
 process.on("SIGINT", () => { running = false; });
 
 try {
   while (running) {
     try {
-      await ingestSolPrice(pool, apiKey);
+      if (apiKey && Date.now() >= nextPriceFetch) {
+        await ingestSolPrice(pool, apiKey);
+        nextPriceFetch = Date.now() + 15_000;
+      }
+      await markActiveFunds(pool);
+      await processPendingOrders(pool);
     } catch (error) {
-      console.error("SOL/USD ingestion failed", error);
+      console.error("Paper worker cycle failed", error);
     }
-    await new Promise((resolve) => setTimeout(resolve, 15_000));
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
 } finally {
   await pool.end();
