@@ -13,5 +13,14 @@
     "@types/node": "^26.6.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@socially/contracts": "workspace:*",
+    "@socially/db": "workspace:*",
+    "@socially/domain": "workspace:*",
+    "decimal.js": "^10.6.0",
+    "fastify": "^5.12.5",
+    "jose": "^6.2.12",
+    "pg": "^8.23.0"
   }
 }

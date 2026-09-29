@@ -4,7 +4,7 @@
 
 Each phase below is a reviewable Git commit on `main`. A phase is complete when its deliverables and exit criteria are met. If a phase needs several commits during development, squash or group them into the named phase commit before moving to the next phase. Keep the whitepaper and architecture in the repository history.
 
-## Phase 0 — Repository foundation (current)
+## Phase 0 — Repository foundation (complete)
 
 **Commit:** `chore(phase-0): initialize turborepo and v0 roadmap`
 
