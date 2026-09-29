@@ -1,6 +1,7 @@
 import pg from "pg";
 
 export type DbClient = pg.PoolClient;
+export type DbPool = pg.Pool;
 
 export function createPool(connectionString = process.env.DATABASE_URL): pg.Pool {
   if (!connectionString) {
