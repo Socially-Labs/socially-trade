@@ -5,6 +5,7 @@ import { requireActor } from "./auth.js";
 import { createFund, getFund, listFunds } from "./funds.js";
 import { joinFund, leaveFund, myPositions } from "./crew.js";
 import { cancelOrder, getOrder, listOrders, previewOrder, submitOrder } from "./orders.js";
+import { registerFundEventRoutes } from "./events.js";
 
 const app = Fastify({ logger: true });
 const pool = process.env.DATABASE_URL ? createPool() : null;
@@ -241,23 +242,7 @@ app.post<{ Params: { fundId: string; orderId: string } }>(
   },
 );
 
-app.get<{ Params: { fundId: string }; Querystring: { after?: string } }>(
-  "/v0/funds/:fundId/events",
-  async (request) => {
-    const rawAfter = request.query.after ?? "0";
-    const after = Number(rawAfter);
-    if (!/^\d+$/.test(rawAfter) || !Number.isSafeInteger(after) || after < 0) {
-      throw new ApiFault(400, "invalid_cursor", "after must be a nonnegative integer");
-    }
-    await getFund(db(), request.params.fundId);
-    const events = await db().query(
-      `SELECT id, sequence, type, payload, recorded_at FROM fund_events
-       WHERE fund_id = $1 AND sequence > $2 ORDER BY sequence ASC LIMIT 100`,
-      [request.params.fundId, after],
-    );
-    return { mode: "PAPER", events: events.rows };
-  },
-);
+registerFundEventRoutes(app, db);
 
 app.addHook("onClose", async () => {
   await pool?.end();

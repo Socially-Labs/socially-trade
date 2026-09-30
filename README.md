@@ -47,6 +47,7 @@ Available endpoints:
 | GET | `/v0/funds/:fundId/orders/:orderId` | Order status, fill, or rejection |
 | POST | `/v0/funds/:fundId/orders/:orderId/cancel` | Captain cancels an unprocessed order |
 | GET | `/v0/funds/:fundId/events?after=0` | Fund activity after an event sequence |
+| GET | `/v0/funds/:fundId/events/stream?after=0` | Live server-sent fund events; resume with `after` or `Last-Event-ID` |
 
 `POST /v0/funds` requires a Captain profile and takes `{ "name": "Fund name", "description": "Optional strategy" }`. The server seeds it with 1,000 virtual USDC and a 30-day trial. Financial amounts are JSON decimal strings.
 
