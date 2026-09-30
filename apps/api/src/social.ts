@@ -5,6 +5,7 @@ import { beginIdempotent, finishIdempotent } from "./accounting.js";
 import { requireActor, type Actor } from "./auth.js";
 import { ApiFault } from "./errors.js";
 import { getFund } from "./funds.js";
+import { idempotencyKey, sequenceCursor } from "./request.js";
 
 type MessageKind = "CHAT" | "TRADE_NOTE";
 
@@ -19,28 +20,12 @@ interface MessageRow {
   created_at: Date;
 }
 
-function cursor(value: string | undefined): number {
-  const raw = value ?? "0";
-  const parsed = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(parsed)) {
-    throw new ApiFault(400, "invalid_cursor", "after must be a nonnegative integer");
-  }
-  return parsed;
-}
-
 function body(value: string): string {
   const clean = value.trim();
   if (clean.length < 1 || clean.length > 2000) {
     throw new ApiFault(400, "invalid_message", "Message must contain 1-2000 characters");
   }
   return clean;
-}
-
-function idempotencyKey(value: unknown): string {
-  if (typeof value !== "string" || value.length < 8 || value.length > 128) {
-    throw new ApiFault(400, "idempotency_key_required", "Idempotency-Key must be 8-128 characters");
-  }
-  return value;
 }
 
 async function fundCaptain(client: DbClient, fundId: string): Promise<string> {
@@ -147,14 +132,14 @@ async function listMessages(pool: DbPool, fundId: string, after: number, kind?: 
 export function registerSocialRoutes(app: FastifyInstance, db: () => DbPool): void {
   app.get<{ Params: { fundId: string }; Querystring: { after?: string } }>(
     "/v0/funds/:fundId/messages", async (request) => {
-      const after = cursor(request.query.after);
+      const after = sequenceCursor(request.query.after);
       await getFund(db(), request.params.fundId);
       return { mode: "PAPER", messages: await listMessages(db(), request.params.fundId, after) };
     },
   );
   app.get<{ Params: { fundId: string }; Querystring: { after?: string } }>(
     "/v0/funds/:fundId/decisions", async (request) => {
-      const after = cursor(request.query.after);
+      const after = sequenceCursor(request.query.after);
       await getFund(db(), request.params.fundId);
       return { mode: "PAPER", notes: await listMessages(db(), request.params.fundId, after, "TRADE_NOTE") };
     },

@@ -2,20 +2,12 @@ import type { FastifyInstance } from "fastify";
 import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
 import { ApiFault } from "./errors.js";
-
-function cursor(value: string | undefined): number {
-  const raw = value ?? "0";
-  const parsed = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(parsed)) {
-    throw new ApiFault(400, "invalid_cursor", "after must be a nonnegative integer");
-  }
-  return parsed;
-}
+import { sequenceCursor } from "./request.js";
 
 export function registerNotificationRoutes(app: FastifyInstance, db: () => DbPool): void {
   app.get<{ Querystring: { after?: string } }>("/v0/me/notifications", async (request) => {
     const actor = await requireActor(request, db());
-    const after = cursor(request.query.after);
+    const after = sequenceCursor(request.query.after);
     const result = await db().query<{
       id: string; fund_id: string; type: string; payload: Record<string, unknown>;
       created_at: Date; read_at: Date | null;
@@ -34,7 +26,7 @@ export function registerNotificationRoutes(app: FastifyInstance, db: () => DbPoo
   app.post<{ Params: { notificationId: string } }>(
     "/v0/me/notifications/:notificationId/read", async (request) => {
       const actor = await requireActor(request, db());
-      const notificationId = cursor(request.params.notificationId);
+      const notificationId = sequenceCursor(request.params.notificationId);
       if (notificationId === 0) throw new ApiFault(400, "invalid_identifier", "Invalid notification ID");
       const updated = await db().query<{ id: string; read_at: Date }>(
         `UPDATE notifications SET read_at = COALESCE(read_at, now())

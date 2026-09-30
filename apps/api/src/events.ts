@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { DbPool } from "@socially/db";
 import { ApiFault } from "./errors.js";
 import { getFund } from "./funds.js";
+import { sequenceCursor } from "./request.js";
 
 interface FundEvent {
   id: string;
@@ -9,15 +10,6 @@ interface FundEvent {
   type: string;
   payload: Record<string, unknown>;
   recorded_at: Date;
-}
-
-function cursor(value: string | undefined): number {
-  const raw = value ?? "0";
-  const parsed = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(parsed)) {
-    throw new ApiFault(400, "invalid_cursor", "after must be a nonnegative integer");
-  }
-  return parsed;
 }
 
 async function readEvents(pool: DbPool, fundId: string, after: number): Promise<FundEvent[]> {
@@ -32,7 +24,7 @@ async function readEvents(pool: DbPool, fundId: string, after: number): Promise<
 export function registerFundEventRoutes(app: FastifyInstance, db: () => DbPool): void {
   app.get<{ Params: { fundId: string }; Querystring: { after?: string } }>(
     "/v0/funds/:fundId/events", async (request) => {
-      const after = cursor(request.query.after);
+      const after = sequenceCursor(request.query.after);
       await getFund(db(), request.params.fundId);
       return { mode: "PAPER", events: await readEvents(db(), request.params.fundId, after) };
     },
@@ -42,7 +34,7 @@ export function registerFundEventRoutes(app: FastifyInstance, db: () => DbPool):
     "/v0/funds/:fundId/events/stream", async (request, reply) => {
       const lastEventId = request.headers["last-event-id"];
       if (Array.isArray(lastEventId)) throw new ApiFault(400, "invalid_cursor", "Last-Event-ID must be singular");
-      let after = cursor(request.query.after ?? lastEventId);
+      let after = sequenceCursor(request.query.after ?? lastEventId);
       const pool = db();
       await getFund(pool, request.params.fundId);
       reply.hijack();
