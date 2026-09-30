@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { DbPool } from "@socially/db";
-import { inTransaction } from "@socially/db";
+import { appendFundEvent, inTransaction } from "@socially/db";
 import { Amount, evaluateSpotOrder, fixed, MAX_PRICE_AGE_MS, MAX_SIMULATED_ORDER_USDC,
   parsePositiveAmount, USDC_DECIMALS } from "@socially/domain";
 import { simulateFill } from "@socially/market-data";
 import type { Actor } from "./auth.js";
-import { appendEvent, beginIdempotent, finishIdempotent, valueFund } from "./accounting.js";
+import { beginIdempotent, finishIdempotent, valueFund } from "./accounting.js";
 import { ApiFault } from "./errors.js";
 
 export interface OrderInput {
@@ -121,7 +121,7 @@ export async function submitOrder(
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [orderId, fundId, actor.id, key, input.side, input.instrumentId, notionalUsdc],
     );
-    await appendEvent(client, fundId, "order_submitted", {
+    await appendFundEvent(client, fundId, "order_submitted", {
       orderId, side: input.side, instrumentId: input.instrumentId, notionalUsdc,
     });
     const response = { mode: "PAPER" as const, orderId, status: "PENDING" as const };
@@ -171,7 +171,7 @@ export async function cancelOrder(pool: DbPool, actor: Actor, fundId: string, or
       "UPDATE orders SET status = 'CANCELLED', processed_at = now() WHERE id = $1",
       [orderId],
     );
-    await appendEvent(client, fundId, "order_cancelled", { orderId });
+    await appendFundEvent(client, fundId, "order_cancelled", { orderId });
     return { mode: "PAPER" as const, orderId, status: "CANCELLED" as const };
   });
 }

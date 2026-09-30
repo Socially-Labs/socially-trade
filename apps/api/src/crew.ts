@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { DbPool } from "@socially/db";
-import { inTransaction } from "@socially/db";
+import { appendFundEvent, inTransaction, ledgerAccountId } from "@socially/db";
 import { Amount, fixed, MAX_PRICE_AGE_MS, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
-import { accountId, type Actor } from "./auth.js";
-import { appendEvent, beginIdempotent, finishIdempotent, saveNav, valueFund } from "./accounting.js";
+import { type Actor } from "./auth.js";
+import { beginIdempotent, finishIdempotent, saveNav, valueFund } from "./accounting.js";
 import { ApiFault } from "./errors.js";
 
 interface LockedFund {
@@ -79,14 +79,14 @@ export async function joinFund(
        ON CONFLICT (fund_id, user_id) DO UPDATE SET shares = fund_shares.shares + EXCLUDED.shares`,
       [fundId, actor.id, fixed(shares, SHARE_DECIMALS)],
     );
-    const eventId = await appendEvent(client, fundId, "crew_joined", {
+    const eventId = await appendFundEvent(client, fundId, "crew_joined", {
       userId: actor.id, amountUsdc, shares: fixed(shares, SHARE_DECIMALS),
     });
-    const userUsdc = await accountId(client, "USER", actor.id, "USDC");
-    const fundUsdc = await accountId(client, "FUND", fundId, "USDC");
+    const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
+    const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");
     const shareAsset = `SHARE:${fundId}`;
-    const issuance = await accountId(client, "ISSUANCE", fundId, shareAsset);
-    const userShares = await accountId(client, "USER", actor.id, shareAsset);
+    const issuance = await ledgerAccountId(client, "ISSUANCE", fundId, shareAsset);
+    const userShares = await ledgerAccountId(client, "USER", actor.id, shareAsset);
     await client.query(
       `INSERT INTO ledger_entries (event_id, account_id, amount)
        VALUES ($1, $2, -$6::numeric), ($1, $3, $6),
@@ -156,12 +156,12 @@ export async function leaveFund(
     const newSupply = supply.minus(shares);
     if (newSupply.lte(0)) throw new ApiFault(409, "fund_seed_required", "Fund cannot lose all shares");
 
-    const eventId = await appendEvent(client, fundId, "crew_left", {
+    const eventId = await appendFundEvent(client, fundId, "crew_left", {
       userId: actor.id, shares: sharesText, payoutUsdc: fixed(payout, USDC_DECIMALS),
       exitCostUsdc: fixed(markedAssetsRemoved.minus(proceeds), USDC_DECIMALS), sales,
     });
-    const fundUsdc = await accountId(client, "FUND", fundId, "USDC");
-    const userUsdc = await accountId(client, "USER", actor.id, "USDC");
+    const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");
+    const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
     for (const sale of sales) {
       await client.query(
         `UPDATE positions SET quantity = quantity - $3::numeric,
@@ -169,9 +169,9 @@ export async function leaveFund(
          WHERE fund_id = $1 AND instrument_id = $2`,
         [fundId, sale.instrumentId, sale.quantity, sale.costBasis],
       );
-      const fundAsset = await accountId(client, "FUND", fundId, sale.instrumentId);
-      const marketAsset = await accountId(client, "MARKET", "paper-market", sale.instrumentId);
-      const marketUsdc = await accountId(client, "MARKET", "paper-market", "USDC");
+      const fundAsset = await ledgerAccountId(client, "FUND", fundId, sale.instrumentId);
+      const marketAsset = await ledgerAccountId(client, "MARKET", "paper-market", sale.instrumentId);
+      const marketUsdc = await ledgerAccountId(client, "MARKET", "paper-market", "USDC");
       await client.query(
         `INSERT INTO ledger_entries (event_id, account_id, amount)
          VALUES ($1, $2, -$5::numeric), ($1, $3, $5),
@@ -180,8 +180,8 @@ export async function leaveFund(
       );
     }
     const shareAsset = `SHARE:${fundId}`;
-    const userShares = await accountId(client, "USER", actor.id, shareAsset);
-    const issuance = await accountId(client, "ISSUANCE", fundId, shareAsset);
+    const userShares = await ledgerAccountId(client, "USER", actor.id, shareAsset);
+    const issuance = await ledgerAccountId(client, "ISSUANCE", fundId, shareAsset);
     await client.query(
       `INSERT INTO ledger_entries (event_id, account_id, amount)
        VALUES ($1, $2, -$5::numeric), ($1, $3, $5),

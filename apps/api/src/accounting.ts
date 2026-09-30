@@ -66,24 +66,6 @@ export async function valueFund(
   return { nav, sharePrice: nav.div(shares), positions, pricedAt };
 }
 
-export async function appendEvent(
-  client: DbClient,
-  fundId: string,
-  type: string,
-  payload: Record<string, unknown>,
-): Promise<string> {
-  const sequence = await client.query<{ event_sequence: string }>(
-    "UPDATE funds SET event_sequence = event_sequence + 1 WHERE id = $1 RETURNING event_sequence::text",
-    [fundId],
-  );
-  const id = randomUUID();
-  await client.query(
-    "INSERT INTO fund_events (id, fund_id, sequence, type, payload) VALUES ($1, $2, $3, $4, $5)",
-    [id, fundId, sequence.rows[0]!.event_sequence, type, payload],
-  );
-  return id;
-}
-
 export async function saveNav(
   client: DbClient,
   fundId: string,

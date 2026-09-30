@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { inTransaction, type DbClient, type DbPool } from "@socially/db";
+import { appendFundEvent, inTransaction, ledgerAccountId, type DbClient, type DbPool } from "@socially/db";
 import { Amount, evaluateSpotOrder, fixed, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { simulateFill } from "@socially/market-data";
 
@@ -33,34 +33,6 @@ interface Observation {
   price_usdc: string;
   source_at: Date;
   received_at: Date;
-}
-
-async function ledgerAccount(client: DbClient, ownerType: string, ownerId: string, assetId: string) {
-  const result = await client.query<{ id: string }>(
-    `INSERT INTO ledger_accounts (id, owner_type, owner_id, asset_id)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (owner_type, owner_id, asset_id) DO UPDATE SET owner_id = EXCLUDED.owner_id
-     RETURNING id`,
-    [randomUUID(), ownerType, ownerId, assetId],
-  );
-  return result.rows[0]!.id;
-}
-
-async function event(client: DbClient, fundId: string, type: string, payload: Record<string, unknown>) {
-  const sequence = await client.query<{ event_sequence: string }>(
-    "UPDATE funds SET event_sequence = event_sequence + 1 WHERE id = $1 RETURNING event_sequence::text",
-    [fundId],
-  );
-  const eventId = randomUUID();
-  await client.query(
-    "INSERT INTO fund_events (id, fund_id, sequence, type, payload) VALUES ($1, $2, $3, $4, $5)",
-    [eventId, fundId, sequence.rows[0]!.event_sequence, type, payload],
-  );
-  await client.query(
-    "INSERT INTO outbox_events (id, fund_event_id, type, payload) VALUES ($1, $2, $3, $4)",
-    [randomUUID(), eventId, type, payload],
-  );
-  return eventId;
 }
 
 async function latestObservation(client: DbClient, after?: Date): Promise<Observation | null> {
@@ -121,7 +93,7 @@ async function reject(client: DbClient, order: PendingOrder, reason: string) {
     "UPDATE orders SET status = 'REJECTED', reject_reason = $2, processed_at = now() WHERE id = $1",
     [order.id, reason],
   );
-  await event(client, order.fund_id, "order_rejected", { orderId: order.id, reason });
+  await appendFundEvent(client, order.fund_id, "order_rejected", { orderId: order.id, reason });
 }
 
 export async function processOrder(pool: DbPool, orderId: string): Promise<boolean> {
@@ -190,16 +162,16 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
       );
     }
     await client.query("UPDATE funds SET cash_usdc = cash_usdc + $2::numeric WHERE id = $1", [fund.id, fill.cashChangeUsdc]);
-    const eventId = await event(client, fund.id, "order_filled", {
+    const eventId = await appendFundEvent(client, fund.id, "order_filled", {
       orderId: order.id, side: order.side, instrumentId: "SOL", quantity: fill.quantity,
       notionalUsdc: order.notional_usdc, marketPriceUsdc: fill.marketPriceUsdc,
       fillPriceUsdc: fill.fillPriceUsdc, feeUsdc: fill.feeUsdc,
       modelVersion: fill.modelVersion, observationId: observation.id,
     });
-    const fundSol = await ledgerAccount(client, "FUND", fund.id, "SOL");
-    const marketSol = await ledgerAccount(client, "MARKET", "paper-market", "SOL");
-    const fundUsdc = await ledgerAccount(client, "FUND", fund.id, "USDC");
-    const marketUsdc = await ledgerAccount(client, "MARKET", "paper-market", "USDC");
+    const fundSol = await ledgerAccountId(client, "FUND", fund.id, "SOL");
+    const marketSol = await ledgerAccountId(client, "MARKET", "paper-market", "SOL");
+    const fundUsdc = await ledgerAccountId(client, "FUND", fund.id, "USDC");
+    const marketUsdc = await ledgerAccountId(client, "MARKET", "paper-market", "USDC");
     const assetChange = order.side === "BUY" ? quantity : quantity.neg();
     await client.query(
       `INSERT INTO ledger_entries (event_id, account_id, amount)
@@ -260,7 +232,7 @@ export async function markActiveFunds(pool: DbPool): Promise<number> {
         .mul(new Amount(1).minus(new Amount(fund.drawdown_breaker_bps).div(10_000)));
       const frozen = fund.status === "ACTIVE" && sharePrice.lt(breaker);
       if (frozen) await client.query("UPDATE funds SET status = 'FROZEN' WHERE id = $1", [fund.id]);
-      await event(client, fund.id, frozen ? "drawdown_breaker" : "fund_marked", {
+      await appendFundEvent(client, fund.id, frozen ? "drawdown_breaker" : "fund_marked", {
         observationId: observation.id, navUsdc: fixed(nav, USDC_DECIMALS),
         sharePriceUsdc: fixed(sharePrice, SHARE_DECIMALS), frozen,
       });

@@ -1,5 +1,8 @@
 import pg from "pg";
 
+export { appendFundEvent } from "./events.js";
+export { ledgerAccountId } from "./ledger.js";
+
 export type DbClient = pg.PoolClient;
 export type DbPool = pg.Pool;
 

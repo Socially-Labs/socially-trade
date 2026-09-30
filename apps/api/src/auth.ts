@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { inTransaction, type DbClient, type DbPool } from "@socially/db";
+import { inTransaction, ledgerAccountId, type DbPool } from "@socially/db";
 import { ApiFault } from "./errors.js";
 
 const VIRTUAL_ALLOWANCE = "10000.000000";
@@ -53,17 +53,6 @@ async function identity(request: FastifyRequest): Promise<{ subject: string; dis
   }
 }
 
-export async function accountId(client: DbClient, ownerType: string, ownerId: string, assetId: string): Promise<string> {
-  const result = await client.query<{ id: string }>(
-    `INSERT INTO ledger_accounts (id, owner_type, owner_id, asset_id)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (owner_type, owner_id, asset_id) DO UPDATE SET owner_id = EXCLUDED.owner_id
-     RETURNING id`,
-    [randomUUID(), ownerType, ownerId, assetId],
-  );
-  return result.rows[0]!.id;
-}
-
 export async function requireActor(request: FastifyRequest, pool: DbPool): Promise<Actor> {
   const { subject, displayName } = await identity(request);
   return inTransaction(pool, async (client) => {
@@ -81,8 +70,8 @@ export async function requireActor(request: FastifyRequest, pool: DbPool): Promi
         `INSERT INTO fund_events (id, type, payload) VALUES ($1, 'paper_budget_granted', $2)`,
         [eventId, { userId: id, amount: VIRTUAL_ALLOWANCE, asset: "USDC" }],
       );
-      const userAccount = await accountId(client, "USER", id, "USDC");
-      const issuanceAccount = await accountId(client, "ISSUANCE", "paper-budget", "USDC");
+      const userAccount = await ledgerAccountId(client, "USER", id, "USDC");
+      const issuanceAccount = await ledgerAccountId(client, "ISSUANCE", "paper-budget", "USDC");
       await client.query(
         `INSERT INTO ledger_entries (event_id, account_id, amount)
          VALUES ($1, $2, $3), ($1, $4, -$3::numeric)`,

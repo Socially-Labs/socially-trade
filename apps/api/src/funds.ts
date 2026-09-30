@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { inTransaction, type DbPool } from "@socially/db";
+import { appendFundEvent, inTransaction, ledgerAccountId, type DbPool } from "@socially/db";
 import { PAPER_MODE, type FundSummary } from "@socially/contracts";
 import { Amount, MAX_PRICE_AGE_MS } from "@socially/domain";
 import { ApiFault } from "./errors.js";
-import { accountId, type Actor } from "./auth.js";
+import { type Actor } from "./auth.js";
 
 const CAPTAIN_SEED = "1000.000000";
 
@@ -98,12 +98,11 @@ export async function createFund(
     if (active.rowCount) throw new ApiFault(409, "active_trial_exists", "Captain already has an active trial");
 
     const fundId = randomUUID();
-    const eventId = randomUUID();
     const startsAt = new Date();
     const endsAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000);
     await client.query(
-      `INSERT INTO funds (id, captain_id, name, description, cash_usdc, total_shares, event_sequence)
-       VALUES ($1, $2, $3, $4, $5, $5, 1)`,
+      `INSERT INTO funds (id, captain_id, name, description, cash_usdc, total_shares)
+       VALUES ($1, $2, $3, $4, $5, $5)`,
       [fundId, actor.id, input.name, input.description, CAPTAIN_SEED],
     );
     await client.query(
@@ -123,17 +122,15 @@ export async function createFund(
       [fundId, actor.id, CAPTAIN_SEED],
     );
     await client.query("UPDATE users SET paper_cash = paper_cash - $2::numeric WHERE id = $1", [actor.id, CAPTAIN_SEED]);
-    await client.query(
-      `INSERT INTO fund_events (id, fund_id, sequence, type, payload)
-       VALUES ($1, $2, 1, 'fund_started', $3)`,
-      [eventId, fundId, { captainId: actor.id, seedUsdc: CAPTAIN_SEED, policyVersion: 1 }],
-    );
+    const eventId = await appendFundEvent(client, fundId, "fund_started", {
+      captainId: actor.id, seedUsdc: CAPTAIN_SEED, policyVersion: 1,
+    });
 
-    const userUsdc = await accountId(client, "USER", actor.id, "USDC");
-    const fundUsdc = await accountId(client, "FUND", fundId, "USDC");
+    const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
+    const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");
     const shareAsset = `SHARE:${fundId}`;
-    const issuedShares = await accountId(client, "ISSUANCE", fundId, shareAsset);
-    const captainShares = await accountId(client, "USER", actor.id, shareAsset);
+    const issuedShares = await ledgerAccountId(client, "ISSUANCE", fundId, shareAsset);
+    const captainShares = await ledgerAccountId(client, "USER", actor.id, shareAsset);
     await client.query(
       `INSERT INTO ledger_entries (event_id, account_id, amount)
        VALUES ($1, $2, -$6::numeric), ($1, $3, $6),
