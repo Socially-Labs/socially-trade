@@ -1,6 +1,7 @@
 import { createPool } from "@socially/db";
 import { ingestSolPrice } from "./prices.js";
 import { markActiveFunds, processPendingOrders } from "./orders.js";
+import { deliverOutbox } from "./notifications.js";
 
 const apiKey = process.env.PYTH_API_KEY;
 const devPrices = process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true";
@@ -20,6 +21,7 @@ try {
       }
       await markActiveFunds(pool);
       await processPendingOrders(pool);
+      await deliverOutbox(pool);
     } catch (error) {
       console.error("Paper worker cycle failed", error);
     }

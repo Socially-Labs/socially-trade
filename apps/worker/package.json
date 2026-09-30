@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "price:once": "tsx src/price-once.ts",
     "price:seed": "tsx src/seed-price.ts",
-    "orders:once": "tsx src/orders-once.ts"
+    "orders:once": "tsx src/orders-once.ts",
+    "notifications:once": "tsx src/notifications-once.ts"
   },
   "dependencies": {
     "@socially/db": "workspace:*",

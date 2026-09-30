@@ -7,6 +7,7 @@ import { joinFund, leaveFund, myPositions } from "./crew.js";
 import { cancelOrder, getOrder, listOrders, previewOrder, submitOrder } from "./orders.js";
 import { registerFundEventRoutes } from "./events.js";
 import { registerSocialRoutes } from "./social.js";
+import { registerNotificationRoutes } from "./notifications.js";
 
 const app = Fastify({ logger: true });
 const pool = process.env.DATABASE_URL ? createPool() : null;
@@ -245,6 +246,7 @@ app.post<{ Params: { fundId: string; orderId: string } }>(
 
 registerFundEventRoutes(app, db);
 registerSocialRoutes(app, db);
+registerNotificationRoutes(app, db);
 
 app.addHook("onClose", async () => {
   await pool?.end();

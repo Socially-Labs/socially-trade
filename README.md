@@ -52,10 +52,14 @@ Available endpoints:
 | POST | `/v0/funds/:fundId/messages` | Captain or current Crew member posts chat; requires `Idempotency-Key` |
 | GET | `/v0/funds/:fundId/decisions?after=0` | Captain order notes and corrections |
 | POST | `/v0/funds/:fundId/orders/:orderId/notes` | Captain posts an order note or append-only correction; requires `Idempotency-Key` |
+| GET | `/v0/me/notifications?after=0` | Durable in-app alerts for the signed-in user |
+| POST | `/v0/me/notifications/:notificationId/read` | Mark an in-app alert read |
 
 `POST /v0/funds` requires a Captain profile and takes `{ "name": "Fund name", "description": "Optional strategy" }`. The server seeds it with 1,000 virtual USDC and a 30-day trial. Financial amounts are JSON decimal strings.
 
 The market-data worker requires a Pyth API key: set `PYTH_API_KEY` and run `pnpm --filter @socially/worker price:once` or `pnpm --filter @socially/worker start` after building. For a local-only observation, set `DEV_PRICE_SEED_ENABLED=true` and run `pnpm --filter @socially/worker price:seed -- 150.00`. The published assumptions are in [the v0 fill model](./docs/v0-fill-model.md).
+
+The worker also delivers fund outbox records to each current Captain and Crew member's in-app inbox. Run `pnpm --filter @socially/worker notifications:once` to deliver one batch. External push delivery is not configured yet.
 
 To process orders with local seeded prices, keep `DEV_PRICE_SEED_ENABLED=true`, start the worker with `pnpm --filter @socially/worker start`, submit a Captain order, then seed a fresh price after submission. The worker waits at least three seconds and uses the latest eligible price observation. `pnpm --filter @socially/worker orders:once` processes eligible work once.
 
