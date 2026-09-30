@@ -87,6 +87,16 @@ Each phase below is a reviewable Git commit on `main`. A phase is complete when 
 
 **Exit:** a user can complete the Captain and Crew core flows on a phone; app refresh or reconnect recovers authoritative state without relying on a push notification.
 
+### Backend checkpoints prepared for Phases 6-7
+
+- `refactor(backend): centralize fund events and ledger accounts` keeps fund event, outbox, and ledger-account writes behind shared transaction-scoped modules.
+- `feat(backend): add resumable fund event stream` adds server-sent events with an event-sequence cursor for reconnecting clients.
+- `feat(backend): add fund chat and captain decision notes` adds visible chat, order-linked Captain notes, and append-only corrections.
+- `feat(backend): deliver fund alerts to an in-app inbox` materializes selected outbox events into durable in-app alerts for current fund participants.
+- `refactor(backend): separate app startup and route modules` keeps process setup apart from route registration and domain writes.
+
+These are backend checkpoints, not completion of Phase 6 or 7. The mobile client, moderation actions, external push delivery, and social abuse limits remain to be built.
+
 ## Phase 7 — Social record and notifications
 
 **Commit:** `feat(phase-7): add captain decision log and crew activity`
