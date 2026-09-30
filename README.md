@@ -4,7 +4,7 @@ Paper trading is the first implementation of the Captain and Crew experience des
 
 ## Current state
 
-Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SOL/USD price observations, order endpoints, and an order-processing worker. The mobile app and social record are scheduled in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
+Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SOL/USD price observations, order endpoints, and an order-processing worker. Backend checkpoints now add a resumable event stream, fund chat, and Captain order notes. The mobile app, notification delivery, performance, and fee work remain in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
 
 ## Local development
 
@@ -48,11 +48,15 @@ Available endpoints:
 | POST | `/v0/funds/:fundId/orders/:orderId/cancel` | Captain cancels an unprocessed order |
 | GET | `/v0/funds/:fundId/events?after=0` | Fund activity after an event sequence |
 | GET | `/v0/funds/:fundId/events/stream?after=0` | Live server-sent fund events; resume with `after` or `Last-Event-ID` |
+| GET | `/v0/funds/:fundId/messages?after=0` | Visible fund chat and Captain notes in sequence order |
+| POST | `/v0/funds/:fundId/messages` | Captain or current Crew member posts chat; requires `Idempotency-Key` |
+| GET | `/v0/funds/:fundId/decisions?after=0` | Captain order notes and corrections |
+| POST | `/v0/funds/:fundId/orders/:orderId/notes` | Captain posts an order note or append-only correction; requires `Idempotency-Key` |
 
 `POST /v0/funds` requires a Captain profile and takes `{ "name": "Fund name", "description": "Optional strategy" }`. The server seeds it with 1,000 virtual USDC and a 30-day trial. Financial amounts are JSON decimal strings.
 
 The market-data worker requires a Pyth API key: set `PYTH_API_KEY` and run `pnpm --filter @socially/worker price:once` or `pnpm --filter @socially/worker start` after building. For a local-only observation, set `DEV_PRICE_SEED_ENABLED=true` and run `pnpm --filter @socially/worker price:seed -- 150.00`. The published assumptions are in [the v0 fill model](./docs/v0-fill-model.md).
 
-To process orders with local seeded prices, keep `DEV_PRICE_SEED_ENABLED=true`, start the worker with `pnpm --filter @socially/worker start`, submit a Captain order, then seed a fresh price after submission. The worker waits at least three seconds and uses the first eligible price observation. `pnpm --filter @socially/worker orders:once` processes eligible work once.
+To process orders with local seeded prices, keep `DEV_PRICE_SEED_ENABLED=true`, start the worker with `pnpm --filter @socially/worker start`, submit a Captain order, then seed a fresh price after submission. The worker waits at least three seconds and uses the latest eligible price observation. `pnpm --filter @socially/worker orders:once` processes eligible work once.
 
 All v0 financial values are virtual. The current API does not accept orders or hold assets.
