@@ -7,6 +7,9 @@ import { createApp } from '../dist/app.js';
 import { processOrder, markActiveFunds } from '../../worker/dist/orders.js';
 import { deliverOutbox } from '../../worker/dist/notifications.js';
 import { runWorkerCycle } from '../../worker/dist/cycle.js';
+import { assessFundFee } from '../../worker/dist/fees.js';
+import { completeTrial } from '../../worker/dist/trials.js';
+import { inTransaction } from '../../../packages/db/dist/index.js';
 import { Amount, evaluateSpotOrder } from '../../../packages/domain/dist/index.js';
 import { simulateFill } from '../../../packages/market-data/dist/index.js';
 
@@ -36,6 +39,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
   let fundId;
   let buyId;
   let noteId;
+  let settlementPendingOrder;
   const route = (suffix = '') => `/v0/funds/${fundId}${suffix}`;
   const headers = (subject, key) => ({ authorization: `Bearer ${process.env.DEV_AUTH_TOKEN}`,
     'x-dev-subject': `dev:${subject}`, ...(key ? { 'idempotency-key': key } : {}) });
@@ -73,7 +77,8 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       UNION ALL SELECT 'user cash' FROM users u LEFT JOIN balances b ON b.owner_type='USER' AND b.owner_id=u.id::text AND b.asset_id='USDC' WHERE u.paper_cash<>COALESCE(b.amount,0)
       UNION ALL SELECT 'position' FROM positions p LEFT JOIN balances b ON b.owner_type='FUND' AND b.owner_id=p.fund_id::text AND b.asset_id=p.instrument_id WHERE p.quantity<>COALESCE(b.amount,0)
       UNION ALL SELECT 'shares' FROM fund_shares s LEFT JOIN balances b ON b.owner_type='USER' AND b.owner_id=s.user_id::text AND b.asset_id='SHARE:'||s.fund_id::text WHERE s.shares<>COALESCE(b.amount,0)
-      UNION ALL SELECT 'supply' FROM funds f WHERE total_shares<>(SELECT COALESCE(SUM(shares),0) FROM fund_shares WHERE fund_id=f.id)`);
+      UNION ALL SELECT 'protocol shares' FROM funds f LEFT JOIN balances b ON b.owner_type='PROTOCOL' AND b.owner_id='paper-protocol' AND b.asset_id='SHARE:'||f.id::text WHERE f.protocol_shares<>COALESCE(b.amount,0)
+      UNION ALL SELECT 'supply' FROM funds f WHERE total_shares<>protocol_shares+(SELECT COALESCE(SUM(shares),0) FROM fund_shares WHERE fund_id=f.id)`);
     assert.deepEqual(mismatches.rows, [], 'Ledger and all money/share projections must reconcile');
   }
   try {
@@ -453,6 +458,121 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
         assert.ok(!text.includes('id: 1\n'));
         controller.abort(); await reader.cancel().catch(() => {});
       }
+    });
+    await t.test('cash-only trial settles once across concurrent workers', async () => {
+      const cashFund = (await pool.query('SELECT id FROM funds WHERE id<>$1', [fundId])).rows[0].id;
+      assert.equal(await completeTrial(pool, cashFund), false);
+      await pool.query("UPDATE trials SET starts_at=now()-interval '31 days',ends_at=now()-interval '1 day' WHERE fund_id=$1", [cashFund]);
+      const results = await Promise.all(Array.from({ length: 6 }, () => completeTrial(pool, cashFund)));
+      assert.equal(results.filter(Boolean).length, 1);
+      const f = (await pool.query('SELECT * FROM funds WHERE id=$1', [cashFund])).rows[0];
+      assert.equal(f.status, 'COMPLETED');
+      assert.equal(new Amount(f.cash_usdc).toString(), '0');
+      assert.equal(new Amount(f.total_shares).toString(), '0');
+      assert.equal(new Amount(f.final_nav_usdc).toString(), '5000');
+      const result = await request('GET', `/v0/funds/${cashFund}/performance`);
+      assert.equal(result.valuationStatus, 'FINAL');
+      assert.equal(new Amount(result.current.navUsdc).toString(), '5000');
+      await reconcile();
+    });
+    await t.test('completion notifications reach Crew after their shares are redeemed', async () => {
+      // Delivery is intentionally batched at 100; drain the accumulated scenario backlog.
+      while (await deliverOutbox(pool)) {}
+      const completion = await pool.query(`SELECT n.id FROM notifications n
+        WHERE n.type='trial_completed' AND n.user_id=$1`, [ids.outsider]);
+      assert.equal(completion.rowCount, 1);
+      await deliverOutbox(pool);
+      assert.equal((await pool.query(`SELECT n.id FROM notifications n
+        WHERE n.type='trial_completed' AND n.user_id=$1`, [ids.outsider])).rowCount, 1);
+    });
+    await t.test('performance fee fixture: deposits cause no fee and profit produces exact dilution', async () => {
+      // Settle the earlier trial first so the Captain can start a new record.
+      await seed();
+      assert.equal(await completeTrial(pool, fundId), true);
+      fundId = (await request('POST', '/v0/funds', 'captain', { name: 'Performance Trial' }, randomUUID(), 201)).id;
+      await request('POST', route('/joins'), 'crew', { amountUsdc: '100' }, randomUUID(), 201);
+      assert.equal(await inTransaction(pool, c => assessFundFee(c, fundId, '2026-10-01')), false);
+      const id = await order('BUY', '100'); await settled(id, '100');
+      await seed('300'); await markActiveFunds(pool);
+      const before = (await request('GET', route('/performance'))).current;
+      const nav = new Amount(before.navUsdc);
+      const expected = nav.minus('1100').mul('0.10').toDecimalPlaces(6, Amount.ROUND_DOWN);
+      const results = await Promise.all(Array.from({ length: 8 }, () => inTransaction(pool, c => assessFundFee(c, fundId, '2026-10-01'))));
+      assert.equal(results.filter(Boolean).length, 1);
+      const fee = (await pool.query('SELECT * FROM fee_assessments WHERE fund_id=$1', [fundId])).rows[0];
+      assert.ok(new Amount(fee.fee_usdc).eq(expected));
+      assert.ok(new Amount(fee.captain_shares).plus(fee.protocol_shares).eq(fee.shares_minted));
+      const after = (await request('GET', route('/performance'))).current;
+      assert.ok(new Amount(after.navUsdc).eq(nav));
+      assert.ok(new Amount(after.sharePriceUsdc).lt(before.sharePriceUsdc));
+      assert.ok(new Amount(after.sinceInception.grossReturnPercent).gt(after.sinceInception.netReturnPercent));
+      await reconcile();
+    });
+    await t.test('loss and recovery below the high-water mark charge no further fee', async () => {
+      await seed('100'); await markActiveFunds(pool);
+      assert.equal(await inTransaction(pool, c => assessFundFee(c, fundId, '2026-10-02')), false);
+      await seed('200'); await markActiveFunds(pool);
+      assert.equal(await inTransaction(pool, c => assessFundFee(c, fundId, '2026-10-02')), false);
+      await seed('400'); await markActiveFunds(pool);
+      assert.equal(await inTransaction(pool, c => assessFundFee(c, fundId, '2026-10-02')), true);
+      assert.equal((await pool.query('SELECT * FROM fee_assessments WHERE fund_id=$1', [fundId])).rowCount, 2);
+      await reconcile();
+    });
+    await t.test('fees racing Crew deposits serialize and pending orders cannot survive completion', async () => {
+      await seed('500'); await markActiveFunds(pool);
+      const results = await Promise.all([
+        inTransaction(pool, c => assessFundFee(c, fundId, '2026-10-03')),
+        request('POST', route('/joins'), 'crew', { amountUsdc: '10' }, randomUUID(), 201),
+      ]);
+      assert.equal(results[0], true);
+      await reconcile();
+      settlementPendingOrder = await order('BUY', '1');
+      await ageOrder(settlementPendingOrder);
+    });
+    await t.test('stale prices suppress current returns and defer expired settlement', async () => {
+      await clearPrices();
+      await pool.query("UPDATE nav_snapshots SET priced_at=now()-interval '5 minutes' WHERE fund_id=$1", [fundId]);
+      await markActiveFunds(pool);
+      const perf = await request('GET', route('/performance'));
+      assert.equal(perf.current, null);
+      assert.equal(perf.valuationStatus, 'UNAVAILABLE');
+      await pool.query("UPDATE trials SET starts_at=now()-interval '31 days',ends_at=now()-interval '1 day' WHERE fund_id=$1", [fundId]);
+      assert.equal(await completeTrial(pool, fundId), false);
+      assert.equal((await pool.query('SELECT status FROM funds WHERE id=$1', [fundId])).rows[0].status, 'ACTIVE');
+    });
+    await t.test('settlement failure rolls back liquidation, fees and payouts; retry settles exactly once', async () => {
+      await seed('450');
+      const before = (await pool.query('SELECT cash_usdc,total_shares FROM funds WHERE id=$1', [fundId])).rows[0];
+      const balances = (await pool.query('SELECT id,paper_cash FROM users ORDER BY id')).rows;
+      await pool.query(`CREATE FUNCTION fail_completion() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.type='trial_completed' THEN RAISE EXCEPTION 'simulated settlement failure'; END IF; RETURN NEW; END $$`);
+      await pool.query('CREATE TRIGGER fail_completion BEFORE INSERT ON fund_events FOR EACH ROW EXECUTE FUNCTION fail_completion()');
+      await assert.rejects(completeTrial(pool, fundId), /simulated settlement failure/);
+      assert.deepEqual((await pool.query('SELECT cash_usdc,total_shares FROM funds WHERE id=$1', [fundId])).rows[0], before);
+      assert.deepEqual((await pool.query('SELECT id,paper_cash FROM users ORDER BY id')).rows, balances);
+      await reconcile();
+      await pool.query('DROP TRIGGER fail_completion ON fund_events');
+      const results = await Promise.all(Array.from({ length: 6 }, () => completeTrial(pool, fundId)));
+      assert.equal(results.filter(Boolean).length, 1);
+      assert.equal((await pool.query("SELECT id FROM fund_events WHERE fund_id=$1 AND type='trial_completed'", [fundId])).rowCount, 1);
+      assert.equal((await pool.query('SELECT * FROM positions WHERE fund_id=$1 AND quantity<>0', [fundId])).rowCount, 0);
+      assert.equal(await processOrder(pool, settlementPendingOrder), true);
+      assert.equal((await request('GET', route(`/orders/${settlementPendingOrder}`))).order.reject_reason, 'fund_not_tradable');
+      await reconcile();
+    });
+    await t.test('final records preserve returns and personal realized P&L', async () => {
+      const perf = await request('GET', route('/performance'));
+      assert.equal(perf.valuationStatus, 'FINAL');
+      assert.ok(new Amount(perf.current.sinceInception.netReturnPercent).gt(0));
+      const personal = await request('GET', `/v0/me/funds/${fundId}/performance`, 'crew');
+      assert.ok(new Amount(personal.contributionsUsdc).eq('110'));
+      assert.ok(new Amount(personal.currentValueUsdc).eq('0'));
+      assert.ok(new Amount(personal.withdrawalsUsdc).minus(personal.contributionsUsdc).eq(personal.pnlUsdc));
+      assert.ok(new Amount(personal.pnlUsdc).gt(0));
+      const records = await request('GET', `/v0/captains/${ids.captain}/paper-record`);
+      assert.equal(records.records.filter(x => x.status === 'COMPLETED').length, 2);
+      assert.ok(records.records.every(x => x.valuationStatus === 'FINAL'));
+      await request('POST', '/v0/funds', 'captain', { name: 'Next Trial' }, randomUUID(), 201);
     });
     await t.test('final ledger/projection reconciliation', reconcile);
   } finally {
