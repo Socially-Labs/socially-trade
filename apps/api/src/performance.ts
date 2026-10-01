@@ -92,6 +92,31 @@ async function readConsistently<T>(pool: DbPool, work: (client: DbClient) => Pro
   });
 }
 
+async function readPersonal(client: DbClient, actorId: string, fundId: string, loaded: Awaited<ReturnType<typeof readPerformance>>) {
+  const { fund, response } = loaded;
+  const events = await client.query<{ type: string; payload: Record<string, unknown> }>(`SELECT type,payload
+    FROM fund_events WHERE fund_id=$1 AND type IN ('fund_started','crew_joined','crew_left','trial_completed') ORDER BY sequence`, [fundId]);
+  let contributions = new Amount(0), withdrawals = new Amount(0);
+  for (const { type, payload } of events.rows) {
+    if (type === "fund_started" && payload.captainId === actorId) contributions = contributions.plus(String(payload.seedUsdc));
+    if (type === "crew_joined" && payload.userId === actorId) contributions = contributions.plus(String(payload.amountUsdc));
+    if (type === "crew_left" && payload.userId === actorId) withdrawals = withdrawals.plus(String(payload.payoutUsdc));
+    if (type === "trial_completed" && Array.isArray(payload.payouts)) {
+      for (const payout of payload.payouts as { userId: string; payoutUsdc: string }[]) {
+        if (payout.userId === actorId) withdrawals = withdrawals.plus(payout.payoutUsdc);
+      }
+    }
+  }
+  const shareRow = await client.query<{ shares: string }>("SELECT shares::text FROM fund_shares WHERE fund_id=$1 AND user_id=$2", [fundId, actorId]);
+  const shares = shareRow.rows[0]?.shares ?? "0";
+  const currentValue = new Amount(shares).eq(0) || fund.status === "COMPLETED" ? "0"
+    : response.current ? new Amount(shares).mul(response.current.sharePriceUsdc).toString() : null;
+  return { mode: "PAPER", fundId, shares, valuationStatus: response.valuationStatus,
+    ...personalPerformance(contributions.toString(), withdrawals.toString(), currentValue),
+    historicalPositionValueUsdc: response.latestHistorical ? new Amount(shares).mul(response.latestHistorical.sharePriceUsdc!).toFixed(6) : null,
+    historicalPricedAt: response.latestHistorical?.pricedAt ?? null };
+}
+
 export function registerPerformanceRoutes(app: FastifyInstance, db: () => DbPool): void {
   app.get<{ Params: { fundId: string } }>("/v0/funds/:fundId/performance", async (request) =>
     readConsistently(db(), async (client) => (await readPerformance(client, request.params.fundId, new Date())).response));
@@ -122,28 +147,21 @@ export function registerPerformanceRoutes(app: FastifyInstance, db: () => DbPool
     const actor = await requireActor(request, db());
     return readConsistently(db(), async (client) => {
       const fundId = request.params.fundId;
-      const { fund, response } = await readPerformance(client, fundId, new Date());
-      const events = await client.query<{ type: string; payload: Record<string, unknown> }>(`SELECT type,payload
-        FROM fund_events WHERE fund_id=$1 AND type IN ('fund_started','crew_joined','crew_left','trial_completed') ORDER BY sequence`, [fundId]);
-      let contributions = new Amount(0), withdrawals = new Amount(0);
-      for (const { type, payload } of events.rows) {
-        if (type === "fund_started" && payload.captainId === actor.id) contributions = contributions.plus(String(payload.seedUsdc));
-        if (type === "crew_joined" && payload.userId === actor.id) contributions = contributions.plus(String(payload.amountUsdc));
-        if (type === "crew_left" && payload.userId === actor.id) withdrawals = withdrawals.plus(String(payload.payoutUsdc));
-        if (type === "trial_completed" && Array.isArray(payload.payouts)) {
-          for (const payout of payload.payouts as { userId: string; payoutUsdc: string }[]) {
-            if (payout.userId === actor.id) withdrawals = withdrawals.plus(payout.payoutUsdc);
-          }
-        }
+      return readPersonal(client, actor.id, fundId, await readPerformance(client, fundId, new Date()));
+    });
+  });
+
+  app.get("/v0/me/paper-record", async request => {
+    const actor = await requireActor(request, db());
+    return readConsistently(db(), async client => {
+      const funds = await client.query<{ id: string }>(`SELECT f.id FROM funds f JOIN fund_shares s ON s.fund_id=f.id
+        WHERE s.user_id=$1 ORDER BY f.created_at DESC`, [actor.id]);
+      const records = [];
+      for (const fund of funds.rows) {
+        const loaded = await readPerformance(client, fund.id, new Date());
+        records.push({ fund: loaded.response, personal: await readPersonal(client, actor.id, fund.id, loaded) });
       }
-      const shareRow = await client.query<{ shares: string }>("SELECT shares::text FROM fund_shares WHERE fund_id=$1 AND user_id=$2", [fundId, actor.id]);
-      const shares = shareRow.rows[0]?.shares ?? "0";
-      const currentValue = new Amount(shares).eq(0) || fund.status === "COMPLETED" ? "0"
-        : response.current ? new Amount(shares).mul(response.current.sharePriceUsdc).toString() : null;
-      return { mode: "PAPER", fundId, shares, valuationStatus: response.valuationStatus,
-        ...personalPerformance(contributions.toString(), withdrawals.toString(), currentValue),
-        historicalPositionValueUsdc: response.latestHistorical ? new Amount(shares).mul(response.latestHistorical.sharePriceUsdc!).toFixed(6) : null,
-        historicalPricedAt: response.latestHistorical?.pricedAt ?? null };
+      return { mode: "PAPER", records };
     });
   });
 

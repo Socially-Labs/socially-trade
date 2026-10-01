@@ -4,6 +4,8 @@
 
 Each phase below is a reviewable Git commit on `main`. A phase is complete when its deliverables and exit criteria are met. If a phase needs several commits during development, squash or group them into the named phase commit before moving to the next phase. Keep the whitepaper and architecture in the repository history.
 
+**Current execution scope (October 1, 2026):** the user requested backend endpoints and API/test-case verification only. Do not implement the Android app or frontend in this delivery. The client phases below remain design context for possible future work, not requirements for this backend task.
+
 ## Phase 0 — Repository foundation (complete)
 
 **Commit:** `chore(phase-0): initialize turborepo and v0 roadmap`
@@ -122,7 +124,7 @@ These are backend checkpoints, not completion of Phase 6 or 7. The mobile client
 
 ### Implemented backend checkpoint
 
-Fund performance/history, personal P&L, permanent Captain records, gross/net returns, drawdown, daily high-water-mark fees, and automatic virtual trial settlement are implemented and covered by the [simulation report](./backend-simulation-report.md). Fee checks assess the first eligible positive gain per UTC day; they do not wait for an end-of-day price.
+Fund performance/history, personal P&L, authenticated active/former allocation records, permanent Captain records, gross/net returns, drawdown, daily high-water-mark fees, and automatic virtual trial settlement are implemented and covered by the [simulation report](./backend-simulation-report.md). Fee checks assess the first eligible positive gain per UTC day; they do not wait for an end-of-day price. Valuation, fee and expiration sweeps scan funds in bounded pages and are verified with 101 funds.
 
 Rankings currently use net return with a minimum seven-day age and display drawdown; the response explicitly says they are not risk-adjusted. A risk-adjusted ranking model and the mobile presentation remain open, so this checkpoint does not mark the full product phase complete.
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFundEvent, inTransaction, ledgerAccountId, saveFundNav, type DbClient, type DbPool } from "@socially/db";
 import { Amount, calculatePerformanceFee, fixed, SHARE_DECIMALS } from "@socially/domain";
 import { lockValuedFund } from "./valuation.js";
+import { eligibleFundBatches } from "./fund-batches.js";
 
 export async function assessFundFee(client: DbClient, fundId: string, feeDay: string): Promise<boolean> {
   const valuation = await lockValuedFund(client, fundId);
@@ -52,13 +53,11 @@ export async function assessFundFee(client: DbClient, fundId: string, feeDay: st
 
 export async function assessDailyFees(pool: DbPool, now = new Date()): Promise<number> {
   const feeDay = now.toISOString().slice(0, 10);
-  const candidates = await pool.query<{ id: string }>(
-    `SELECT id FROM funds WHERE status IN ('ACTIVE','FROZEN')
-     AND NOT EXISTS(SELECT 1 FROM fee_assessments a WHERE a.fund_id=funds.id AND a.fee_day=$1) LIMIT 100`, [feeDay],
-  );
   let assessed = 0;
-  for (const candidate of candidates.rows) {
-    if (await inTransaction(pool, client => assessFundFee(client, candidate.id, feeDay))) assessed++;
+  for await (const batch of eligibleFundBatches(pool, { kind: "FEES", feeDay })) {
+    for (const candidate of batch) {
+      if (await inTransaction(pool, client => assessFundFee(client, candidate.id, feeDay))) assessed++;
+    }
   }
   return assessed;
 }

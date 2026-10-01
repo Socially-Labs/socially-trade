@@ -2,6 +2,7 @@ import { appendFundEvent, inTransaction, ledgerAccountId, saveFundNav, type DbPo
 import { Amount, fixed, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { assessFundFee } from "./fees.js";
 import { lockValuedFund } from "./valuation.js";
+import { eligibleFundBatches } from "./fund-batches.js";
 
 /** Settle all virtual shares once, preserving the final valuation as a public record. */
 export async function completeTrial(pool: DbPool, fundId: string, now = new Date()): Promise<boolean> {
@@ -112,11 +113,9 @@ export async function completeTrial(pool: DbPool, fundId: string, now = new Date
 }
 
 export async function completeExpiredTrials(pool: DbPool, now = new Date()): Promise<number> {
-  const candidates = await pool.query<{ id: string }>(
-    `SELECT f.id FROM funds f JOIN trials t ON t.fund_id=f.id
-     WHERE f.status IN ('ACTIVE','FROZEN') AND t.ends_at<=$1 ORDER BY t.ends_at LIMIT 100`, [now],
-  );
   let completed = 0;
-  for (const candidate of candidates.rows) if (await completeTrial(pool, candidate.id, now)) completed++;
+  for await (const batch of eligibleFundBatches(pool, { kind: "EXPIRED", now })) {
+    for (const candidate of batch) if (await completeTrial(pool, candidate.id, now)) completed++;
+  }
   return completed;
 }

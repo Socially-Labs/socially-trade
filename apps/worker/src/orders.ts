@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFundEvent, inTransaction, ledgerAccountId, saveFundNav, type DbClient, type DbPool } from "@socially/db";
 import { Amount, evaluateSpotOrder, fixed, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { simulateFill } from "@socially/market-data";
+import { eligibleFundBatches } from "./fund-batches.js";
 
 const ORDER_DELAY_MS = 3_000;
 const ORDER_TIMEOUT_MS = 120_000;
@@ -204,37 +205,35 @@ export async function processPendingOrders(pool: DbPool): Promise<number> {
 }
 
 export async function markActiveFunds(pool: DbPool): Promise<number> {
-  const funds = await pool.query<{ id: string }>(
-    `SELECT DISTINCT f.id FROM funds f JOIN positions p ON p.fund_id = f.id
-     WHERE f.status IN ('ACTIVE', 'FROZEN') AND p.quantity > 0 LIMIT 100`,
-  );
   let marked = 0;
-  for (const row of funds.rows) {
-    const didMark = await inTransaction(pool, async (client) => {
-      const fund = await fundState(client, row.id);
-      const observation = await latestObservation(client);
-      if (!observation || !fresh(observation)) return false;
-      const previous = await client.query<{ observation_id: string | null }>(
-        `SELECT observation_id FROM nav_snapshots WHERE fund_id = $1
-         ORDER BY event_sequence DESC NULLS LAST, created_at DESC LIMIT 1`,
-        [fund.id],
-      );
-      if (previous.rows[0]?.observation_id === observation.id) return false;
-      const held = await position(client, fund.id);
-      const nav = new Amount(fund.cash_usdc).plus(new Amount(held.quantity).mul(observation.price_usdc));
-      const sharePrice = nav.div(fund.total_shares);
-      const breaker = new Amount(fund.peak_share_price)
-        .mul(new Amount(1).minus(new Amount(fund.drawdown_breaker_bps).div(10_000)));
-      const frozen = fund.status === "ACTIVE" && sharePrice.lt(breaker);
-      if (frozen) await client.query("UPDATE funds SET status = 'FROZEN' WHERE id = $1", [fund.id]);
-      await appendFundEvent(client, fund.id, frozen ? "drawdown_breaker" : "fund_marked", {
-        observationId: observation.id, navUsdc: fixed(nav, USDC_DECIMALS),
-        sharePriceUsdc: fixed(sharePrice, SHARE_DECIMALS), frozen,
+  for await (const batch of eligibleFundBatches(pool, { kind: "VALUATION" })) {
+    for (const row of batch) {
+      const didMark = await inTransaction(pool, async (client) => {
+        const fund = await fundState(client, row.id);
+        const observation = await latestObservation(client);
+        if (!observation || !fresh(observation)) return false;
+        const previous = await client.query<{ observation_id: string | null }>(
+          `SELECT observation_id FROM nav_snapshots WHERE fund_id = $1
+           ORDER BY event_sequence DESC NULLS LAST, created_at DESC LIMIT 1`,
+          [fund.id],
+        );
+        if (previous.rows[0]?.observation_id === observation.id) return false;
+        const held = await position(client, fund.id);
+        const nav = new Amount(fund.cash_usdc).plus(new Amount(held.quantity).mul(observation.price_usdc));
+        const sharePrice = nav.div(fund.total_shares);
+        const breaker = new Amount(fund.peak_share_price)
+          .mul(new Amount(1).minus(new Amount(fund.drawdown_breaker_bps).div(10_000)));
+        const frozen = fund.status === "ACTIVE" && sharePrice.lt(breaker);
+        if (frozen) await client.query("UPDATE funds SET status = 'FROZEN' WHERE id = $1", [fund.id]);
+        await appendFundEvent(client, fund.id, frozen ? "drawdown_breaker" : "fund_marked", {
+          observationId: observation.id, navUsdc: fixed(nav, USDC_DECIMALS),
+          sharePriceUsdc: fixed(sharePrice, SHARE_DECIMALS), frozen,
+        });
+        await snapshot(client, fund, nav, observation);
+        return true;
       });
-      await snapshot(client, fund, nav, observation);
-      return true;
-    });
-    if (didMark) marked++;
+      if (didMark) marked++;
+    }
   }
   return marked;
 }
