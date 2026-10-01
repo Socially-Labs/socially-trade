@@ -9,3 +9,8 @@ coverage/
 *.tsbuildinfo
 .expo/
 web-build/
+
+# Graphify local caches, temporary extraction state and machine paths.
+graphify-out/.*
+graphify-out/cache/
+graphify-out/cost.json

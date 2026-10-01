@@ -85,3 +85,7 @@ The worker also delivers fund outbox records to each current Captain and Crew me
 To process orders with local seeded prices, keep `DEV_PRICE_SEED_ENABLED=true`, start the worker with `pnpm --filter @socially/worker start`, submit a Captain order, then seed a fresh price after submission. The worker waits at least three seconds and uses the latest eligible price observation. `pnpm --filter @socially/worker orders:once` processes eligible work once.
 
 All v0 financial values are virtual. The current API does not accept orders or hold assets.
+## Knowledge graph
+
+See [Graphify setup and refresh instructions](docs/graphify.md) for the backend,
+database, architecture and whitepaper knowledge graph in `graphify-out/`.
