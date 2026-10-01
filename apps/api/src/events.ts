@@ -15,7 +15,7 @@ interface FundEvent {
 async function readEvents(pool: DbPool, fundId: string, after: number): Promise<FundEvent[]> {
   const result = await pool.query<FundEvent>(
     `SELECT id, sequence::text, type, payload, recorded_at FROM fund_events
-     WHERE fund_id = $1 AND sequence > $2 ORDER BY sequence ASC LIMIT 100`,
+     WHERE fund_id = $1 AND sequence > $2 ORDER BY fund_events.sequence ASC LIMIT 100`,
     [fundId, after],
   );
   return result.rows;

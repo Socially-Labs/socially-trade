@@ -155,7 +155,7 @@ export async function getOrder(pool: DbPool, fundId: string, orderId: string) {
 export async function cancelOrder(pool: DbPool, actor: Actor, fundId: string, orderId: string) {
   return inTransaction(pool, async (client) => {
     const selected = await client.query<{ status: string; captain_id: string }>(
-      "SELECT status, captain_id FROM orders WHERE id = $1 AND fund_id = $2 FOR UPDATE",
+      "SELECT status, captain_id FROM orders WHERE id = $1 AND fund_id = $2 FOR NO KEY UPDATE",
       [orderId, fundId],
     );
     const order = selected.rows[0];

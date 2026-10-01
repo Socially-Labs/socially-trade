@@ -85,7 +85,7 @@ export async function createFund(
     const captain = await client.query("SELECT 1 FROM captain_profiles WHERE user_id = $1", [actor.id]);
     if (!captain.rowCount) throw new ApiFault(403, "captain_required", "Create a Captain profile first");
     const user = await client.query<{ paper_cash: string }>(
-      "SELECT paper_cash::text FROM users WHERE id = $1 FOR UPDATE",
+      "SELECT paper_cash::text FROM users WHERE id = $1 FOR NO KEY UPDATE",
       [actor.id],
     );
     if (new Amount(user.rows[0]!.paper_cash).lt(CAPTAIN_SEED)) {

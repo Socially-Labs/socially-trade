@@ -22,6 +22,14 @@ pnpm check-types
 pnpm build
 ```
 
+To run the backend simulations without a Pyth key, start local PostgreSQL and run:
+
+```sh
+TEST_DATABASE_URL=postgres://socially:socially@127.0.0.1:5432/socially_trade pnpm test:backend
+```
+
+Each run creates and removes its own database schema, uses synthetic SOL prices, and blocks external HTTP requests. The scenarios and findings are documented in [the simulation report](./docs/backend-simulation-report.md).
+
 For local backend development, start PostgreSQL with `docker compose up -d postgres`, set `DATABASE_URL` from `.env.example`, and run `pnpm --filter @socially/db migrate`. Set a long random `DEV_AUTH_TOKEN`; development requests use `Authorization: Bearer <token>` and `X-Dev-Subject: dev:alice`. This development identity is disabled when `NODE_ENV=production`. Production requests require `AUTH_JWKS_URL`, `AUTH_ISSUER`, and `AUTH_AUDIENCE` for JWT verification.
 
 Available endpoints:

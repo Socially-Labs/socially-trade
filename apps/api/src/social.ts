@@ -123,7 +123,7 @@ async function listMessages(pool: DbPool, fundId: string, after: number, kind?: 
             event_sequence::text, created_at
      FROM messages WHERE fund_id = $1 AND event_sequence > $2
        AND moderation_status = 'VISIBLE' AND ($3::text IS NULL OR kind = $3)
-     ORDER BY event_sequence ASC LIMIT 100`,
+     ORDER BY messages.event_sequence ASC LIMIT 100`,
     [fundId, after, kind ?? null],
   );
   return result.rows.map(publicMessage);

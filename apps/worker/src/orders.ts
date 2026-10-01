@@ -60,7 +60,7 @@ async function fundState(client: DbClient, fundId: string): Promise<FundState> {
      FROM funds f JOIN trials t ON t.fund_id = f.id
      JOIN LATERAL (SELECT * FROM fund_policy_versions WHERE fund_id = f.id
                    ORDER BY version DESC LIMIT 1) p ON true
-     WHERE f.id = $1 FOR UPDATE OF f`,
+     WHERE f.id = $1 FOR NO KEY UPDATE OF f`,
     [fundId],
   );
   return result.rows[0]!;
@@ -100,7 +100,7 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
   return inTransaction(pool, async (client) => {
     const selected = await client.query<PendingOrder>(
       `SELECT id, fund_id, side, instrument_id, notional_usdc::text, submitted_at
-       FROM orders WHERE id = $1 AND status = 'PENDING' FOR UPDATE SKIP LOCKED`,
+       FROM orders WHERE id = $1 AND status = 'PENDING' FOR NO KEY UPDATE SKIP LOCKED`,
       [orderId],
     );
     const order = selected.rows[0];
@@ -111,7 +111,10 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
       await reject(client, order, "fund_not_tradable");
       return true;
     }
-    if (order.instrument_id !== "SOL") {
+    const instrument = await client.query<{ active: boolean }>(
+      "SELECT active FROM instruments WHERE id = $1", [order.instrument_id],
+    );
+    if (order.instrument_id !== "SOL" || !instrument.rows[0]?.active) {
       await reject(client, order, "asset_not_allowed");
       return true;
     }

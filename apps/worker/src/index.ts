@@ -1,7 +1,6 @@
 import { createPool } from "@socially/db";
 import { ingestSolPrice } from "./prices.js";
-import { markActiveFunds, processPendingOrders } from "./orders.js";
-import { deliverOutbox } from "./notifications.js";
+import { runWorkerCycle } from "./cycle.js";
 
 const apiKey = process.env.PYTH_API_KEY;
 const devPrices = process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true";
@@ -14,16 +13,11 @@ process.on("SIGINT", () => { running = false; });
 
 try {
   while (running) {
-    try {
-      if (apiKey && Date.now() >= nextPriceFetch) {
-        await ingestSolPrice(pool, apiKey);
-        nextPriceFetch = Date.now() + 15_000;
-      }
-      await markActiveFunds(pool);
-      await processPendingOrders(pool);
-      await deliverOutbox(pool);
-    } catch (error) {
-      console.error("Paper worker cycle failed", error);
+    const fetchPrice = apiKey && Date.now() >= nextPriceFetch;
+    if (fetchPrice) nextPriceFetch = Date.now() + 15_000;
+    const result = await runWorkerCycle(pool, fetchPrice ? () => ingestSolPrice(pool, apiKey!) : undefined);
+    for (const failure of result.failures) {
+      console.error("Paper worker job failed", failure);
     }
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }

@@ -9,7 +9,10 @@ import { registerSocialRoutes } from "./social.js";
 import { registerNotificationRoutes } from "./notifications.js";
 
 export function createApp(pool: DbPool | null) {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: true,
+    ajv: { customOptions: { coerceTypes: false, removeAdditional: false } },
+  });
   const db = (): DbPool => {
     if (!pool) throw new ApiFault(503, "database_unconfigured", "DATABASE_URL is required");
     return pool;

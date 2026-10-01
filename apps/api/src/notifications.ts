@@ -14,7 +14,7 @@ export function registerNotificationRoutes(app: FastifyInstance, db: () => DbPoo
     }>(
       `SELECT id::text, fund_id, type, payload, created_at, read_at
        FROM notifications WHERE user_id = $1 AND id > $2
-       ORDER BY id ASC LIMIT 100`,
+       ORDER BY notifications.id ASC LIMIT 100`,
       [actor.id, after],
     );
     return { mode: "PAPER", notifications: result.rows.map((row) => ({

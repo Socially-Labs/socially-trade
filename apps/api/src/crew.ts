@@ -16,10 +16,11 @@ interface LockedFund {
 }
 
 async function lockFund(client: import("@socially/db").DbClient, fundId: string): Promise<LockedFund> {
+  // Serialize balance changes while allowing foreign-key references to the unchanged fund ID.
   const result = await client.query<LockedFund>(
     `SELECT f.id, f.captain_id, f.status, f.cash_usdc::text, f.total_shares::text, t.ends_at
      FROM funds f JOIN trials t ON t.fund_id = f.id
-     WHERE f.id = $1 FOR UPDATE OF f`,
+     WHERE f.id = $1 FOR NO KEY UPDATE OF f`,
     [fundId],
   );
   const fund = result.rows[0];
@@ -52,7 +53,7 @@ export async function joinFund(
     const prior = await beginIdempotent<CrewChange>(client, actor.id, key, `POST /v0/funds/${fundId}/joins`, { amountUsdc });
     if (prior) return prior;
     const user = await client.query<{ paper_cash: string }>(
-      "SELECT paper_cash::text FROM users WHERE id = $1 FOR UPDATE",
+      "SELECT paper_cash::text FROM users WHERE id = $1 FOR NO KEY UPDATE",
       [actor.id],
     );
     if (new Amount(user.rows[0]!.paper_cash).lt(amount)) {
@@ -117,7 +118,7 @@ export async function leaveFund(
   return inTransaction(pool, async (client) => {
     const prior = await beginIdempotent<CrewChange>(client, actor.id, key, `POST /v0/funds/${fundId}/exits`, { shares: sharesText });
     if (prior) return prior;
-    await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [actor.id]);
+    await client.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [actor.id]);
     const fund = await lockFund(client, fundId);
     if (fund.captain_id === actor.id) throw new ApiFault(403, "captain_stake_locked", "Captain stake stays in the trial");
     const held = await client.query<{ shares: string }>(
