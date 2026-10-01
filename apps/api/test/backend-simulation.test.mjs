@@ -7,8 +7,8 @@ import { createApp } from '../dist/app.js';
 import { processOrder, markActiveFunds } from '../../worker/dist/orders.js';
 import { deliverOutbox } from '../../worker/dist/notifications.js';
 import { runWorkerCycle } from '../../worker/dist/cycle.js';
-import { assessFundFee } from '../../worker/dist/fees.js';
-import { completeTrial } from '../../worker/dist/trials.js';
+import { assessDailyFees, assessFundFee } from '../../worker/dist/fees.js';
+import { completeExpiredTrials, completeTrial } from '../../worker/dist/trials.js';
 import { inTransaction } from '../../../packages/db/dist/index.js';
 import { Amount, evaluateSpotOrder } from '../../../packages/domain/dist/index.js';
 import { simulateFill } from '../../../packages/market-data/dist/index.js';
@@ -529,6 +529,53 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       settlementPendingOrder = await order('BUY', '1');
       await ageOrder(settlementPendingOrder);
     });
+    await t.test('API performance periods and fee totals match persisted valuations and assessments', async () => {
+      const snapshots = (await pool.query(`SELECT id,event_sequence,share_price_usdc::text,performance_fee_factor::text
+        FROM nav_snapshots WHERE fund_id=$1 ORDER BY event_sequence`, [fundId])).rows;
+      assert.ok(snapshots.length >= 3);
+      const midIndex = Math.floor(snapshots.length / 2), mid = snapshots[midIndex], first = snapshots[0], last = snapshots.at(-1);
+      // Simulate a month of recorded history without changing its financial values.
+      await pool.query(`UPDATE nav_snapshots SET created_at=now()-interval '1 day' WHERE fund_id=$1`, [fundId]);
+      await pool.query(`UPDATE nav_snapshots SET created_at=now()-interval '9 days' WHERE id=ANY($1::uuid[])`, [snapshots.slice(1, midIndex).map(x => x.id)]);
+      await pool.query(`UPDATE nav_snapshots SET created_at=now()-interval '31 days' WHERE id=$1`, [first.id]);
+      await pool.query(`UPDATE nav_snapshots SET created_at=now()-interval '8 days' WHERE id=$1`, [mid.id]);
+      const result = await request('GET', route('/performance'));
+      const expected = base => new Amount(last.share_price_usdc).div(base.share_price_usdc).minus(1).mul(100);
+      assert.ok(new Amount(result.current.period7d.netReturnPercent).minus(expected(mid)).abs().lt('0.000000000000001'));
+      assert.ok(new Amount(result.current.period30d.netReturnPercent).minus(expected(first)).abs().lt('0.000000000000001'));
+      assert.ok(new Amount(result.current.sinceInception.netReturnPercent).minus(expected(first)).abs().lt('0.000000000000001'));
+      const aggregate = (await pool.query(`SELECT SUM(fee_usdc)::text AS total,COUNT(*)::int AS count,
+        SUM(captain_shares)::text AS captain,SUM(protocol_shares)::text AS protocol FROM fee_assessments WHERE fund_id=$1`, [fundId])).rows[0];
+      assert.ok(new Amount(result.fees.performanceFeeUsdc).eq(aggregate.total));
+      assert.equal(result.fees.assessmentCount, aggregate.count);
+      assert.ok(new Amount(result.fees.captainFeeShares).eq(aggregate.captain));
+      assert.ok(new Amount(result.fees.protocolFeeShares).eq(aggregate.protocol));
+      const counts = (await pool.query('SELECT COUNT(*)::int AS count FROM orders WHERE fund_id=$1', [fundId])).rows[0].count;
+      assert.equal(Object.values(result.orders).reduce((sum, value) => sum + value, 0), counts);
+      assert.equal(result.mode, 'PAPER');
+      await reconcile();
+    });
+    await t.test('performance history recovers every valuation with numeric cursors and exact gross prices', async () => {
+      const points = []; let after = '0';
+      for (;;) {
+        const page = await request('GET', route(`/history?after=${after}&limit=2`));
+        points.push(...page.points);
+        if (!page.nextCursor) break;
+        assert.ok(BigInt(page.nextCursor) > BigInt(after)); after = page.nextCursor;
+      }
+      const stored = (await pool.query(`SELECT event_sequence::text AS sequence,nav_usdc::text,share_price_usdc::text,
+        performance_fee_factor::text FROM nav_snapshots WHERE fund_id=$1 ORDER BY event_sequence`, [fundId])).rows;
+      assert.deepEqual(points.map(x => x.sequence), stored.map(x => x.sequence));
+      for (let i = 0; i < points.length; i++) {
+        assert.ok(new Amount(points[i].navUsdc).eq(stored[i].nav_usdc));
+        assert.ok(new Amount(points[i].sharePriceUsdc).eq(stored[i].share_price_usdc));
+        assert.ok(new Amount(points[i].grossSharePriceUsdc).minus(new Amount(stored[i].share_price_usdc).mul(stored[i].performance_fee_factor)).abs().lt('0.000000000000000002'));
+      }
+      assert.equal(new Set(points.map(x => x.sequence)).size, points.length);
+      for (const query of ['limit=0','limit=101','after=-1','after=1.5','after=9223372036854775808','unexpected=1']) {
+        await request('GET', route(`/history?${query}`), undefined, undefined, undefined, 400);
+      }
+    });
     await t.test('stale prices suppress current returns and defer expired settlement', async () => {
       await clearPrices();
       await pool.query("UPDATE nav_snapshots SET priced_at=now()-interval '5 minutes' WHERE fund_id=$1", [fundId]);
@@ -569,10 +616,72 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       assert.ok(new Amount(personal.currentValueUsdc).eq('0'));
       assert.ok(new Amount(personal.withdrawalsUsdc).minus(personal.contributionsUsdc).eq(personal.pnlUsdc));
       assert.ok(new Amount(personal.pnlUsdc).gt(0));
+      const personalRecords = await request('GET', '/v0/me/paper-record', 'crew');
+      const savedRecord = personalRecords.records.find(x => x.fund.fundId === fundId);
+      assert.equal(savedRecord.fund.valuationStatus, 'FINAL');
+      assert.deepEqual(savedRecord.personal, personal);
+      await request('GET', '/v0/me/paper-record', undefined, undefined, undefined, 401);
+      const outsiderRecords = await request('GET', '/v0/me/paper-record', 'outsider');
+      assert.ok(outsiderRecords.records.every(x => x.fund.fundId !== fundId));
       const records = await request('GET', `/v0/captains/${ids.captain}/paper-record`);
       assert.equal(records.records.filter(x => x.status === 'COMPLETED').length, 2);
       assert.ok(records.records.every(x => x.valuationStatus === 'FINAL'));
       await request('POST', '/v0/funds', 'captain', { name: 'Next Trial' }, randomUUID(), 201);
+    });
+    await t.test('rankings disclose method and include only eligible valued records in return order', async () => {
+      const rankings = await request('GET', '/v0/funds/rankings');
+      assert.equal(rankings.mode, 'PAPER');
+      assert.equal(rankings.rankingMethod, 'SINCE_INCEPTION_NET_RETURN');
+      assert.equal(rankings.minimumAgeDays, 7);
+      assert.match(rankings.disclaimer, /Not risk-adjusted/);
+      assert.ok(rankings.funds.some(x => x.fundId === fundId && x.valuationStatus === 'FINAL'));
+      for (let i = 0; i < rankings.funds.length; i++) {
+        const fund = rankings.funds[i];
+        assert.equal(fund.rank, i + 1); assert.ok(fund.trial.elapsedDays >= 7); assert.ok(fund.current);
+        if (i > 0) assert.ok(new Amount(rankings.funds[i - 1].current.sinceInception.netReturnPercent).gte(fund.current.sinceInception.netReturnPercent));
+      }
+      const newTrial = (await pool.query(`SELECT id FROM funds WHERE captain_id=$1 AND status='ACTIVE'`, [ids.captain])).rows[0].id;
+      assert.ok(rankings.funds.every(x => x.fundId !== newTrial));
+    });
+    await t.test('performance APIs reject invalid or absent funds without leaking private records', async () => {
+      for (const suffix of ['performance','history']) {
+        await request('GET', `/v0/funds/not-a-uuid/${suffix}`, undefined, undefined, undefined, 400);
+        await request('GET', `/v0/funds/${randomUUID()}/${suffix}`, undefined, undefined, undefined, 404);
+      }
+      await request('GET', `/v0/me/funds/${fundId}/performance`, undefined, undefined, undefined, 401);
+      await request('GET', `/v0/captains/${randomUUID()}/paper-record`, undefined, undefined, undefined, 404);
+      const personal = await request('GET', `/v0/me/funds/${fundId}/performance`, 'outsider');
+      assert.ok(new Amount(personal.contributionsUsdc).eq(0));
+      assert.ok(new Amount(personal.withdrawalsUsdc).eq(0));
+      assert.ok(new Amount(personal.currentValueUsdc).eq(0));
+      assert.equal(personal.pnlPercentOfContributions, null);
+    });
+    await t.test('worker valuation fee and expiry sweeps reach funds beyond a 100-fund batch', async () => {
+      const funds = [];
+      for (let i = 0; i < 101; i++) {
+        const subject = `batch_${i}`;
+        await request('POST', '/v0/captains', subject, { handle: subject }, undefined, 201);
+        const fund = await request('POST', '/v0/funds', subject, { name: `Batch fund ${i}` }, randomUUID(), 201);
+        funds.push(fund.id);
+        await seed('100');
+        const order = await request('POST', `/v0/funds/${fund.id}/orders`, subject, { side: 'BUY', instrumentId: 'SOL', notionalUsdc: '50' }, randomUUID(), 202);
+        await ageOrder(order.orderId); await seed('100'); await processOrder(pool, order.orderId);
+      }
+      const observation = await seed('200');
+      await markActiveFunds(pool);
+      const marked = await pool.query(`SELECT fund_id FROM nav_snapshots WHERE fund_id=ANY($1::uuid[]) AND observation_id=$2`, [funds, observation]);
+      assert.equal(marked.rowCount, 101, 'Every exposed fund must reach the latest observation');
+      await assessDailyFees(pool);
+      const assessed = await pool.query(`SELECT DISTINCT fund_id FROM fee_assessments WHERE fund_id=ANY($1::uuid[])`, [funds]);
+      assert.equal(assessed.rowCount, 101, 'Every eligible profitable fund must be assessed');
+      await reconcile();
+      await pool.query(`UPDATE trials SET starts_at=now()-interval '31 days',ends_at=now()-interval '1 day'
+        WHERE fund_id=ANY($1::uuid[])`, [funds]);
+      assert.equal(await completeExpiredTrials(pool), 101);
+      const completed = await pool.query(`SELECT id FROM funds WHERE id=ANY($1::uuid[]) AND status='COMPLETED'`, [funds]);
+      assert.equal(completed.rowCount, 101, 'Every expired fund must settle');
+      assert.equal(await completeExpiredTrials(pool), 0, 'Repeating the sweep must not pay out twice');
+      await reconcile();
     });
     await t.test('final ledger/projection reconciliation', reconcile);
   } finally {
