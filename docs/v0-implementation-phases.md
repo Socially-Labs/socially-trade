@@ -120,6 +120,12 @@ These are backend checkpoints, not completion of Phase 6 or 7. The mobile client
 
 **Exit:** displayed performance can be recomputed from stored observations, events, and ledger entries; deposits do not inflate return; fee retries do not duplicate fees.
 
+### Implemented backend checkpoint
+
+Fund performance/history, personal P&L, permanent Captain records, gross/net returns, drawdown, daily high-water-mark fees, and automatic virtual trial settlement are implemented and covered by the [simulation report](./backend-simulation-report.md). Fee checks assess the first eligible positive gain per UTC day; they do not wait for an end-of-day price.
+
+Rankings currently use net return with a minimum seven-day age and display drawdown; the response explicitly says they are not risk-adjusted. A risk-adjusted ranking model and the mobile presentation remain open, so this checkpoint does not mark the full product phase complete.
+
 ## Phase 9 — Private beta hardening
 
 **Commit:** `chore(phase-9): harden paper beta operations`

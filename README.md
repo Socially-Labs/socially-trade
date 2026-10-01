@@ -4,7 +4,17 @@ Paper trading is the first implementation of the Captain and Crew experience des
 
 ## Current state
 
-Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SOL/USD price observations, order endpoints, and an order-processing worker. Backend checkpoints now add a resumable event stream, fund chat, and Captain order notes. The mobile app, notification delivery, performance, and fee work remain in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
+Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SOL/USD price observations, order endpoints, and an order-processing worker. Backend checkpoints add a resumable event stream, fund chat, Captain order notes, an in-app inbox, performance records, simulated fees, and trial settlement. The mobile app, external push delivery, risk-adjusted rankings, and operational hardening remain in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
+
+### Performance reads
+
+- `GET /v0/funds/:fundId/performance`: current/historical NAV, unit returns, drawdown, fees and trial status.
+- `GET /v0/funds/:fundId/history?after=0&limit=100`: cursor-paginated valuation history.
+- `GET /v0/me/funds/:fundId/performance`: authenticated contributions, redemptions and personal P&L.
+- `GET /v0/captains/:captainId/paper-record`: preserved independent trial records.
+- `GET /v0/funds/rankings`: net-return ranking with minimum age and disclosed limitations.
+
+All results are simulated. The worker assesses fees and settles expired trials through atomic ledger transactions. See the [simulation report](./docs/backend-simulation-report.md) for checks, conventions and limits.
 
 ## Local development
 

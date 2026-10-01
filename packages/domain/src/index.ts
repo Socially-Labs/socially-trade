@@ -31,3 +31,6 @@ export function fixedUp(value: Decimal.Value, scale: number): string {
 
 export { evaluateSpotOrder } from "./policy.js";
 export type { SpotPolicyInput, PolicyReason } from "./policy.js";
+export { calculatePerformanceFee, PERFORMANCE_FEE_MODEL_VERSION } from "./fees.js";
+export { calculatePerformance, personalPerformance, returnPercent } from "./performance.js";
+export type { PerformancePoint } from "./performance.js";

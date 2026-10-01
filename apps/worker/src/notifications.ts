@@ -32,6 +32,11 @@ async function deliverOne(pool: DbPool, outboxId: string): Promise<boolean> {
            SELECT captain_id AS user_id FROM funds WHERE id = $2
            UNION
            SELECT user_id FROM fund_shares WHERE fund_id = $2 AND shares > 0
+           UNION
+           SELECT (payout->>'userId')::uuid FROM jsonb_array_elements(
+             CASE WHEN $3='trial_completed' THEN COALESCE($4::jsonb->'payouts','[]'::jsonb)
+             ELSE '[]'::jsonb END
+           ) payout
          ) recipients
          ON CONFLICT (outbox_event_id, user_id) DO NOTHING`,
         [item.id, item.fund_id, item.type, item.payload],

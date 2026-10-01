@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFundEvent, inTransaction, ledgerAccountId, type DbClient, type DbPool } from "@socially/db";
+import { appendFundEvent, inTransaction, ledgerAccountId, saveFundNav, type DbClient, type DbPool } from "@socially/db";
 import { Amount, evaluateSpotOrder, fixed, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { simulateFill } from "@socially/market-data";
 
@@ -76,16 +76,8 @@ async function position(client: DbClient, fundId: string) {
 
 async function snapshot(client: DbClient, fund: FundState, nav: Amount, observation: Observation) {
   const sharePrice = fixed(nav.div(fund.total_shares), SHARE_DECIMALS);
-  await client.query(
-    `INSERT INTO nav_snapshots
-     (id, fund_id, nav_usdc, share_price_usdc, status, priced_at, event_sequence, observation_id)
-     SELECT $1, $2, $3, $4, 'CURRENT', $5, event_sequence, $6 FROM funds WHERE id = $2`,
-    [randomUUID(), fund.id, fixed(nav, SHARE_DECIMALS), sharePrice, observation.source_at, observation.id],
-  );
-  await client.query(
-    "UPDATE funds SET peak_share_price = GREATEST(peak_share_price, $2::numeric) WHERE id = $1",
-    [fund.id, sharePrice],
-  );
+  await saveFundNav(client, { fundId: fund.id, navUsdc: fixed(nav, SHARE_DECIMALS),
+    sharePriceUsdc: sharePrice, pricedAt: observation.source_at, observationId: observation.id });
 }
 
 async function reject(client: DbClient, order: PendingOrder, reason: string) {

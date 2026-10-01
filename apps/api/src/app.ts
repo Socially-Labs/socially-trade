@@ -7,6 +7,7 @@ import { registerOrderRoutes } from "./order-routes.js";
 import { registerFundEventRoutes } from "./events.js";
 import { registerSocialRoutes } from "./social.js";
 import { registerNotificationRoutes } from "./notifications.js";
+import { registerPerformanceRoutes } from "./performance.js";
 
 export function createApp(pool: DbPool | null) {
   const app = Fastify({
@@ -52,6 +53,7 @@ export function createApp(pool: DbPool | null) {
   registerFundEventRoutes(app, db);
   registerSocialRoutes(app, db);
   registerNotificationRoutes(app, db);
+  registerPerformanceRoutes(app, db);
 
   app.addHook("onClose", async () => {
     await pool?.end();

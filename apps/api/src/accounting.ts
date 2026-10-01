@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import type { DbClient } from "@socially/db";
+import { createHash } from "node:crypto";
+import { saveFundNav, type DbClient } from "@socially/db";
 import { Amount, fixed, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { ApiFault } from "./errors.js";
 
@@ -74,15 +74,7 @@ export async function saveNav(
   pricedAt = new Date(),
 ): Promise<void> {
   const sharePrice = fixed(nav.div(totalShares), SHARE_DECIMALS);
-  await client.query(
-    `INSERT INTO nav_snapshots (id, fund_id, nav_usdc, share_price_usdc, status, priced_at, event_sequence)
-     SELECT $1, $2, $3, $4, 'CURRENT', $5, event_sequence FROM funds WHERE id = $2`,
-    [randomUUID(), fundId, fixed(nav, SHARE_DECIMALS), sharePrice, pricedAt],
-  );
-  await client.query(
-    "UPDATE funds SET peak_share_price = GREATEST(peak_share_price, $2::numeric) WHERE id = $1",
-    [fundId, sharePrice],
-  );
+  await saveFundNav(client, { fundId, navUsdc: fixed(nav, SHARE_DECIMALS), sharePriceUsdc: sharePrice, pricedAt });
 }
 
 export async function beginIdempotent<T>(

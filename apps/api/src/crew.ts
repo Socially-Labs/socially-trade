@@ -52,6 +52,7 @@ export async function joinFund(
   return inTransaction(pool, async (client) => {
     const prior = await beginIdempotent<CrewChange>(client, actor.id, key, `POST /v0/funds/${fundId}/joins`, { amountUsdc });
     if (prior) return prior;
+    const fund = await lockFund(client, fundId);
     const user = await client.query<{ paper_cash: string }>(
       "SELECT paper_cash::text FROM users WHERE id = $1 FOR NO KEY UPDATE",
       [actor.id],
@@ -59,7 +60,6 @@ export async function joinFund(
     if (new Amount(user.rows[0]!.paper_cash).lt(amount)) {
       throw new ApiFault(422, "insufficient_virtual_cash", "Not enough virtual USDC");
     }
-    const fund = await lockFund(client, fundId);
     if (fund.status !== "ACTIVE" || fund.ends_at.getTime() <= Date.now()) {
       throw new ApiFault(409, "fund_not_active", "Fund is not accepting joins");
     }
@@ -118,8 +118,8 @@ export async function leaveFund(
   return inTransaction(pool, async (client) => {
     const prior = await beginIdempotent<CrewChange>(client, actor.id, key, `POST /v0/funds/${fundId}/exits`, { shares: sharesText });
     if (prior) return prior;
-    await client.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [actor.id]);
     const fund = await lockFund(client, fundId);
+    await client.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [actor.id]);
     if (fund.captain_id === actor.id) throw new ApiFault(403, "captain_stake_locked", "Captain stake stays in the trial");
     const held = await client.query<{ shares: string }>(
       "SELECT shares::text FROM fund_shares WHERE fund_id = $1 AND user_id = $2",
