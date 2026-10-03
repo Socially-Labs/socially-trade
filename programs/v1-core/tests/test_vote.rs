@@ -489,7 +489,7 @@ fn route_hash_counts_signer_flag() {
 
 #[test]
 fn passed_proposal_executes_with_full_window() {
-    // Ruling 23: a crew-voted trade neither needs nor uses the 24 h budget.
+    // A crew-voted trade neither needs nor uses the 24 h budget.
     let (mut t, _m) = crew();
     // NAV 16,666.67: the window holds 1,666.67 USDC. Use 1,600 of it.
     t.swap(&SwapArgs::new(

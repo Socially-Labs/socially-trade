@@ -65,7 +65,7 @@ fn create_fund_mints_one_to_one_and_records_captain() {
     assert_eq!(mint.base.mint_authority, Some(f.fund).into());
     assert_eq!(mint.base.freeze_authority, None.into());
     assert!(mint.non_transferable);
-    // PermanentDelegate = fund PDA: used only by the yearly fee burn (Ruling 21).
+    // PermanentDelegate = fund PDA: used only by the yearly fee burn.
     assert_eq!(mint.permanent_delegate, Some(f.fund));
 }
 

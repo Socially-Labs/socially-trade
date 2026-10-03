@@ -142,7 +142,7 @@ fn annual_fee_zero_below_hwm() {
 
 #[test]
 fn annual_fee_ignores_stale_higher_last_pps() {
-    // Ruling 24: the annual fee uses the fresh upper-bound pps only.
+    // The annual fee uses the fresh upper-bound pps only.
     let (mut env, cap, m, f) = whitepaper();
     let keeper = funded_user(&mut env, 0);
     let mut fund = read_fund(&env, &f);

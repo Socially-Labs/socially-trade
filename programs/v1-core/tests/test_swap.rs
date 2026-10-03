@@ -888,7 +888,7 @@ fn venue_that_approves_a_delegate_reverts() {
 
 #[test]
 fn split_trade_hits_24h_autonomous_budget() {
-    // Ruling 23: a 30% trade split into 3 x 10% must not skip the vote.
+    // A 30% trade split into 3 x 10% must not skip the vote.
     let mut t = trading_fund();
     let start = now(&t.env);
     t.swap(&buy_sol(&t, 1_000 * USDC, 6_600_000_000)).unwrap();

@@ -7,17 +7,17 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | Promise | Enforced by |
 |---|---|
 | Only you withdraw | Funds sit in PDA-owned vaults. `exit` pays a member only their pro-rata slice. `swap` reads every vault after the venue CPI: input vault falls by exactly `amount_in`, output vault rises by at least `min_out`, all other vaults are unchanged, and vault data length is unchanged. |
-| Rules on every trade | `swap` checks: venue allowlist, token tier caps (T2 buys only, Ruling 11), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps; Ruling 14). Policy loosening waits 48 h. |
-| Exits never wait | `exit` has no pause, freeze or price dependency (Rulings 3, 8, 9). Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. |
-| Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. At `exit` the fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so the choice of stale or fresh prices cannot lower the fee much: the residual difference is bounded by the Pyth confidence plus the spot/EMA gap (Rulings 8, 21). `charge_annual_fee` uses the fresh upper-bound price only, and moves the breaker before it computes the fee (Ruling 24). The HWM rises only when at least one fee share is taken. |
+| Rules on every trade | `swap` checks: venue allowlist, token tier caps (T2 buys only), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps). Policy loosening waits 48 h. |
+| Exits never wait | `exit` has no pause, freeze or price dependency. Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. |
+| Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. At `exit` the fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so the choice of stale or fresh prices cannot lower the fee much: the residual difference is bounded by the Pyth confidence plus the spot/EMA gap. `charge_annual_fee` uses the fresh upper-bound price only, and moves the breaker before it computes the fee. The HWM rises only when at least one fee share is taken. |
 | Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate. It blocks `deposit`, `create_fund` and any swap whose output is not USDC. Exits and sales to USDC are never blocked. |
-| Big trades need the crew | A captain or delegate trade must fit two limits: `autonomous_bps` of spot NAV per trade, and the same amount as a rolling 24 h budget per fund (`window_start`, `window_volume_usd`), shared by the captain and all delegates. So a large trade split into small ones still needs a vote (Ruling 23). A voted trade does not use the budget. `propose_trade` stores `route_hash`, a hash of the venue data and the ordered venue account metas (Rulings 16, 19). `execute_proposal` must match it. Vote weight is the share balance at vote time (Ruling 17). |
+| Big trades need the crew | A captain or delegate trade must fit two limits: `autonomous_bps` of spot NAV per trade, and the same amount as a rolling 24 h budget per fund (`window_start`, `window_volume_usd`), shared by the captain and all delegates. So a large trade split into small ones still needs a vote. A voted trade does not use the budget. `propose_trade` stores `route_hash`, a hash of the venue data and the ordered venue account metas. `execute_proposal` must match it. Vote weight is the share balance at vote time. |
 
 ## Pricing
 
 - Source: Pyth `PriceUpdateV2` accounts, parsed by hand in `src/pyth.rs`. No Pyth SDK.
 - Checks: owner is the Pyth receiver, account discriminator, `Full` verification level, feed id equals the registered feed, price age at most 60 s, confidence at most 200 bps of price, price greater than 0.
-- Valuation modes (`nav::ValuationMode`, Ruling 6). A caller can pick any price inside the 60 s window, so each use takes the side that cannot help the caller:
+- Valuation modes (`nav::ValuationMode`). A caller can pick any price inside the 60 s window, so each use takes the side that cannot help the caller:
 
 | Mode | Value of a non-USDC holding | Used for |
 |---|---|---|
@@ -29,14 +29,14 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 
 - **The admin is the program upgrade authority.** An instant program upgrade bypasses every on-chain timelock (token, venue and policy queues). Before real money, the upgrade authority must be a timelocked multisig, or the program must be made immutable.
 - **Frozen fund with only USDC cannot unfreeze.** The breaker moves only on NAV. A fund more than `drawdown_bps` below its peak that holds only USDC has no trade that can raise its NAV, so it stays frozen. Members can still exit. The captain opens a new fund.
-- **Holders can burn their own shares.** Holders can burn their own NonTransferable shares; burned shares stay counted in `total_shares`, which locks the burned value in the fund and can leave the captain unable to exit the last dust share unit. No value moves to anyone else (Ruling 26).
+- **Holders can burn their own shares.** Holders can burn their own NonTransferable shares; burned shares stay counted in `total_shares`, which locks the burned value in the fund and can leave the captain unable to exit the last dust share unit. No value moves to anyone else.
 
-- **PermanentDelegate on the share mint.** The delegate is the fund PDA. Only the yearly fee burn (`fees.rs`, `charge_annual_fee`) uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares (Ruling 21). Tests assert the extension and the delegate.
+- **PermanentDelegate on the share mint.** The delegate is the fund PDA. Only the yearly fee burn (`fees.rs`, `charge_annual_fee`) uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares. Tests assert the extension and the delegate.
 - **USDC freeze authority (Circle)** is accepted.
-- **Registry mint screening.** `queue_token` rejects any non-USDC mint that has a freeze authority or any Token-2022 extension (Ruling 9). Exits therefore do not depend on token behaviour. The check runs at queue time only.
+- **Registry mint screening.** `queue_token` rejects any non-USDC mint that has a freeze authority or any Token-2022 extension. Exits therefore do not depend on token behaviour. The check runs at queue time only.
 - **Proposal data is off-chain.** Only `route_hash` is on-chain. The client must keep the route bytes and the exact account list. Lost bytes mean the proposal cannot execute. The hash covers runtime-merged signer and writable flags, so read `route_hash` from the `ProposalCreated` event and build the matching transaction.
-- **A voter who exits keeps their vote weight** (Ruling 17). Captain fee shares minted after a proposal opens also count.
-- **Closed fund.** When `total_shares == 0` the fund is closed. `deposit` returns `FundClosed`. The captain must create a new fund id (Ruling 7).
+- **A voter who exits keeps their vote weight**. Captain fee shares minted after a proposal opens also count.
+- **Closed fund.** When `total_shares == 0` the fund is closed. `deposit` returns `FundClosed`. The captain must create a new fund id.
 - **Frozen funds** accept deposits. Freeze stops trading, not exits.
 - **Mock venue** (`programs/mock-venue`) is TEST-ONLY and drainable by design. Never deploy it. Never allowlist it on a real network.
 - Minor, tracked: a revoked delegate's open proposals stay valid until the captain cancels them. Proposal and vote rent is not reclaimed. A late fee keeper shifts the fee anniversary.
@@ -59,7 +59,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | `vote` | Member | One vote per member (VoteRecord `init`). Open proposal, before the deadline. Weight = share balance. |
 | `execute_proposal` | Anyone | Proposal open. `now <= deadline` (else `ProposalExpired`). `yes_weight * 2 > total_shares_snapshot` (else `ProposalNotPassed`). `venue_data` and venue accounts match `route_hash`. Then runs the same checks as `swap`, without the size limit. |
 | `cancel_proposal` | Captain | Proposal is open. |
-| `update_policy` | Captain | Within the protocol floor. Stricter applies now and cancels a pending loosen (Ruling 20). Looser queues 48 h. |
+| `update_policy` | Captain | Within the protocol floor. Stricter applies now and cancels a pending loosen. Looser queues 48 h. |
 | `apply_policy` | Anyone | ETA passed. |
 | `poke_nav` | Anyone | Valid NAV accounts. Moves peak NAV and the breaker on EMA prices. |
 | `charge_annual_fee` | Anyone | Target is not the captain. One year since last fee. Fresh prices required. Fee price = fresh upper-bound pps; the breaker moves first. |
@@ -67,7 +67,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 
 ## Client notes
 
-Remaining-accounts layouts (the order is `fund.holdings`; re-read it after a swap, because a fully sold holding is removed, Ruling 13):
+Remaining-accounts layouts (the order is `fund.holdings`; re-read it after a swap, because a fully sold holding is removed):
 
 | Instruction | Remaining accounts |
 |---|---|
@@ -106,7 +106,7 @@ Mainnet keypairs are not in the repo.
 
 ## Out of scope (Phase 2)
 
-- `VenueEntry` PDA per approved program, 7-day timelocked, replacing the 4-slot list (Ruling 18).
+- `VenueEntry` PDA per approved program, 7-day timelocked, replacing the 4-slot list.
 - Position adapters in NAV, breaker and exit: Kamino kTokens, perps, prediction markets.
 - Memecoin T3 tier: pool TWAP price, capped by a captain first-loss stake.
 - Discover fee split. Multisig admin and admin rotation.

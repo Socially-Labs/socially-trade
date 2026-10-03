@@ -32,7 +32,7 @@ pub fn update_policy(ctx: Context<UpdatePolicy>, new: PolicyParams) -> Result<()
     let fund = ctx.accounts.fund.key();
     let policy = &mut ctx.accounts.policy;
     if new.stricter_or_equal(&policy.params) {
-        // Ruling 20: a stricter change cancels any pending loosen.
+        // A stricter change cancels any pending loosen.
         policy.params = new;
         policy.pending = new;
         policy.pending_eta = 0;
