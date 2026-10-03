@@ -23,6 +23,10 @@ fn big_buy(t: &Trading) -> SwapArgs {
     SwapArgs::new(t.env.usdc, t.sol, 3_000 * USDC, 19_800_000_000, 20, 3)
 }
 
+fn sha256(data: &[u8]) -> [u8; 32] {
+    solana_sha256_hasher::hash(data).to_bytes()
+}
+
 fn sol_vault(t: &Trading) -> Pubkey {
     ata(&t.f.fund, &t.sol, &spl_token_interface::ID)
 }
@@ -54,7 +58,7 @@ fn execute(
     id: u64,
     a: &SwapArgs,
 ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-    let ix = ix_execute_proposal(&t.env, &t.f, &caller.pubkey(), id, a);
+    let ix = ix_execute_proposal(&t.env, &t.f, &caller.pubkey(), id, a, venue_data(a));
     send(&mut t.env.svm, &[ix], &[caller])
 }
 
@@ -74,13 +78,7 @@ fn big_trade_passes_with_majority() {
         (mock_venue::ID, t.env.usdc, t.sol)
     );
     assert_eq!((p.amount_in, p.min_out), (a.amount_in, a.min_out));
-    assert_eq!(
-        &p.venue_data[..p.venue_data_len as usize],
-        &venue_data(&a)[..]
-    );
-    assert!(p.venue_data[p.venue_data_len as usize..]
-        .iter()
-        .all(|b| *b == 0));
+    assert_eq!(p.venue_data_hash, sha256(&venue_data(&a)));
     assert_eq!((p.created_at, p.deadline), (created, created + 1800));
     assert_eq!(p.total_shares_snapshot, 10_000 * USDC + MEMBER_DEPOSIT);
     assert_eq!(p.status, ProposalStatus::Open);
@@ -307,8 +305,8 @@ fn propose_checks() {
     // A member (not captain, not delegate) cannot propose.
     let ix = ix_propose(&t.env, &t.f, &m.pubkey(), None, &a, venue_data(&a));
     expect_err(send(&mut t.env.svm, &[ix], &[&m]), ErrorCode::Unauthorized);
-    // Venue data over 64 bytes.
-    let ix = ix_propose(&t.env, &t.f, &t.cap.pubkey(), None, &a, vec![0; 65]);
+    // Venue data over 1024 bytes.
+    let ix = ix_propose(&t.env, &t.f, &t.cap.pubkey(), None, &a, vec![0; 1025]);
     expect_err(
         send(&mut t.env.svm, &[ix], &[&t.cap]),
         ErrorCode::VenueDataTooLong,
@@ -323,8 +321,8 @@ fn propose_checks() {
     expect_err(propose(&mut t, &bad), ErrorCode::TokenNotListed);
     assert_eq!(read_fund(&t.env, &t.f).proposal_count, 0);
 
-    // 64 bytes exactly is fine; a delegate may propose; ids count up.
-    let ix = ix_propose(&t.env, &t.f, &t.cap.pubkey(), None, &a, vec![7; 64]);
+    // 1024 bytes exactly is fine; a delegate may propose; ids count up.
+    let ix = ix_propose(&t.env, &t.f, &t.cap.pubkey(), None, &a, vec![7; 1024]);
     send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
     let key = funded(&mut t.env.svm);
     let ix = ix_add_delegate(&t.cap.pubkey(), &t.f, &key.pubkey(), 1, 1);
@@ -335,4 +333,53 @@ fn propose_checks() {
     let p = read_proposal(&t.env, &t.f, 1);
     assert_eq!((p.id, p.proposer), (1, key.pubkey()));
     assert_eq!(read_fund(&t.env, &t.f).proposal_count, 2);
+}
+
+#[test]
+fn execute_rejects_tampered_venue_data() {
+    let (mut t, _m) = crew();
+    let a = big_buy(&t);
+    propose(&mut t, &a).unwrap();
+    let cap = t.cap.insecure_clone();
+    vote(&mut t, &cap, 0, true).unwrap();
+    // Same accounts, but the bytes ask the venue for a 2x better rate.
+    let tampered = SwapArgs { out_num: 40, ..a };
+    let ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, venue_data(&tampered));
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&cap]),
+        ErrorCode::VenueDataMismatch,
+    );
+    // One extra byte also changes the hash.
+    let mut longer = venue_data(&a);
+    longer.push(0);
+    let ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, longer);
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&cap]),
+        ErrorCode::VenueDataMismatch,
+    );
+    assert_eq!(read_proposal(&t.env, &t.f, 0).status, ProposalStatus::Open);
+    // The original bytes execute.
+    execute(&mut t, &cap, 0, &a).unwrap();
+}
+
+#[test]
+fn long_venue_data_proposal_executes() {
+    let (mut t, _m) = crew();
+    let a = big_buy(&t);
+    // Real swap data plus zero padding to 600 bytes (far over 64).
+    let mut data = venue_data(&a);
+    data.resize(600, 0);
+    let ix = ix_propose(&t.env, &t.f, &t.cap.pubkey(), None, &a, data.clone());
+    let res = send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
+    assert!(events(&res) >= 1, "ProposalCreated");
+    assert_eq!(
+        read_proposal(&t.env, &t.f, 0).venue_data_hash,
+        sha256(&data)
+    );
+    let cap = t.cap.insecure_clone();
+    vote(&mut t, &cap, 0, true).unwrap();
+    let ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, data);
+    let res = send(&mut t.env.svm, &[ix], &[&cap]).unwrap();
+    assert_eq!(trade_events(&res)[0].via_proposal, Some(0));
+    assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 20 * SOL);
 }

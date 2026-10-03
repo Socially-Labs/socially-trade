@@ -4,8 +4,6 @@ pub const MAX_HOLDINGS: usize = 8;
 pub const MAX_VENUES: usize = 4;
 /// Max venue instruction data for `swap` (fits a Jupiter route).
 pub const MAX_VENUE_DATA: usize = 1024;
-/// Max venue instruction data stored in a `Proposal` (`venue_data: [u8; 64]`).
-pub const MAX_PROPOSAL_VENUE_DATA: usize = 64;
 pub const CAPTAIN_MIN_DEPOSIT: u64 = 250_000_000;
 pub const CAPTAIN_MIN_STAKE_BPS: u16 = 500;
 pub const PERF_FEE_BPS: u16 = 1000;

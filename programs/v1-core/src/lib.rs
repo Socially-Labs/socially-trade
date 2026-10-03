@@ -115,8 +115,12 @@ pub mod v1_core {
 
     /// Anyone: execute a passed proposal through the swap core.
     /// Accounts and remaining accounts: as `swap`, plus the proposal.
-    pub fn execute_proposal<'info>(ctx: Context<'info, ExecuteProposal<'info>>) -> Result<()> {
-        instructions::proposal::execute_proposal(ctx)
+    /// `venue_data` must hash to `proposal.venue_data_hash`.
+    pub fn execute_proposal<'info>(
+        ctx: Context<'info, ExecuteProposal<'info>>,
+        venue_data: Vec<u8>,
+    ) -> Result<()> {
+        instructions::proposal::execute_proposal(ctx, venue_data)
     }
 
     /// Captain: cancel an open proposal.

@@ -1334,13 +1334,15 @@ pub fn ix_vote(f: &FundHandles, voter: &Pubkey, id: u64, yes: bool) -> Instructi
     )
 }
 
-/// `execute_proposal` of `id`, signed by `caller`; `a` gives the trade accounts.
+/// `execute_proposal` of `id`, signed by `caller`; `a` gives the trade accounts,
+/// `data` the venue data (it must hash to the proposal's `venue_data_hash`).
 pub fn ix_execute_proposal(
     env: &Env,
     f: &FundHandles,
     caller: &Pubkey,
     id: u64,
     a: &SwapArgs,
+    data: Vec<u8>,
 ) -> Instruction {
     let mut ix = v1_ix(
         v1_core::accounts::ExecuteProposal {
@@ -1348,7 +1350,7 @@ pub fn ix_execute_proposal(
             trade: trade_accounts(env, f, a),
             proposal: proposal_pda(&f.fund, id),
         },
-        v1_core::instruction::ExecuteProposal {},
+        v1_core::instruction::ExecuteProposal { venue_data: data },
     );
     ix.accounts.extend(trade_remaining(env, f, a));
     ix

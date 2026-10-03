@@ -19,9 +19,9 @@ pub struct Proposal {
     pub output_mint: Pubkey,
     pub amount_in: u64,
     pub min_out: u64,
-    /// Opaque venue instruction data, zero-padded.
-    pub venue_data: [u8; 64],
-    pub venue_data_len: u8,
+    /// sha256 of the venue instruction data. The bytes stay off-chain; the
+    /// executor passes them and they must hash to this.
+    pub venue_data_hash: [u8; 32],
     pub created_at: i64,
     pub deadline: i64,
     pub total_shares_snapshot: u64,

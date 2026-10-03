@@ -7,6 +7,8 @@
 //! execute the trade before the deadline, through the same checked swap core
 //! (price guard, pause and breaker, venue allowlist, balance checks, tier caps),
 //! without the autonomous size limit and without a delegate charge.
+//!
+//! Only sha256 of the venue data is stored. The executor passes the bytes.
 
 use {
     crate::{
@@ -76,7 +78,7 @@ pub fn propose_trade(
         );
     }
     require!(
-        venue_data.len() <= MAX_PROPOSAL_VENUE_DATA,
+        venue_data.len() <= MAX_VENUE_DATA,
         ErrorCode::VenueDataTooLong
     );
     let (input, output) = (a.input_mint.key(), a.output_mint.key());
@@ -95,8 +97,7 @@ pub fn propose_trade(
         .ok_or(ErrorCode::MathOverflow)?;
     let id = a.fund.proposal_count;
     a.fund.proposal_count = id.checked_add(1).ok_or(ErrorCode::MathOverflow)?;
-    let mut data = [0u8; MAX_PROPOSAL_VENUE_DATA];
-    data[..venue_data.len()].copy_from_slice(&venue_data);
+    let venue_data_hash = solana_sha256_hasher::hash(&venue_data).to_bytes();
     a.proposal.set_inner(Proposal {
         fund: fund_key,
         id,
@@ -106,8 +107,7 @@ pub fn propose_trade(
         output_mint: output,
         amount_in,
         min_out,
-        venue_data: data,
-        venue_data_len: venue_data.len() as u8,
+        venue_data_hash,
         created_at: now,
         deadline,
         total_shares_snapshot: a.fund.total_shares,
@@ -120,6 +120,8 @@ pub fn propose_trade(
         fund: fund_key,
         id,
         deadline,
+        venue_data_len: venue_data.len() as u16,
+        venue_data_hash,
     });
     Ok(())
 }
@@ -231,7 +233,10 @@ pub struct ExecuteProposal<'info> {
     pub proposal: Box<Account<'info, Proposal>>,
 }
 
-pub fn execute_proposal<'info>(ctx: Context<'info, ExecuteProposal<'info>>) -> Result<()> {
+pub fn execute_proposal<'info>(
+    ctx: Context<'info, ExecuteProposal<'info>>,
+    venue_data: Vec<u8>,
+) -> Result<()> {
     let ExecuteProposal {
         caller,
         trade,
@@ -247,14 +252,17 @@ pub fn execute_proposal<'info>(ctx: Context<'info, ExecuteProposal<'info>>) -> R
         (proposal.yes_weight as u128) * 2 > proposal.total_shares_snapshot as u128,
         ErrorCode::ProposalNotPassed
     );
+    require!(
+        solana_sha256_hasher::hash(&venue_data).to_bytes() == proposal.venue_data_hash,
+        ErrorCode::VenueDataMismatch
+    );
     proposal.status = ProposalStatus::Executed;
 
-    let data = proposal.venue_data;
     let params = SwapParams {
         signer: caller.key(),
         amount_in: proposal.amount_in,
         min_out: proposal.min_out,
-        venue_data: &data[..proposal.venue_data_len as usize],
+        venue_data: &venue_data,
         check_size: false,
         via_proposal: Some(proposal.id),
     };
