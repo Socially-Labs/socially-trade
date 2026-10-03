@@ -92,6 +92,6 @@ pub enum ErrorCode {
     NavZero,
     #[msg("Mint has a freeze authority or Token-2022 extensions")]
     UnsafeMint,
-    #[msg("Venue instruction data is longer than 64 bytes")]
+    #[msg("Venue instruction data is too long")]
     VenueDataTooLong,
 }

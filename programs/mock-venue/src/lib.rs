@@ -9,9 +9,13 @@
 //! - `2` overdraw: take `amount_in + 1` from `user_in`, pay the honest output.
 //! - `3` divert: take `amount_in`, pay nothing. The output never reaches `user_out`.
 //!   (Simplest variant: the mints can differ, so there is no valid other account to pay.)
+//! - `4` steal: honest swap, and also move 1 unit from a second account of the
+//!   authority. Remaining accounts: `[from (w), to (w), mint, token_program]`.
+//! - `5` approve: honest swap, and also approve `pool_authority` as delegate
+//!   of `user_in` for 1 unit.
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
-    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
+    approve, transfer_checked, Approve, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
 declare_id!("7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng");
@@ -28,14 +32,14 @@ pub enum VenueError {
 pub mod mock_venue {
     use super::*;
 
-    pub fn swap(
-        ctx: Context<Swap>,
+    pub fn swap<'info>(
+        ctx: Context<'info, Swap<'info>>,
         amount_in: u64,
         out_num: u64,
         out_den: u64,
         mode: u8,
     ) -> Result<()> {
-        require!(mode <= 3, VenueError::BadMode);
+        require!(mode <= 5, VenueError::BadMode);
         require!(out_den > 0, VenueError::Overflow);
         let honest = u64::try_from(
             (amount_in as u128)
@@ -83,6 +87,37 @@ pub mod mock_venue {
                 ),
                 pay,
                 a.mint_out.decimals,
+            )?;
+        }
+        if mode == 4 {
+            let r = ctx.remaining_accounts;
+            require!(r.len() >= 4, VenueError::BadMode);
+            let decimals = InterfaceAccount::<Mint>::try_from(&r[2])?.decimals;
+            transfer_checked(
+                CpiContext::new(
+                    r[3].key(),
+                    TransferChecked {
+                        from: r[0].clone(),
+                        mint: r[2].clone(),
+                        to: r[1].clone(),
+                        authority: a.authority.to_account_info(),
+                    },
+                ),
+                1,
+                decimals,
+            )?;
+        }
+        if mode == 5 {
+            approve(
+                CpiContext::new(
+                    a.token_program_in.key(),
+                    Approve {
+                        to: a.user_in.to_account_info(),
+                        delegate: a.pool_authority.to_account_info(),
+                        authority: a.authority.to_account_info(),
+                    },
+                ),
+                1,
             )?;
         }
         Ok(())

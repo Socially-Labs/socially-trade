@@ -2,8 +2,8 @@
 
 pub const MAX_HOLDINGS: usize = 8;
 pub const MAX_VENUES: usize = 4;
-/// Max venue instruction data (a proposal stores it in 64 bytes).
-pub const MAX_VENUE_DATA: usize = 64;
+/// Max venue instruction data for `swap` (fits a Jupiter route).
+pub const MAX_VENUE_DATA: usize = 1024;
 pub const CAPTAIN_MIN_DEPOSIT: u64 = 250_000_000;
 pub const CAPTAIN_MIN_STAKE_BPS: u16 = 500;
 pub const PERF_FEE_BPS: u16 = 1000;
@@ -24,6 +24,8 @@ pub const DEFAULT_VOTE_WINDOW_SECS: u32 = 1800;
 pub const MAX_AUTONOMOUS_BPS: u16 = 2500;
 pub const MAX_DRAWDOWN_BPS: u16 = 5000;
 pub const MAX_SLIPPAGE_BPS: u16 = 500;
+/// Cap on the price-guard band of a sale into USDC (3x max slippage, at most this).
+pub const MAX_SELL_TO_USDC_SLIPPAGE_BPS: u16 = 1500;
 pub const MIN_VOTE_WINDOW_SECS: u32 = 60;
 pub const MAX_VOTE_WINDOW_SECS: u32 = 604_800;
 

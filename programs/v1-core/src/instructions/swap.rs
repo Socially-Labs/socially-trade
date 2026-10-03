@@ -143,7 +143,6 @@ struct Plan {
     out_idx: usize,
     out_is_new: bool,
     venue_start: usize,
-    sell_to_usdc: bool,
 }
 
 /// The shared trade core: checks, venue CPI, balance checks, tier caps,
@@ -166,10 +165,15 @@ pub fn execute_swap<'info>(
     let plan = prepare(t, remaining, p, delegate, now, &mut priced)?;
     let mut before = priced.amounts;
     before[plan.out_idx] = output_vault_before(t, payer, &plan, remaining)?;
+    // Account sizes too: the venue must not grow a vault (Token-2022 Reallocate).
+    let mut lens = [0usize; MAX_HOLDINGS];
+    for (i, l) in lens[..priced.len].iter_mut().enumerate() {
+        *l = vault_at(t, remaining, i).data_len();
+    }
 
     call_venue(t, &remaining[plan.venue_start..], p.venue_data)?;
 
-    let amount_out = settle(t, remaining, p, &plan, &before, &mut priced)?;
+    let amount_out = settle(t, remaining, p, &plan, &before, &lens, &mut priced)?;
     emit!(TradeExecuted {
         fund: t.fund.key(),
         signer: p.signer,
@@ -205,6 +209,7 @@ fn prepare(
             && venue != crate::ID
             && venue != TOKEN_PROGRAM
             && venue != TOKEN_2022_PROGRAM
+            && venue != associated_token::ID
             && config.venues.contains(&venue),
         ErrorCode::VenueNotAllowed
     );
@@ -288,29 +293,37 @@ fn prepare(
         charge_delegate(d, math::to_u64(trade_usd)?, now)?;
     }
 
-    // 7. Price guard: min_out within max slippage of the oracle amount.
-    if !sell_to_usdc {
-        let oracle_out = match priced.prices[out_idx] {
-            None => trade_usd,
-            Some((price, decimals)) => {
-                math::usdc_to_token(trade_usd, price.price, price.expo, decimals)?
-            }
-        };
-        let keep = 10_000u16
-            .checked_sub(t.policy.params.max_slippage_bps)
-            .ok_or(ErrorCode::MathOverflow)?;
-        require!(
-            p.min_out as u128 >= math::bps_of(oracle_out, keep)?,
-            ErrorCode::SlippageTooHigh
-        );
-    }
+    // 7. Price guard on every trade: min_out within the slippage band of the
+    // oracle amount. Sales into USDC (allowed while paused or frozen) get a
+    // wider band, 3x max slippage capped at 15%, so de-risking still clears.
+    let slippage_bps = if sell_to_usdc {
+        t.policy
+            .params
+            .max_slippage_bps
+            .saturating_mul(3)
+            .min(MAX_SELL_TO_USDC_SLIPPAGE_BPS)
+    } else {
+        t.policy.params.max_slippage_bps
+    };
+    let oracle_out = match priced.prices[out_idx] {
+        None => trade_usd,
+        Some((price, decimals)) => {
+            math::usdc_to_token(trade_usd, price.price, price.expo, decimals)?
+        }
+    };
+    let keep = 10_000u16
+        .checked_sub(slippage_bps)
+        .ok_or(ErrorCode::MathOverflow)?;
+    require!(
+        p.min_out as u128 >= math::bps_of(oracle_out, keep)?,
+        ErrorCode::SlippageTooHigh
+    );
 
     Ok(Plan {
         in_idx,
         out_idx,
         out_is_new: out_held.is_none(),
         venue_start,
-        sell_to_usdc,
     })
 }
 
@@ -386,22 +399,22 @@ fn call_venue<'info>(
 }
 
 /// Checks 9-11 after the CPI: balances, tier caps, breaker, new holding.
-fn settle(
-    t: &mut Trade,
-    remaining: &[AccountInfo],
+fn settle<'info>(
+    t: &mut Trade<'info>,
+    remaining: &[AccountInfo<'info>],
     p: &SwapParams,
     plan: &Plan,
     before: &[u64; MAX_HOLDINGS],
+    lens: &[usize; MAX_HOLDINGS],
     priced: &mut NavResult,
 ) -> Result<u64> {
     let fund_key = t.fund.key();
     let len = t.fund.holdings_len as usize;
     let mut after = [0u64; MAX_HOLDINGS];
-    for (i, amount) in after[..len].iter_mut().enumerate() {
-        *amount = clean_vault_amount(&remaining[i * ACCOUNTS_PER_HOLDING], &fund_key)?;
-    }
-    if plan.out_is_new {
-        after[len] = clean_vault_amount(&t.fund_output_vault, &fund_key)?;
+    for (i, amount) in after[..priced.len].iter_mut().enumerate() {
+        let vault = vault_at(t, remaining, i);
+        require!(vault.data_len() == lens[i], ErrorCode::HoldingNotFound);
+        *amount = clean_vault_amount(vault, &fund_key)?;
     }
 
     // 9. Input fell by exactly amount_in; output rose by >= min_out; nothing else moved.
@@ -419,9 +432,9 @@ fn settle(
         .ok_or(ErrorCode::OutputNotReceived)?;
     require!(amount_out >= p.min_out, ErrorCode::OutputNotReceived);
 
-    // 10. Tier caps on the post-trade spot NAV.
+    // 10. Tier caps on the post-trade spot NAV, when the trade buys a T2 token.
     priced.amounts = after;
-    if !plan.sell_to_usdc {
+    if priced.t2[plan.out_idx] {
         let post = priced.valuation(ValuationMode::Spot)?;
         let one_cap = math::bps_of(post.nav, T2_TOKEN_CAP_BPS)?;
         let mut t2_total: u128 = 0;
@@ -437,16 +450,37 @@ fn settle(
         );
     }
 
-    // 11. New holding, then the breaker on the post-trade EMA pps.
+    // 11. New holding; drop an emptied non-USDC input (swap-remove, never
+    // index 0); then the breaker on the post-trade EMA pps.
+    let usdc = t.config.usdc_mint;
     let fund = &mut t.fund;
     if plan.out_is_new {
         fund.holdings[len] = t.output_mint.key();
         fund.holdings_len += 1;
     }
+    if after[plan.in_idx] == 0 && fund.holdings[plan.in_idx] != usdc && plan.in_idx > 0 {
+        let last = fund.holdings_len as usize - 1;
+        fund.holdings[plan.in_idx] = fund.holdings[last];
+        fund.holdings[last] = Pubkey::default();
+        fund.holdings_len -= 1;
+    }
     let ema_nav = priced.valuation(ValuationMode::Ema)?.nav;
     let pps = math::price_per_share(ema_nav, fund.total_shares)?;
     nav::update_breaker(fund, &fund_key, &t.policy, pps)?;
     Ok(amount_out)
+}
+
+/// The vault of holding `i`: its NAV account, or the new output vault (`i == holdings_len`).
+fn vault_at<'a, 'info>(
+    t: &'a Trade<'info>,
+    remaining: &'a [AccountInfo<'info>],
+    i: usize,
+) -> &'a AccountInfo<'info> {
+    if i < t.fund.holdings_len as usize {
+        &remaining[i * ACCOUNTS_PER_HOLDING]
+    } else {
+        &t.fund_output_vault
+    }
 }
 
 /// A fund vault after the CPI: still owned by the fund, no delegate and no
