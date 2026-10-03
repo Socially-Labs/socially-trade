@@ -10,7 +10,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | Rules on every trade | `swap` checks: venue allowlist, token tier caps (T2 buys only, Ruling 11), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps; Ruling 14). Policy loosening waits 48 h. |
 | Exits never wait | `exit` has no pause, freeze or price dependency (Rulings 3, 8, 9). Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. |
 | Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. Fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so a member cannot dodge the fee by choosing stale or fresh prices (Rulings 8, 21). |
-| Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate but stops only buys and deposits. Sales into USDC and exits still work. |
+| Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate. It blocks `deposit`, `create_fund` and any swap whose output is not USDC. Exits and sales to USDC are never blocked. |
 | Big trades need the crew | `propose_trade` stores `route_hash`, a hash of the venue data and the ordered venue account metas (Rulings 16, 19). `execute_proposal` must match it. Vote weight is the share balance at vote time (Ruling 17). |
 
 ## Pricing
@@ -45,7 +45,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | `queue_token` | Admin | Tier, Pyth feed id. Non-USDC mint has no freeze authority and no extension. ETA = now + 7 days. |
 | `apply_token` | Anyone | ETA passed. |
 | `queue_venue` / `apply_venue` | Admin / anyone | 4 slots. ETA = now + 7 days. Removal is queued the same way. |
-| `set_paused` | Admin | Immediate. Stops deposits and buys only. |
+| `set_paused` | Admin | Immediate. Blocks `deposit`, `create_fund` and swaps whose output is not USDC. Never blocks `exit` or sales to USDC. |
 | `create_fund` | Captain | Deposit at least 250 USDC. Mints 1:1 shares. Creates policy, member, vaults and share mint (NonTransferable, PermanentDelegate). |
 | `deposit` | Anyone | Not paused, fund not closed, NAV (upper bound) nonzero. |
 | `exit` | Member | Own share balance only. No pause, freeze or price check. Pro-rata of every holding. Fee on profit above HWM. Captain must keep at least 5% of shares while others hold shares. |
@@ -53,7 +53,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | `swap` | Captain or delegate | Venue, tiers, caps, delegate limits, breaker, price guard, vault balance deltas, share mint not in venue accounts. Size above the `autonomous_bps` limit needs a proposal. |
 | `propose_trade` | Captain or delegate | Stores `route_hash` and the trade terms. Opens the vote window from policy. |
 | `vote` | Member | One vote per member (VoteRecord `init`). Open proposal, before the deadline. Weight = share balance. |
-| `execute_proposal` | Anyone | Vote passed. Deadline past. `venue_data` and venue accounts match `route_hash`. Then runs the same checks as `swap`. |
+| `execute_proposal` | Anyone | Proposal open. `now <= deadline` (else `ProposalExpired`). `yes_weight * 2 > total_shares_snapshot` (else `ProposalNotPassed`). `venue_data` and venue accounts match `route_hash`. Then runs the same checks as `swap`, without the size limit. |
 | `cancel_proposal` | Captain | Proposal is open. |
 | `update_policy` | Captain | Within the protocol floor. Stricter applies now and cancels a pending loosen (Ruling 20). Looser queues 48 h. |
 | `apply_policy` | Anyone | ETA passed. |
@@ -73,7 +73,7 @@ Remaining-accounts layouts (the order is `fund.holdings`; re-read it after a swa
 | `propose_trade` | The venue accounts only |
 
 Compute budget:
-- `swap`: 47k-108k CU (2 to 8 holdings). `execute_proposal`: about 65k CU.
+- `swap`: 47k (2 holdings, held output) to 108k (8 holdings, new output). `execute_proposal`: about 64k.
 - `exit` with 8 holdings plus NAV accounts is near 200k CU. Add a compute-budget instruction.
 - Real Jupiter routes do not fit a legacy transaction. Use a v0 transaction with an address lookup table. `venue_data` is limited to 1024 bytes.
 
@@ -91,7 +91,14 @@ The script pins platform-tools v1.57 (anchor 1.2 pulls edition2024 crates) and f
 | v1-core | `HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi` |
 | mock-venue (test only) | `7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng` |
 
-To regenerate a program id: delete `target/deploy/<name>-keypair.json`, run `solana-keygen new -o target/deploy/<name>-keypair.json --no-bip39-passphrase`, put the new `solana address -k` value in `declare_id!`; the tests read the mock-venue id from its crate, then rebuild. Mainnet keypairs are not in the repo.
+To regenerate a program id (these steps were not executed as part of this build):
+
+1. Delete `target/deploy/<name>-keypair.json`.
+2. Run `solana-keygen new -o target/deploy/<name>-keypair.json --no-bip39-passphrase`.
+3. Put the output of `solana address -k target/deploy/<name>-keypair.json` in that program's `declare_id!`. The tests read the mock-venue id from its crate.
+4. Run `scripts/build-programs.sh` again.
+
+Mainnet keypairs are not in the repo.
 
 ## Out of scope (Phase 2)
 
