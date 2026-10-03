@@ -924,3 +924,60 @@ pub fn exit(
     let ix = ix_exit(env, f, &user.pubkey(), shares);
     send(&mut env.svm, &[ix], &[user])
 }
+
+// ---------------------------------------------------------------------------
+// Delegates
+// ---------------------------------------------------------------------------
+
+pub fn ix_add_delegate(
+    captain: &Pubkey,
+    f: &FundHandles,
+    key: &Pubkey,
+    max_trade_usd: u64,
+    daily_volume_usd: u64,
+) -> Instruction {
+    v1_ix(
+        v1_core::accounts::AddDelegate {
+            captain: *captain,
+            fund: f.fund,
+            delegate: delegate_pda(&f.fund, key),
+            system_program: anchor_lang::system_program::ID,
+        },
+        v1_core::instruction::AddDelegate {
+            key: *key,
+            max_trade_usd,
+            daily_volume_usd,
+        },
+    )
+}
+
+pub fn ix_update_delegate(
+    captain: &Pubkey,
+    f: &FundHandles,
+    key: &Pubkey,
+    max_trade_usd: u64,
+    daily_volume_usd: u64,
+) -> Instruction {
+    v1_ix(
+        v1_core::accounts::UpdateDelegate {
+            captain: *captain,
+            fund: f.fund,
+            delegate: delegate_pda(&f.fund, key),
+        },
+        v1_core::instruction::UpdateDelegate {
+            max_trade_usd,
+            daily_volume_usd,
+        },
+    )
+}
+
+pub fn ix_revoke_delegate(captain: &Pubkey, f: &FundHandles, key: &Pubkey) -> Instruction {
+    v1_ix(
+        v1_core::accounts::RevokeDelegate {
+            captain: *captain,
+            fund: f.fund,
+            delegate: delegate_pda(&f.fund, key),
+        },
+        v1_core::instruction::RevokeDelegate {},
+    )
+}

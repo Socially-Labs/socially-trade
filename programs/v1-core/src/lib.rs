@@ -67,4 +67,28 @@ pub mod v1_core {
     pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> {
         instructions::exit::exit(ctx, shares)
     }
+
+    /// Captain: add a trading delegate with a per-trade and a daily USD limit.
+    pub fn add_delegate(
+        ctx: Context<AddDelegate>,
+        key: Pubkey,
+        max_trade_usd: u64,
+        daily_volume_usd: u64,
+    ) -> Result<()> {
+        instructions::delegate::add_delegate(ctx, key, max_trade_usd, daily_volume_usd)
+    }
+
+    /// Captain: change the limits of a delegate.
+    pub fn update_delegate(
+        ctx: Context<UpdateDelegate>,
+        max_trade_usd: u64,
+        daily_volume_usd: u64,
+    ) -> Result<()> {
+        instructions::delegate::update_delegate(ctx, max_trade_usd, daily_volume_usd)
+    }
+
+    /// Captain: remove a delegate and take back the rent.
+    pub fn revoke_delegate(ctx: Context<RevokeDelegate>) -> Result<()> {
+        instructions::delegate::revoke_delegate(ctx)
+    }
 }
