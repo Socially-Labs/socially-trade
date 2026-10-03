@@ -47,7 +47,10 @@ pub fn token_value_usdc(
     let base = (amount as u128)
         .checked_mul(price as u128)
         .ok_or(ErrorCode::MathOverflow)?;
-    let exp = 6 + expo - token_decimals as i32;
+    let exp = expo
+        .checked_add(6)
+        .and_then(|e| e.checked_sub(token_decimals as i32))
+        .ok_or(ErrorCode::MathOverflow)?;
     if exp >= 0 {
         let scale = 10u128
             .checked_pow(exp as u32)
@@ -207,6 +210,17 @@ mod tests {
     #[test]
     fn value_huge_positive_exponent_overflows() {
         assert_eq!(token_value_usdc(1, 1, 60, 0), Err(ErrorCode::MathOverflow));
+    }
+    #[test]
+    fn value_extreme_exponent_is_overflow_not_panic() {
+        assert_eq!(
+            token_value_usdc(1, 1, i32::MAX, 0),
+            Err(ErrorCode::MathOverflow)
+        );
+        assert_eq!(
+            token_value_usdc(1, 1, i32::MIN, 18),
+            Err(ErrorCode::MathOverflow)
+        );
     }
     #[test]
     fn value_non_positive_price_rejected() {
