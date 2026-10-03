@@ -53,9 +53,9 @@ pub struct ProposalCreated {
     pub fund: Pubkey,
     pub id: u64,
     pub deadline: i64,
-    /// Length and sha256 of the venue data, so indexers can match the bytes.
+    /// Venue data length and the route hash (see `Proposal.route_hash`).
     pub venue_data_len: u16,
-    pub venue_data_hash: [u8; 32],
+    pub route_hash: [u8; 32],
 }
 
 #[event]

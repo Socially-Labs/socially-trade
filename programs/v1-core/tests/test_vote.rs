@@ -23,8 +23,17 @@ fn big_buy(t: &Trading) -> SwapArgs {
     SwapArgs::new(t.env.usdc, t.sol, 3_000 * USDC, 19_800_000_000, 20, 3)
 }
 
-fn sha256(data: &[u8]) -> [u8; 32] {
-    solana_sha256_hasher::hash(data).to_bytes()
+/// The route hash as the program computes it: data, then per venue account
+/// pubkey || is_signer || is_writable. The flags are the runtime flags, so a key
+/// that is writable elsewhere in the transaction (`tx_writable`) counts as writable.
+fn route(data: &[u8], venue: &[AccountMeta], tx_writable: &[Pubkey]) -> [u8; 32] {
+    let mut buf = data.to_vec();
+    for m in venue {
+        buf.extend_from_slice(m.pubkey.as_ref());
+        buf.push(m.is_signer as u8);
+        buf.push((m.is_writable || tx_writable.contains(&m.pubkey)) as u8);
+    }
+    solana_sha256_hasher::hash(&buf).to_bytes()
 }
 
 fn sol_vault(t: &Trading) -> Pubkey {
@@ -78,7 +87,9 @@ fn big_trade_passes_with_majority() {
         (mock_venue::ID, t.env.usdc, t.sol)
     );
     assert_eq!((p.amount_in, p.min_out), (a.amount_in, a.min_out));
-    assert_eq!(p.venue_data_hash, sha256(&venue_data(&a)));
+    // The fund PDA is writable in propose_trade, so it hashes as writable.
+    let venue = venue_accounts(&t.env, &t.f, &a);
+    assert_eq!(p.route_hash, route(&venue_data(&a), &venue, &[t.f.fund]));
     assert_eq!((p.created_at, p.deadline), (created, created + 1800));
     assert_eq!(p.total_shares_snapshot, 10_000 * USDC + MEMBER_DEPOSIT);
     assert_eq!(p.status, ProposalStatus::Open);
@@ -295,7 +306,24 @@ fn execute_requires_the_proposal_accounts() {
     vote(&mut t, &cap, 0, true).unwrap();
     // Another output mint than the one voted for.
     let other = SwapArgs::new(t.env.usdc, t.bonk, 3_000 * USDC, 0, 1, 1);
-    expect_err(execute(&mut t, &cap, 0, &other), ErrorCode::Unauthorized);
+    expect_err(
+        execute(&mut t, &cap, 0, &other),
+        ErrorCode::ProposalMismatch,
+    );
+    // Another input mint.
+    let other = SwapArgs::new(t.bonk, t.sol, 3_000 * USDC, 0, 1, 1);
+    expect_err(
+        execute(&mut t, &cap, 0, &other),
+        ErrorCode::ProposalMismatch,
+    );
+    // Another venue program.
+    let mut other = a;
+    other.venue = Keypair::new().pubkey();
+    expect_err(
+        execute(&mut t, &cap, 0, &other),
+        ErrorCode::ProposalMismatch,
+    );
+    execute(&mut t, &cap, 0, &a).unwrap();
 }
 
 #[test]
@@ -372,9 +400,10 @@ fn long_venue_data_proposal_executes() {
     let ix = ix_propose(&t.env, &t.f, &t.cap.pubkey(), None, &a, data.clone());
     let res = send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
     assert!(events(&res) >= 1, "ProposalCreated");
+    let venue = venue_accounts(&t.env, &t.f, &a);
     assert_eq!(
-        read_proposal(&t.env, &t.f, 0).venue_data_hash,
-        sha256(&data)
+        read_proposal(&t.env, &t.f, 0).route_hash,
+        route(&data, &venue, &[t.f.fund])
     );
     let cap = t.cap.insecure_clone();
     vote(&mut t, &cap, 0, true).unwrap();
@@ -382,4 +411,78 @@ fn long_venue_data_proposal_executes() {
     let res = send(&mut t.env.svm, &[ix], &[&cap]).unwrap();
     assert_eq!(trade_events(&res)[0].via_proposal, Some(0));
     assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 20 * SOL);
+}
+
+/// Index of a mock venue account in the execute instruction (venue accounts
+/// are the last 10 metas): 4 = pool_in, 5 = pool_out.
+fn venue_meta(ix: &mut Instruction, i: usize) -> &mut AccountMeta {
+    let n = ix.accounts.len();
+    &mut ix.accounts[n - 10 + i]
+}
+
+#[test]
+fn execute_rejects_other_venue_accounts() {
+    let (mut t, _m) = crew();
+    let a = big_buy(&t);
+    propose(&mut t, &a).unwrap();
+    let cap = t.cap.insecure_clone();
+    vote(&mut t, &cap, 0, true).unwrap();
+    let data = venue_data(&a);
+
+    // Same data, another pool account (the venue's BONK pool as pool_out).
+    let mut ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, data.clone());
+    venue_meta(&mut ix, 5).pubkey = ata(&venue_pool_authority(), &t.bonk, &spl_token_interface::ID);
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&cap]),
+        ErrorCode::VenueDataMismatch,
+    );
+
+    // Same accounts, pool_in flipped to read-only.
+    let mut ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, data.clone());
+    venue_meta(&mut ix, 4).is_writable = false;
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&cap]),
+        ErrorCode::VenueDataMismatch,
+    );
+
+    // Same accounts, mint_in flipped to writable.
+    let mut ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, data.clone());
+    venue_meta(&mut ix, 6).is_writable = true;
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&cap]),
+        ErrorCode::VenueDataMismatch,
+    );
+
+    // One extra venue account.
+    let mut ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, data);
+    ix.accounts.push(AccountMeta::new_readonly(t.sol, false));
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&cap]),
+        ErrorCode::VenueDataMismatch,
+    );
+
+    assert_eq!(read_proposal(&t.env, &t.f, 0).status, ProposalStatus::Open);
+    execute(&mut t, &cap, 0, &a).unwrap();
+}
+
+#[test]
+fn route_hash_counts_signer_flag() {
+    // A proposal whose route has a signer in it executes only with that signer bit.
+    let (mut t, _m) = crew();
+    let a = big_buy(&t);
+    let signer = funded(&mut t.env.svm);
+    let mut ix = ix_propose(&t.env, &t.f, &t.cap.pubkey(), None, &a, venue_data(&a));
+    ix.accounts
+        .push(AccountMeta::new_readonly(signer.pubkey(), true));
+    send(&mut t.env.svm, &[ix], &[&t.cap, &signer]).unwrap();
+    let cap = t.cap.insecure_clone();
+    vote(&mut t, &cap, 0, true).unwrap();
+    // The same key without its signature: the signer bit differs.
+    let mut ix = ix_execute_proposal(&t.env, &t.f, &cap.pubkey(), 0, &a, venue_data(&a));
+    ix.accounts
+        .push(AccountMeta::new_readonly(signer.pubkey(), false));
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&cap]),
+        ErrorCode::VenueDataMismatch,
+    );
 }

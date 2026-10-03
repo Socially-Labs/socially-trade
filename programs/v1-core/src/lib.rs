@@ -99,8 +99,9 @@ pub mod v1_core {
     }
 
     /// Captain or delegate: propose a trade of any size for a crew vote.
-    pub fn propose_trade(
-        ctx: Context<ProposeTrade>,
+    /// Remaining accounts: the venue accounts (hashed into `route_hash`).
+    pub fn propose_trade<'info>(
+        ctx: Context<'info, ProposeTrade<'info>>,
         amount_in: u64,
         min_out: u64,
         venue_data: Vec<u8>,
@@ -115,7 +116,7 @@ pub mod v1_core {
 
     /// Anyone: execute a passed proposal through the swap core.
     /// Accounts and remaining accounts: as `swap`, plus the proposal.
-    /// `venue_data` must hash to `proposal.venue_data_hash`.
+    /// `venue_data` and the venue accounts must match `proposal.route_hash`.
     pub fn execute_proposal<'info>(
         ctx: Context<'info, ExecuteProposal<'info>>,
         venue_data: Vec<u8>,

@@ -94,6 +94,8 @@ pub enum ErrorCode {
     UnsafeMint,
     #[msg("Venue instruction data is too long")]
     VenueDataTooLong,
-    #[msg("Venue data does not match the proposal hash")]
+    #[msg("Venue data or venue accounts do not match the proposal route")]
     VenueDataMismatch,
+    #[msg("Venue or mints do not match the proposal")]
+    ProposalMismatch,
 }

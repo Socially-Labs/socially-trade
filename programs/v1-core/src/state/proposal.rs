@@ -19,9 +19,10 @@ pub struct Proposal {
     pub output_mint: Pubkey,
     pub amount_in: u64,
     pub min_out: u64,
-    /// sha256 of the venue instruction data. The bytes stay off-chain; the
-    /// executor passes them and they must hash to this.
-    pub venue_data_hash: [u8; 32],
+    /// sha256(venue_data || per venue account: pubkey || is_signer || is_writable).
+    /// The bytes stay off-chain; the executor passes the data and the venue
+    /// accounts, and they must hash to this.
+    pub route_hash: [u8; 32],
     pub created_at: i64,
     pub deadline: i64,
     pub total_shares_snapshot: u64,

@@ -1226,13 +1226,19 @@ pub fn venue_data(a: &SwapArgs) -> Vec<u8> {
 /// output is new to the fund, then the mock venue's accounts (fund vaults as
 /// user_in / user_out).
 pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountMeta> {
-    let prog = |mint: &Pubkey| env.svm.get_account(mint).expect("mint").owner;
-    let (in_prog, out_prog) = (prog(&a.input), prog(&a.output));
     let mut metas = nav_accounts(env, f);
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     if !fund.holdings[..fund.holdings_len as usize].contains(&a.output) {
         metas.push(AccountMeta::new_readonly(price_account(&a.output), false));
     }
+    metas.extend(venue_accounts(env, f, a));
+    metas
+}
+
+/// The mock venue's accounts for `a` (10, in `mock_venue::accounts::Swap` order).
+pub fn venue_accounts(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountMeta> {
+    let prog = |mint: &Pubkey| env.svm.get_account(mint).expect("mint").owner;
+    let (in_prog, out_prog) = (prog(&a.input), prog(&a.output));
     let pool = venue_pool_authority();
     let venue = mock_venue::accounts::Swap {
         authority: f.fund,
@@ -1248,11 +1254,13 @@ pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountM
     }
     .to_account_metas(None);
     // The fund PDA cannot sign the transaction; v1-core signs for it in the CPI.
-    metas.extend(venue.into_iter().map(|mut m| {
-        m.is_signer = false;
-        m
-    }));
-    metas
+    venue
+        .into_iter()
+        .map(|mut m| {
+            m.is_signer = false;
+            m
+        })
+        .collect()
 }
 
 /// `swap` signed by `signer`, with `delegate` as the Delegate account (None = captain).
@@ -1283,8 +1291,8 @@ pub fn ix_swap(
 // Proposals
 // ---------------------------------------------------------------------------
 
-/// `propose_trade` for `a` (venue data = the mock venue data of `a`). The new
-/// proposal id is the fund's current `proposal_count`.
+/// `propose_trade` for `a`, with the mock venue accounts of `a` as remaining
+/// accounts. The new proposal id is the fund's current `proposal_count`.
 pub fn ix_propose(
     env: &Env,
     f: &FundHandles,
@@ -1294,7 +1302,7 @@ pub fn ix_propose(
     data: Vec<u8>,
 ) -> Instruction {
     let id = read_fund(env, f).proposal_count;
-    v1_ix(
+    let mut ix = v1_ix(
         v1_core::accounts::ProposeTrade {
             proposer: *proposer,
             delegate,
@@ -1314,7 +1322,9 @@ pub fn ix_propose(
             min_out: a.min_out,
             venue_data: data,
         },
-    )
+    );
+    ix.accounts.extend(venue_accounts(env, f, a));
+    ix
 }
 
 /// `vote` on proposal `id`, with the voter's Token-2022 share ATA.
@@ -1335,7 +1345,7 @@ pub fn ix_vote(f: &FundHandles, voter: &Pubkey, id: u64, yes: bool) -> Instructi
 }
 
 /// `execute_proposal` of `id`, signed by `caller`; `a` gives the trade accounts,
-/// `data` the venue data (it must hash to the proposal's `venue_data_hash`).
+/// `data` the venue data (data + venue accounts must match `route_hash`).
 pub fn ix_execute_proposal(
     env: &Env,
     f: &FundHandles,

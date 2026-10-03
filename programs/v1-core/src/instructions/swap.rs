@@ -91,6 +91,9 @@ pub struct SwapParams<'a> {
     /// False for a trade the crew voted for (no autonomous size limit).
     pub check_size: bool,
     pub via_proposal: Option<u64>,
+    /// For a proposal: the venue data and venue accounts must hash to this
+    /// (see `route_hash`), else `VenueDataMismatch`.
+    pub route_hash: Option<[u8; 32]>,
 }
 
 pub fn swap<'info>(
@@ -126,6 +129,7 @@ pub fn swap<'info>(
         venue_data: &venue_data,
         check_size: true,
         via_proposal: None,
+        route_hash: None,
     };
     execute_swap(
         trade,
@@ -163,6 +167,12 @@ pub fn execute_swap<'info>(
         t2: [false; MAX_HOLDINGS],
     });
     let plan = prepare(t, remaining, p, delegate, now, &mut priced)?;
+    if let Some(want) = p.route_hash {
+        require!(
+            route_hash(p.venue_data, &remaining[plan.venue_start..]) == want,
+            ErrorCode::VenueDataMismatch
+        );
+    }
     let mut before = priced.amounts;
     before[plan.out_idx] = output_vault_before(t, payer, &plan, remaining)?;
     // Account sizes too: the venue must not grow a vault (Token-2022 Reallocate).
@@ -319,6 +329,21 @@ fn prepare(
         out_is_new: out_held.is_none(),
         venue_start,
     })
+}
+
+/// sha256(venue_data || for each venue account, in order:
+/// pubkey (32) || is_signer (1) || is_writable (1)).
+/// The flags are the runtime flags the program sees (the transaction merges
+/// the flags of a key that appears more than once).
+pub(crate) fn route_hash(venue_data: &[u8], venue_accounts: &[AccountInfo]) -> [u8; 32] {
+    let mut buf = Vec::with_capacity(venue_data.len() + venue_accounts.len() * 34);
+    buf.extend_from_slice(venue_data);
+    for a in venue_accounts {
+        buf.extend_from_slice(a.key.as_ref());
+        buf.push(a.is_signer as u8);
+        buf.push(a.is_writable as u8);
+    }
+    solana_sha256_hasher::hash(&buf).to_bytes()
 }
 
 /// In `config.venues`, and not an empty slot, v1-core or a token program.

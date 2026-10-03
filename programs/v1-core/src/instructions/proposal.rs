@@ -8,7 +8,13 @@
 //! (price guard, pause and breaker, venue allowlist, balance checks, tier caps),
 //! without the autonomous size limit and without a delegate charge.
 //!
-//! Only sha256 of the venue data is stored. The executor passes the bytes.
+//! Only a route hash is stored: sha256 of the venue data and the ordered venue
+//! account metas (`route_hash`). The executor passes the bytes and the venue
+//! accounts, and they must hash to the same value, so the executor cannot
+//! pick other pools for the fund-signed CPI.
+//!
+//! `propose_trade` remaining accounts: the venue accounts, exactly as they
+//! will be passed to `execute_proposal` (after its NAV and price accounts).
 
 use {
     crate::{
@@ -61,8 +67,8 @@ pub struct ProposeTrade<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn propose_trade(
-    ctx: Context<ProposeTrade>,
+pub fn propose_trade<'info>(
+    ctx: Context<'info, ProposeTrade<'info>>,
     amount_in: u64,
     min_out: u64,
     venue_data: Vec<u8>,
@@ -97,7 +103,7 @@ pub fn propose_trade(
         .ok_or(ErrorCode::MathOverflow)?;
     let id = a.fund.proposal_count;
     a.fund.proposal_count = id.checked_add(1).ok_or(ErrorCode::MathOverflow)?;
-    let venue_data_hash = solana_sha256_hasher::hash(&venue_data).to_bytes();
+    let route_hash = route_hash(&venue_data, ctx.remaining_accounts);
     a.proposal.set_inner(Proposal {
         fund: fund_key,
         id,
@@ -107,7 +113,7 @@ pub fn propose_trade(
         output_mint: output,
         amount_in,
         min_out,
-        venue_data_hash,
+        route_hash,
         created_at: now,
         deadline,
         total_shares_snapshot: a.fund.total_shares,
@@ -121,7 +127,7 @@ pub fn propose_trade(
         id,
         deadline,
         venue_data_len: venue_data.len() as u16,
-        venue_data_hash,
+        route_hash,
     });
     Ok(())
 }
@@ -228,7 +234,7 @@ pub struct ExecuteProposal<'info> {
         bump = proposal.bump,
         constraint = proposal.venue == trade.venue_program.key()
             && proposal.input_mint == trade.input_mint.key()
-            && proposal.output_mint == trade.output_mint.key() @ ErrorCode::Unauthorized
+            && proposal.output_mint == trade.output_mint.key() @ ErrorCode::ProposalMismatch
     )]
     pub proposal: Box<Account<'info, Proposal>>,
 }
@@ -252,10 +258,6 @@ pub fn execute_proposal<'info>(
         (proposal.yes_weight as u128) * 2 > proposal.total_shares_snapshot as u128,
         ErrorCode::ProposalNotPassed
     );
-    require!(
-        solana_sha256_hasher::hash(&venue_data).to_bytes() == proposal.venue_data_hash,
-        ErrorCode::VenueDataMismatch
-    );
     proposal.status = ProposalStatus::Executed;
 
     let params = SwapParams {
@@ -265,6 +267,7 @@ pub fn execute_proposal<'info>(
         venue_data: &venue_data,
         check_size: false,
         via_proposal: Some(proposal.id),
+        route_hash: Some(proposal.route_hash),
     };
     execute_swap(
         trade,
