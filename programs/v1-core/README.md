@@ -1,30 +1,101 @@
 # v1-core
 
-The socially.trade v1 core program (Anchor 1.2): social-trading funds on Solana.
+v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written as an Anchor 1.2 program. A captain opens a fund with a USDC stake. Members deposit USDC and get non-transferable Token-2022 shares at NAV. The captain and delegates trade fund tokens through allowlisted venues. The program checks every trade by vault balance, not by trust. Large trades need a crew vote. The v0 hackathon app runs paper trading off-chain and does NOT call this program.
+
+## The six promises and what enforces them
+
+| Promise | Enforced by |
+|---|---|
+| Only you withdraw | Funds sit in PDA-owned vaults. `exit` pays a member only their pro-rata slice. `swap` reads every vault after the venue CPI: input vault falls by exactly `amount_in`, output vault rises by at least `min_out`, all other vaults are unchanged, and vault data length is unchanged. |
+| Rules on every trade | `swap` checks: venue allowlist, token tier caps (T2 buys only, Ruling 11), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps; Ruling 14). Policy loosening waits 48 h. |
+| Exits never wait | `exit` has no pause, freeze or price dependency (Rulings 3, 8, 9). Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. |
+| Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. Fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so a member cannot dodge the fee by choosing stale or fresh prices (Rulings 8, 21). |
+| Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate but stops only buys and deposits. Sales into USDC and exits still work. |
+| Big trades need the crew | `propose_trade` stores `route_hash`, a hash of the venue data and the ordered venue account metas (Rulings 16, 19). `execute_proposal` must match it. Vote weight is the share balance at vote time (Ruling 17). |
+
+## Pricing
+
+- Source: Pyth `PriceUpdateV2` accounts, parsed by hand in `src/pyth.rs`. No Pyth SDK.
+- Checks: owner is the Pyth receiver, account discriminator, `Full` verification level, feed id equals the registered feed, price age at most 60 s, confidence at most 200 bps of price, price greater than 0.
+- Valuation modes (`nav::ValuationMode`, Ruling 6). A caller can pick any price inside the 60 s window, so each use takes the side that cannot help the caller:
+
+| Mode | Value of a non-USDC holding | Used for |
+|---|---|---|
+| `DepositUpperBound` | `max(price, ema_price) + conf` | Deposit share price, fee price per share |
+| `Ema` | `ema_price` | Drawdown breaker, peak NAV, `last_price_per_share` |
+| `Spot` | `price` | Swap size, price guard, tier caps |
+
+## Disclosures and accepted risks
+
+- **PermanentDelegate on the share mint.** The delegate is the fund PDA. Only the yearly fee burn (`fees.rs`, `charge_annual_fee`) uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares (Ruling 21). Tests assert the extension and the delegate.
+- **USDC freeze authority (Circle)** is accepted.
+- **Registry mint screening.** `queue_token` rejects any non-USDC mint that has a freeze authority or any Token-2022 extension (Ruling 9). Exits therefore do not depend on token behaviour. The check runs at queue time only.
+- **Proposal data is off-chain.** Only `route_hash` is on-chain. The client must keep the route bytes and the exact account list. Lost bytes mean the proposal cannot execute. The hash covers runtime-merged signer and writable flags, so read `route_hash` from the `ProposalCreated` event and build the matching transaction.
+- **A voter who exits keeps their vote weight** (Ruling 17). Captain fee shares minted after a proposal opens also count.
+- **Closed fund.** When `total_shares == 0` the fund is closed. `deposit` returns `FundClosed`. The captain must create a new fund id (Ruling 7).
+- **Frozen funds** accept deposits. Freeze stops trading, not exits.
+- **Mock venue** (`programs/mock-venue`) is TEST-ONLY and drainable by design. Never deploy it. Never allowlist it on a real network.
+- Minor, tracked: a revoked delegate's open proposals stay valid until the captain cancels them. Proposal and vote rent is not reclaimed. A late fee keeper shifts the fee anniversary.
+
+## Instructions
+
+| Instruction | Caller | Checks |
+|---|---|---|
+| `initialize_config` | Program upgrade authority | Signer equals ProgramData upgrade authority. USDC mint has 6 decimals. Becomes admin. |
+| `queue_token` | Admin | Tier, Pyth feed id. Non-USDC mint has no freeze authority and no extension. ETA = now + 7 days. |
+| `apply_token` | Anyone | ETA passed. |
+| `queue_venue` / `apply_venue` | Admin / anyone | 4 slots. ETA = now + 7 days. Removal is queued the same way. |
+| `set_paused` | Admin | Immediate. Stops deposits and buys only. |
+| `create_fund` | Captain | Deposit at least 250 USDC. Mints 1:1 shares. Creates policy, member, vaults and share mint (NonTransferable, PermanentDelegate). |
+| `deposit` | Anyone | Not paused, fund not closed, NAV (upper bound) nonzero. |
+| `exit` | Member | Own share balance only. No pause, freeze or price check. Pro-rata of every holding. Fee on profit above HWM. Captain must keep at least 5% of shares while others hold shares. |
+| `add_delegate` / `update_delegate` / `revoke_delegate` | Captain | Per-trade and daily USD limits. Revoke returns rent. |
+| `swap` | Captain or delegate | Venue, tiers, caps, delegate limits, breaker, price guard, vault balance deltas, share mint not in venue accounts. Size above the `autonomous_bps` limit needs a proposal. |
+| `propose_trade` | Captain or delegate | Stores `route_hash` and the trade terms. Opens the vote window from policy. |
+| `vote` | Member | One vote per member (VoteRecord `init`). Open proposal, before the deadline. Weight = share balance. |
+| `execute_proposal` | Anyone | Vote passed. Deadline past. `venue_data` and venue accounts match `route_hash`. Then runs the same checks as `swap`. |
+| `cancel_proposal` | Captain | Proposal is open. |
+| `update_policy` | Captain | Within the protocol floor. Stricter applies now and cancels a pending loosen (Ruling 20). Looser queues 48 h. |
+| `apply_policy` | Anyone | ETA passed. |
+| `poke_nav` | Anyone | Valid NAV accounts. Moves peak NAV and the breaker on EMA prices. |
+| `charge_annual_fee` | Anyone | Target is not the captain. One year since last fee. Fresh prices required. |
+| `captain_log` | Captain or delegate | Emits a reason hash. No state. |
+
+## Client notes
+
+Remaining-accounts layouts (the order is `fund.holdings`; re-read it after a swap, because a fully sold holding is removed, Ruling 13):
+
+| Instruction | Remaining accounts |
+|---|---|
+| NAV users (`deposit`, `poke_nav`, `charge_annual_fee`) | 3 per holding: `[vault, token_entry, price]` |
+| `exit` | 3 per holding: `[vault (w), user_token (w), mint]`, then optional NAV layout |
+| `swap`, `execute_proposal` | NAV layout (3 per holding), then the output mint price if the output is a new non-USDC holding, then the venue accounts |
+| `propose_trade` | The venue accounts only |
+
+Compute budget:
+- `swap`: 47k-108k CU (2 to 8 holdings). `execute_proposal`: about 65k CU.
+- `exit` with 8 holdings plus NAV accounts is near 200k CU. Add a compute-budget instruction.
+- Real Jupiter routes do not fit a legacy transaction. Use a v0 transaction with an address lookup table. `venue_data` is limited to 1024 bytes.
 
 ## Build and test
 
 ```bash
-scripts/build-programs.sh      # cargo build-sbf for v1-core and mock-venue; fails on a stack-frame overflow
-cargo test -p v1-core          # LiteSVM tests; they load target/deploy/*.so, so build first
+scripts/build-programs.sh   # never bare `cargo build-sbf`
+cargo test -p v1-core       # LiteSVM; loads target/deploy/*.so, so build first
 ```
 
-Do not use `anchor build`. The build script uses platform tools v1.57.
+The script pins platform-tools v1.57 (anchor 1.2 pulls edition2024 crates) and fails on a BPF stack-frame overflow, which `cargo build-sbf` reports with exit 0. Do not use `anchor build`.
 
-## Program ids
+| Program | Id |
+|---|---|
+| v1-core | `HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi` |
+| mock-venue (test only) | `7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng` |
 
-| Program    | Id                                             |
-|------------|------------------------------------------------|
-| v1-core    | `HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi` |
-| mock-venue | `7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng` |
+To regenerate a program id: delete `target/deploy/<name>-keypair.json`, run `solana-keygen new -o target/deploy/<name>-keypair.json --no-bip39-passphrase`, put the new `solana address -k` value in `declare_id!`; the tests read the mock-venue id from its crate, then rebuild. Mainnet keypairs are not in the repo.
 
-The keypairs live in `target/deploy/` and are not in git. On a new clone, make new ones:
+## Out of scope (Phase 2)
 
-```bash
-solana-keygen new --no-bip39-passphrase -s -o target/deploy/v1_core-keypair.json
-solana-keygen new --no-bip39-passphrase -s -o target/deploy/mock_venue-keypair.json
-```
-
-Then put the new pubkeys in `declare_id!` (`programs/*/src/lib.rs`) and in
-`mock_venue_id()` (`programs/v1-core/tests/common/mod.rs`). The tests do not need
-the keypairs: they load the `.so` at the id in `declare_id!`.
+- `VenueEntry` PDA per approved program, 7-day timelocked, replacing the 4-slot list (Ruling 18).
+- Position adapters in NAV, breaker and exit: Kamino kTokens, perps, prediction markets.
+- Memecoin T3 tier: pool TWAP price, capped by a captain first-loss stake.
+- Discover fee split. Multisig admin and admin rotation.

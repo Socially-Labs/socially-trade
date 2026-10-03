@@ -19,6 +19,15 @@ The current delivery is backend only, as requested. Verification uses API calls,
 
 All results are simulated. The worker assesses fees and settles expired trials through atomic ledger transactions. See the [simulation report](./docs/backend-simulation-report.md) for checks, conventions and limits.
 
+## Programs
+
+`programs/v1-core` is the real-money Anchor program from whitepaper v1.1: funds, shares, trade checks, crew votes and fees on Solana. The v0 paper app above does not call it. See [programs/v1-core/README.md](./programs/v1-core/README.md).
+
+```sh
+scripts/build-programs.sh   # never bare cargo build-sbf
+cargo test -p v1-core
+```
+
 ## Local development
 
 Requires Node.js 22+ and pnpm 10.

@@ -585,12 +585,14 @@ pub fn token_balance(svm: &LiteSVM, address: &Pubkey) -> u64 {
 pub struct ShareMintState {
     pub base: spl_token_2022::state::Mint,
     pub non_transferable: bool,
+    pub permanent_delegate: Option<Pubkey>,
 }
 
 /// Unpack a Token-2022 mint and report whether it has the NonTransferable extension.
 pub fn share_mint_state(svm: &LiteSVM, mint: &Pubkey) -> ShareMintState {
     use spl_token_2022::extension::{
-        non_transferable::NonTransferable, BaseStateWithExtensions, StateWithExtensions,
+        non_transferable::NonTransferable, permanent_delegate::PermanentDelegate,
+        BaseStateWithExtensions, StateWithExtensions,
     };
     let account = svm.get_account(mint).expect("share mint");
     assert_eq!(
@@ -602,6 +604,10 @@ pub fn share_mint_state(svm: &LiteSVM, mint: &Pubkey) -> ShareMintState {
     ShareMintState {
         base: state.base,
         non_transferable: state.get_extension::<NonTransferable>().is_ok(),
+        permanent_delegate: state
+            .get_extension::<PermanentDelegate>()
+            .ok()
+            .and_then(|e| Option::<Pubkey>::from(e.delegate)),
     }
 }
 

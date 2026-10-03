@@ -405,7 +405,8 @@ fn call_venue<'info>(
     let share_mint = t.fund.share_mint;
     let mut metas = Vec::with_capacity(venue_accounts.len());
     for a in venue_accounts {
-        // The fund PDA is the share mint authority: the venue never sees the mint.
+        // The fund PDA is the share mint authority and the permanent delegate
+        // (burn authority) of the share mint: the venue must never see the mint.
         require_keys_neq!(*a.key, share_mint, ErrorCode::VenueNotAllowed);
         metas.push(AccountMeta {
             pubkey: *a.key,
