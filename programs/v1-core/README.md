@@ -29,7 +29,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 
 - **The admin is the program upgrade authority.** An instant program upgrade bypasses every on-chain timelock (token, venue and policy queues). Before real money, the upgrade authority must be a timelocked multisig, or the program must be made immutable.
 - **Frozen fund with only USDC cannot unfreeze.** The breaker moves only on NAV. A fund more than `drawdown_bps` below its peak that holds only USDC has no trade that can raise its NAV, so it stays frozen. Members can still exit. The captain opens a new fund.
-- **Holders can burn their own shares.** Holders can burn their own NonTransferable shares; burned shares stay counted in `total_shares`, which locks the burned value in the fund and can leave the captain unable to exit the last dust share unit — no value moves to anyone else (Ruling 26).
+- **Holders can burn their own shares.** Holders can burn their own NonTransferable shares; burned shares stay counted in `total_shares`, which locks the burned value in the fund and can leave the captain unable to exit the last dust share unit. No value moves to anyone else (Ruling 26).
 
 - **PermanentDelegate on the share mint.** The delegate is the fund PDA. Only the yearly fee burn (`fees.rs`, `charge_annual_fee`) uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares (Ruling 21). Tests assert the extension and the delegate.
 - **USDC freeze authority (Circle)** is accepted.
