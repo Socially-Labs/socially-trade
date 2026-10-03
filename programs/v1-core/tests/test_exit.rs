@@ -217,6 +217,25 @@ fn exit_fee_uses_upper_bound_pps_and_breaker_uses_ema() {
 }
 
 #[test]
+fn exit_fee_after_price_drop_uses_last_pps() {
+    let (mut env, cap, m, f, sol) = sol_fund_after_rally();
+    // Rally recorded: SOL $300, conf 0. The captain's deposit records the EMA
+    // pps 1100 / 400 = 2.75 (and buys floor(11 * 400 / 1100) = 4 shares).
+    sol_price(&mut env, &sol, 300, 0, 300);
+    deposit(&mut env, &f, &cap, 11_000_000).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_750_000);
+    assert_eq!(shares_of(&env, &f, &cap.pubkey()), 304_000_000);
+    // Drop: SOL back to $150. Fresh upper pps (511 + 300) / 404 = 2.007 < 2.75.
+    sol_price(&mut env, &sol, 150, 0, 150);
+    let res = exit(&mut env, &f, &m, 100_000_000).unwrap();
+    assert_eq!(events(&res), 2, "FeeCharged + Exited");
+    // Fee at 2.75: value 275, hwm 200 -> 7.5 USDC = floor(7.5 / 2.75) = 2.727272 shares.
+    assert_eq!(shares_of(&env, &f, &cap.pubkey()), 306_727_272);
+    // The breaker still moves on the fresh EMA pps: 811 / 404 = 2.007425.
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_007_425);
+}
+
+#[test]
 fn exit_without_nav_accounts_uses_last_pps() {
     let (mut env, cap, m, f, sol) = sol_fund_after_rally();
     let ix = ix_exit_unpriced(&env, &f, &m.pubkey(), 100_000_000);

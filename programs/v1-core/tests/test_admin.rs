@@ -316,3 +316,41 @@ fn pause_is_immediate_and_admin_only() {
     .unwrap();
     assert!(!read_config(&env).paused);
 }
+
+#[allow(clippy::result_large_err)] // LiteSVM's own error type.
+fn queue(
+    env: &mut Env,
+    mint: Pubkey,
+    decimals: u8,
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let ix = ix_queue_token(&env.admin.pubkey(), mint, SOL_FEED, Tier::T1, decimals);
+    send(&mut env.svm, &[ix], &[&env.admin])
+}
+
+#[test]
+fn token_queue_rejects_freeze_authority() {
+    let mut env = setup();
+    let admin = env.admin.pubkey();
+    let spl = spl_token_interface::ID;
+    let mint = write_mint_with_freeze(&mut env.svm, &admin, 9, &spl, Some(admin));
+    expect_err(queue(&mut env, mint, 9), ErrorCode::UnsafeMint);
+}
+
+#[test]
+fn token_queue_rejects_token_2022_extension() {
+    let mut env = setup();
+    let admin = env.admin.pubkey();
+    let mint = write_t22_mint_with_extension(&mut env.svm, &admin, 9);
+    expect_err(queue(&mut env, mint, 9), ErrorCode::UnsafeMint);
+}
+
+#[test]
+fn token_queue_accepts_plain_mints() {
+    let mut env = setup();
+    let admin = env.admin.pubkey();
+    let spl = create_mint(&mut env, 9);
+    queue(&mut env, spl, 9).unwrap();
+    let t22 = anchor_spl::token_2022::ID;
+    let plain_t22 = write_mint(&mut env.svm, &admin, 6, &t22);
+    queue(&mut env, plain_t22, 6).unwrap();
+}

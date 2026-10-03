@@ -241,16 +241,61 @@ pub fn write_mint(
     decimals: u8,
     token_program: &Pubkey,
 ) -> Pubkey {
-    let mint = Pubkey::new_unique();
+    write_mint_with_freeze(svm, authority, decimals, token_program, None)
+}
+
+/// `write_mint` with an optional freeze authority.
+pub fn write_mint_with_freeze(
+    svm: &mut LiteSVM,
+    authority: &Pubkey,
+    decimals: u8,
+    token_program: &Pubkey,
+    freeze_authority: Option<Pubkey>,
+) -> Pubkey {
     let mut data = vec![0u8; SplMint::LEN];
     SplMint {
         mint_authority: Some(*authority).into(),
         supply: 0,
         decimals,
         is_initialized: true,
-        freeze_authority: None.into(),
+        freeze_authority: freeze_authority.into(),
     }
     .pack_into_slice(&mut data);
+    write_raw_mint(svm, data, token_program)
+}
+
+/// A Token-2022 mint (admin authority, no freeze) with the NonTransferable extension.
+pub fn write_t22_mint_with_extension(
+    svm: &mut LiteSVM,
+    authority: &Pubkey,
+    decimals: u8,
+) -> Pubkey {
+    use spl_token_2022::{
+        extension::{
+            non_transferable::NonTransferable, BaseStateWithExtensionsMut, ExtensionType,
+            StateWithExtensionsMut,
+        },
+        state::Mint,
+    };
+    let len = ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::NonTransferable])
+        .unwrap();
+    let mut data = vec![0u8; len];
+    let mut state = StateWithExtensionsMut::<Mint>::unpack_uninitialized(&mut data).unwrap();
+    state.init_extension::<NonTransferable>(true).unwrap();
+    state.base = Mint {
+        mint_authority: Some(*authority).into(),
+        supply: 0,
+        decimals,
+        is_initialized: true,
+        freeze_authority: None.into(),
+    };
+    state.pack_base();
+    state.init_account_type().unwrap();
+    write_raw_mint(svm, data, &TOKEN_2022)
+}
+
+fn write_raw_mint(svm: &mut LiteSVM, data: Vec<u8>, token_program: &Pubkey) -> Pubkey {
+    let mint = Pubkey::new_unique();
     let lamports = svm.minimum_balance_for_rent_exemption(data.len());
     svm.set_account(
         mint,

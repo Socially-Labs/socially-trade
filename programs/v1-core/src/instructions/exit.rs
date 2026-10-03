@@ -5,10 +5,12 @@
 //! 1. 3 per holding, in `fund.holdings` order: `[vault_i (w), user_token_i (w), mint_i]`.
 //!    `user_token_i` is the user's token account for `mint_i` on the mint's
 //!    token program. It is not read when the user's slice of that holding is 0.
-//! 2. Optional, after that: the NAV layout (see `nav`). If every NAV account is
-//!    valid, the fee is priced at the fresh upper-bound pps and the breaker
-//!    moves on the EMA pps. If any is absent or invalid, the fee uses
-//!    `fund.last_price_per_share` and the breaker does not move.
+//! 2. Optional, after that: the NAV layout (see `nav`). The fee pps is
+//!    `max(fund.last_price_per_share, fresh upper-bound pps)` when every NAV
+//!    account is valid, and the breaker moves on the fresh EMA pps. If any is
+//!    absent or invalid, the fee pps is `fund.last_price_per_share` and the
+//!    breaker does not move. So the exiter cannot lower the fee by the choice
+//!    of fresh vs stale prices.
 
 use {
     crate::{
@@ -92,8 +94,10 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     let (exit_accs, nav_accs) = ctx.remaining_accounts.split_at(exit_len);
 
     // Prices never block an exit: any NAV failure falls back to the last pps.
+    // Fresh prices can only raise the fee pps, never lower it below the last pps.
     let fresh = fresh_pps(&a.fund, &fund_key, &a.config, nav_accs, now, ctx.program_id).ok();
-    let pps = fresh.map_or(a.fund.last_price_per_share, |(fee_pps, _)| fee_pps);
+    let last = a.fund.last_price_per_share;
+    let pps = fresh.map_or(last, |(up, _)| up.max(last));
 
     let fund_id_le = a.fund.fund_id.to_le_bytes();
     let fund_seeds: &[&[u8]] = &[FUND_SEED, captain.as_ref(), &fund_id_le, &[a.fund.bump]];

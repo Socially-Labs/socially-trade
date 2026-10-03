@@ -90,4 +90,6 @@ pub enum ErrorCode {
     FundClosed,
     #[msg("Fund NAV is zero while shares are outstanding")]
     NavZero,
+    #[msg("Mint has a freeze authority or Token-2022 extensions")]
+    UnsafeMint,
 }

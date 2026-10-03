@@ -22,7 +22,8 @@ pub struct Exited {
     pub member: Pubkey,
     pub shares_burned: u64,
     pub fee_shares: u64,
-    /// The pps the fee was priced at (fresh upper bound, or the last recorded pps).
+    /// The pps the fee was priced at: `max(last recorded pps, fresh upper-bound pps)`,
+    /// or the last recorded pps when fresh NAV is absent or invalid.
     pub price_per_share: u64,
 }
 

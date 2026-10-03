@@ -7,8 +7,11 @@ use {
         state::{Config, Tier, TokenEntry},
     },
     anchor_lang::prelude::*,
-    anchor_spl::token_interface::Mint,
+    anchor_spl::{token_2022::ID as TOKEN_2022_PROGRAM, token_interface::Mint},
 };
+
+/// Size of a base SPL mint. A Token-2022 mint with any extension is longer.
+const BASE_MINT_LEN: usize = 82;
 
 /// The time at which an action queued now may be applied.
 fn eta() -> Result<i64> {
@@ -58,6 +61,17 @@ pub fn queue_token(
     tier: Tier,
     decimals: u8,
 ) -> Result<()> {
+    // Exits never wait on token behavior: no freeze authority, and no
+    // Token-2022 extensions (transfer fee, hook, pausable, ...). USDC is exempt.
+    let mint = &ctx.accounts.mint;
+    if mint.key() != ctx.accounts.config.usdc_mint {
+        require!(mint.freeze_authority.is_none(), ErrorCode::UnsafeMint);
+        let info = mint.to_account_info();
+        require!(
+            *info.owner != TOKEN_2022_PROGRAM || info.data_len() == BASE_MINT_LEN,
+            ErrorCode::UnsafeMint
+        );
+    }
     let entry = &mut ctx.accounts.token_entry;
     entry.mint = ctx.accounts.mint.key();
     entry.decimals = decimals;
