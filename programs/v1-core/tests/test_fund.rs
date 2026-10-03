@@ -304,7 +304,7 @@ fn deposit_rejects_wrong_vault_in_nav() {
     let whale = funded_user(&mut env, 1_000_000_000_000);
     let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
     let n = ix.accounts.len();
-    ix.accounts[n - 3].pubkey = usdc_ata(&env, &whale.pubkey());
+    ix.accounts[n - 4].pubkey = usdc_ata(&env, &whale.pubkey());
     expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::HoldingNotFound);
 }
 
@@ -368,7 +368,7 @@ fn nav_rejects_wrong_feed_price_account() {
 fn nav_rejects_inactive_token() {
     let (mut env, _cap, m, f) = fund_with_member();
     let sol = create_mint(&mut env, 9);
-    let ix = ix_queue_token(&env.admin.pubkey(), sol, SOL_FEED, Tier::T1, 9);
+    let ix = ix_queue_token(&env.admin.pubkey(), sol, pyth(SOL_FEED), Tier::T1, 9);
     send(&mut env.svm, &[ix], &[&env.admin]).unwrap(); // queued, never applied
     let t = now(&env);
     set_price(
@@ -406,7 +406,7 @@ fn nav_rejects_wrong_token_entry() {
     );
     let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
     let n = ix.accounts.len();
-    ix.accounts[n - 2].pubkey = token_pda(&bonk); // a real, active entry for another mint
+    ix.accounts[n - 3].pubkey = token_pda(&bonk); // a real, active entry for another mint
     expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::TokenNotListed);
 }
 
@@ -535,4 +535,49 @@ fn deposit_rejects_zero_nav_with_shares() {
     vault.data[64..72].fill(0); // empty vault, 300 shares outstanding
     env.svm.set_account(f.usdc_vault, vault).unwrap();
     expect_err(deposit(&mut env, &f, &m, 100_000_000), ErrorCode::NavZero);
+}
+
+#[test]
+fn nav_rejects_kamino_and_switchboard_until_supported() {
+    let sources = [
+        PriceSource::KaminoReserve {
+            reserve: Pubkey::new_unique(),
+            underlying_feed_id: SOL_FEED,
+            underlying_decimals: 9,
+        },
+        PriceSource::Switchboard {
+            feed: Pubkey::new_unique(),
+        },
+    ];
+    for source in sources {
+        let (mut env, _cap, m, f) = fund_with_member();
+        let mint = create_mint(&mut env, 9);
+        register_token_with(&mut env, mint, source, Tier::T1);
+        inject_holding(&mut env, &f, mint, 2_000_000_000);
+        expect_err(
+            deposit(&mut env, &f, &m, 100_000_000),
+            ErrorCode::PriceSourceUnsupported,
+        );
+    }
+}
+
+#[test]
+fn nav_layout_is_four_accounts_and_pyth_ignores_price_b() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    let n = ix.accounts.len();
+    // Last holding (SOL): [vault, entry, price_a, price_b].
+    assert_eq!(ix.accounts[n - 3].pubkey, token_pda(&sol));
+    assert_eq!(ix.accounts[n - 2].pubkey, price_account(&sol));
+    ix.accounts[n - 1].pubkey = Pubkey::new_unique(); // any key: not read for Pyth
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    // Without price_b the layout is short.
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    ix.accounts.pop();
+    expect_err(
+        send(&mut env.svm, &[ix], &[&m]),
+        ErrorCode::PriceAccountMissing,
+    );
 }

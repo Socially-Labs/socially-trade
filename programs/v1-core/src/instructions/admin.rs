@@ -4,7 +4,7 @@ use {
     crate::{
         constants::{ADMIN_TIMELOCK_SECS, CONFIG_SEED, TOKEN_SEED, VENUE_SEED},
         errors::ErrorCode,
-        state::{Config, Tier, TokenEntry, VenueEntry},
+        state::{Config, PriceSource, Tier, TokenEntry, VenueEntry},
     },
     anchor_lang::prelude::*,
     anchor_spl::{token_2022::ID as TOKEN_2022_PROGRAM, token_interface::Mint},
@@ -34,7 +34,7 @@ fn check_due(pending_eta: i64) -> Result<()> {
 // --- token registry --------------------------------------------------------
 
 #[derive(Accounts)]
-#[instruction(feed_id: [u8; 32], tier: Tier, decimals: u8)]
+#[instruction(price_source: PriceSource, tier: Tier, decimals: u8)]
 pub struct QueueToken<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
@@ -57,12 +57,13 @@ pub struct QueueToken<'info> {
 /// change and restarts the clock. The live fields stay in force until apply.
 pub fn queue_token(
     ctx: Context<QueueToken>,
-    feed_id: [u8; 32],
+    price_source: PriceSource,
     tier: Tier,
     decimals: u8,
 ) -> Result<()> {
     // Exits never wait on token behavior: no freeze authority, and no
-    // Token-2022 extensions (transfer fee, hook, pausable, ...). USDC is exempt.
+    // Token-2022 extensions (transfer fee, hook, pausable, ...). Every price
+    // source gets this check. USDC is exempt.
     let mint = &ctx.accounts.mint;
     if mint.key() != ctx.accounts.config.usdc_mint {
         require!(mint.freeze_authority.is_none(), ErrorCode::UnsafeMint);
@@ -75,7 +76,7 @@ pub fn queue_token(
     let entry = &mut ctx.accounts.token_entry;
     entry.mint = ctx.accounts.mint.key();
     entry.decimals = decimals;
-    entry.pending_feed_id = feed_id;
+    entry.pending_price_source = price_source;
     entry.pending_tier = tier;
     entry.pending_eta = eta()?;
     entry.bump = ctx.bumps.token_entry;
@@ -92,7 +93,7 @@ pub struct ApplyToken<'info> {
 pub fn apply_token(ctx: Context<ApplyToken>) -> Result<()> {
     let entry = &mut ctx.accounts.token_entry;
     check_due(entry.pending_eta)?;
-    entry.feed_id = entry.pending_feed_id;
+    entry.price_source = entry.pending_price_source;
     entry.tier = entry.pending_tier;
     entry.active = true;
     entry.pending_eta = 0;

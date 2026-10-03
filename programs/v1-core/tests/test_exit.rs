@@ -255,10 +255,10 @@ fn exit_with_stale_price_uses_last_pps() {
 fn exit_with_invalid_nav_account_uses_last_pps() {
     let (mut env, cap, m, f, sol) = sol_fund_after_rally();
     let mut ix = ix_exit(&env, &f, &m.pubkey(), 100_000_000);
-    // NAV block starts after 2 holdings * 3 exit accounts; SOL's price is its 6th account.
+    // NAV block starts after 2 holdings * 3 exit accounts; SOL's price_a is its 7th account.
     let nav = 10 + 2 * 3;
-    assert_eq!(ix.accounts[nav + 5].pubkey, price_account(&sol));
-    ix.accounts[nav + 5].pubkey = f.usdc_vault; // not a Pyth account
+    assert_eq!(ix.accounts[nav + 6].pubkey, price_account(&sol));
+    ix.accounts[nav + 6].pubkey = f.usdc_vault; // not a Pyth account
     send(&mut env.svm, &[ix], &[&m]).unwrap();
     assert_paid_at_last_pps(&env, &cap, &m, &f, &sol);
 }

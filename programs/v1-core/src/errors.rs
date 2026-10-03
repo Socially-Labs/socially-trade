@@ -103,4 +103,6 @@ pub enum ErrorCode {
     VaultResized,
     #[msg("Exit accounts list the same holding twice")]
     DuplicateHolding,
+    #[msg("Price source not supported yet")]
+    PriceSourceUnsupported,
 }

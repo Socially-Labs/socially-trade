@@ -12,7 +12,7 @@ pub mod state;
 use {
     anchor_lang::prelude::*,
     instructions::*,
-    state::{PolicyParams, Tier},
+    state::{PolicyParams, PriceSource, Tier},
 };
 
 declare_id!("HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi");
@@ -29,11 +29,11 @@ pub mod v1_core {
     /// Admin: queue a token listing or change (7-day timelock).
     pub fn queue_token(
         ctx: Context<QueueToken>,
-        feed_id: [u8; 32],
+        price_source: PriceSource,
         tier: Tier,
         decimals: u8,
     ) -> Result<()> {
-        instructions::admin::queue_token(ctx, feed_id, tier, decimals)
+        instructions::admin::queue_token(ctx, price_source, tier, decimals)
     }
 
     /// Anyone: apply a queued token change after the timelock.

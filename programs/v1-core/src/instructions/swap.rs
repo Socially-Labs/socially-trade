@@ -6,9 +6,10 @@
 //! every other holding vault must not change.
 //!
 //! Remaining accounts, in this order:
-//! 1. The NAV layout for the current holdings (see `nav`), `3 * holdings_len`.
+//! 1. The NAV layout for the current holdings (see `nav`), `4 * holdings_len`.
 //! 2. Only when the output mint is not a holding yet (and is not USDC): the
-//!    output mint's Pyth price account.
+//!    output mint's two price accounts `[price_a, price_b]`, the same pair as
+//!    in the NAV layout for its price source.
 //! 3. The venue's accounts, passed through as they are. The fund PDA is one of
 //!    them (the venue's swap authority); the program marks it as a signer.
 
@@ -19,8 +20,7 @@ use {
         events::TradeExecuted,
         instructions::delegate::charge_delegate,
         math,
-        nav::{self, NavResult, ValuationMode, ACCOUNTS_PER_HOLDING},
-        pyth,
+        nav::{self, NavResult, ValuationMode, ACCOUNTS_PER_HOLDING, PRICE_ACCOUNTS},
         state::{Config, Delegate, Fund, Policy, Tier, TokenEntry, VenueEntry},
     },
     anchor_lang::{
@@ -234,6 +234,11 @@ fn prepare(
     // 3. Listed and active; input held; room for a new output.
     listed(&t.input_entry, &input, config)?;
     let out_entry = listed(&t.output_entry, &output, config)?;
+    // No T3 buys until the open-seas rules (caps at cost, 30-day window)
+    // exist. Those rules replace this check.
+    if out_entry.as_ref().is_some_and(|e| e.tier == Tier::T3) {
+        return err!(ErrorCode::TierCapExceeded);
+    }
     let len = fund.holdings_len as usize;
     let held = &fund.holdings[..len];
     let in_idx = held
@@ -269,18 +274,10 @@ fn prepare(
                 // USDC is always holding 0, so this is only for safety.
                 None => (len, nav_end),
                 Some(entry) => {
-                    let info = remaining
-                        .get(nav_end)
-                        .ok_or(ErrorCode::PriceAccountMissing)?;
-                    let price = pyth::parse_price_update(
-                        info.owner,
-                        &info.try_borrow_data()?,
-                        &entry.feed_id,
-                        now,
-                    )?;
+                    let price = nav::price(&entry, remaining.get(nav_end..).unwrap_or(&[]), now)?;
                     priced.prices[len] = Some((price, entry.decimals));
                     priced.t2[len] = entry.tier == Tier::T2;
-                    (len, nav_end + 1)
+                    (len, nav_end + PRICE_ACCOUNTS)
                 }
             }
         }

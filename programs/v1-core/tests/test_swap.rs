@@ -1102,3 +1102,52 @@ fn exit_matches_triples_by_mint_after_reorder() {
     assert_eq!(user(&t.bonk), bonk_v / 2);
     assert_eq!(user(&t.env.usdc), usdc_v / 2);
 }
+
+// ---------------------------------------------------------------------------
+// Price sources
+// ---------------------------------------------------------------------------
+
+#[test]
+fn swap_rejects_t3_buy_until_open_seas_exists() {
+    let mut t = trading_fund();
+    let m = create_mint(&mut t.env, 6);
+    register_token(&mut t.env, m, [40; 32], Tier::T3);
+    t.refresh_prices();
+    set_usd_price(&mut t.env, &m, &[40; 32], 100_000_000);
+    let usdc = t.env.usdc;
+    expect_err(
+        t.swap(&SwapArgs::new(usdc, m, USDC, 0, 1, 1)),
+        ErrorCode::TierCapExceeded,
+    );
+}
+
+#[test]
+fn swap_new_output_with_unsupported_source_fails() {
+    let mut t = trading_fund();
+    let m = create_mint(&mut t.env, 6);
+    let source = PriceSource::Switchboard {
+        feed: Pubkey::new_unique(),
+    };
+    register_token_with(&mut t.env, m, source, Tier::T1);
+    t.refresh_prices();
+    let usdc = t.env.usdc;
+    expect_err(
+        t.swap(&SwapArgs::new(usdc, m, USDC, 0, 1, 1)),
+        ErrorCode::PriceSourceUnsupported,
+    );
+}
+
+#[test]
+fn swap_new_output_takes_two_price_accounts() {
+    let mut t = trading_fund();
+    assert_eq!(fund(&t).holdings_len, 1);
+    let a = buy_sol(&t, 300 * USDC, 1_980_000_000);
+    let mut ix = ix_swap(&t.env, &t.f, &t.cap.pubkey(), None, &a);
+    // ... NAV, then SOL's [price_a, price_b], then the 10 venue accounts.
+    let n = ix.accounts.len();
+    assert_eq!(ix.accounts[n - 12].pubkey, price_account(&t.sol));
+    ix.accounts[n - 11].pubkey = Pubkey::new_unique(); // not read for Pyth
+    t.reset_budget();
+    send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
+    assert_eq!(fund(&t).holdings_len, 2);
+}

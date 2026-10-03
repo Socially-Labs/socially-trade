@@ -1,8 +1,16 @@
-//! Fund NAV from real vault balances and Pyth prices, plus the drawdown breaker.
+//! Fund NAV from real vault balances and oracle prices, plus the drawdown breaker.
 //!
-//! Remaining-accounts layout, 3 per holding, in `fund.holdings` order:
-//! `[vault_i, token_entry_i, price_i]`. USDC is valued 1:1; its entry and
-//! price accounts are not read, but they must be present (uniform layout).
+//! Remaining-accounts layout, 4 per holding, in `fund.holdings` order:
+//! `[vault_i, token_entry_i, price_a_i, price_b_i]`. The two price accounts
+//! depend on the token's `PriceSource`:
+//! - Pyth: `price_a` = PriceUpdateV2; `price_b` is not read (pass any key).
+//! - KaminoReserve: `price_a` = reserve; `price_b` = the underlying's PriceUpdateV2.
+//! - Switchboard: `price_a` = the feed; `price_b` is not read.
+//!
+//! Only the Pyth arm prices today; the others fail with `PriceSourceUnsupported`.
+//! USDC is valued 1:1; its entry and price accounts are not read, but they
+//! must be present (uniform layout). This module is the only place that
+//! knows the layout: other code uses the constants and `price`.
 
 use {
     crate::{
@@ -10,7 +18,7 @@ use {
         errors::ErrorCode,
         events::BreakerChanged,
         math, pyth,
-        state::{Config, Fund, Policy, Tier, TokenEntry},
+        state::{Config, Fund, Policy, PriceSource, Tier, TokenEntry},
     },
     anchor_lang::prelude::*,
     anchor_spl::{
@@ -19,7 +27,10 @@ use {
     },
 };
 
-pub const ACCOUNTS_PER_HOLDING: usize = 3;
+/// `[price_a, price_b]` of one token.
+pub const PRICE_ACCOUNTS: usize = 2;
+/// `[vault, token_entry]` + the price accounts.
+pub const ACCOUNTS_PER_HOLDING: usize = 2 + PRICE_ACCOUNTS;
 
 /// How a non-USDC holding is priced. USDC is always 1:1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +97,7 @@ impl NavResult {
     }
 }
 
-/// Read and validate every holding's vault, registry entry and Pyth price.
+/// Read and validate every holding's vault, registry entry and price.
 pub fn compute(
     fund: &Fund,
     fund_key: &Pubkey,
@@ -114,13 +125,31 @@ pub fn compute(
         out.amounts[i] = vault_amount(&accs[0], fund_key, mint)?;
         if *mint != config.usdc_mint {
             let entry = token_entry(&accs[1], mint, program_id)?;
-            let data = accs[2].try_borrow_data()?;
-            let p = pyth::parse_price_update(accs[2].owner, &data, &entry.feed_id, now)?;
+            let p = price(&entry, &accs[2..], now)?;
             out.prices[i] = Some((p, entry.decimals));
             out.t2[i] = entry.tier == Tier::T2;
         }
     }
     Ok(out)
+}
+
+/// The price of a listed token from its `[price_a, price_b]` accounts.
+pub(crate) fn price(entry: &TokenEntry, accs: &[AccountInfo], now: i64) -> Result<pyth::PythPrice> {
+    require!(accs.len() >= PRICE_ACCOUNTS, ErrorCode::PriceAccountMissing);
+    match entry.price_source {
+        PriceSource::Pyth { feed_id } => {
+            let a = &accs[0];
+            Ok(pyth::parse_price_update(
+                a.owner,
+                &a.try_borrow_data()?,
+                &feed_id,
+                now,
+            )?)
+        }
+        PriceSource::KaminoReserve { .. } | PriceSource::Switchboard { .. } => {
+            err!(ErrorCode::PriceSourceUnsupported)
+        }
+    }
 }
 
 /// The amount in `vault`, which must be ATA(fund, mint) on the token program that owns it.

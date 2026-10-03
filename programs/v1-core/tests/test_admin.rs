@@ -93,7 +93,7 @@ fn token_apply_waits_7_days() {
         &[ix_queue_token(
             &env.admin.pubkey(),
             sol,
-            SOL_FEED,
+            pyth(SOL_FEED),
             Tier::T1,
             9,
         )],
@@ -119,7 +119,7 @@ fn token_apply_waits_7_days() {
     send(&mut env.svm, &[ix_apply_token(sol)], &[&anyone]).unwrap();
     let e: TokenEntry = read_account(&env.svm, &token_pda(&sol));
     assert!(e.active);
-    assert_eq!(e.feed_id, SOL_FEED);
+    assert_eq!(e.price_source, pyth(SOL_FEED));
     assert_eq!(e.tier, Tier::T1);
     assert_eq!(e.pending_eta, 0);
     expect_err(
@@ -138,7 +138,7 @@ fn token_requeue_keeps_live_entry_until_apply() {
         &[ix_queue_token(
             &env.admin.pubkey(),
             bonk,
-            USDC_FEED,
+            pyth(USDC_FEED),
             Tier::T1,
             5,
         )],
@@ -147,12 +147,12 @@ fn token_requeue_keeps_live_entry_until_apply() {
     .unwrap();
     let e: TokenEntry = read_account(&env.svm, &token_pda(&bonk));
     assert!(e.active);
-    assert_eq!(e.feed_id, BONK_FEED);
+    assert_eq!(e.price_source, pyth(BONK_FEED));
     assert_eq!(e.tier, Tier::T2);
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
     send(&mut env.svm, &[ix_apply_token(bonk)], &[&env.admin]).unwrap();
     let e: TokenEntry = read_account(&env.svm, &token_pda(&bonk));
-    assert_eq!(e.feed_id, USDC_FEED);
+    assert_eq!(e.price_source, pyth(USDC_FEED));
     assert_eq!(e.tier, Tier::T1);
 }
 
@@ -161,7 +161,7 @@ fn token_queue_rejects_non_admin() {
     let mut env = setup();
     let sol = create_mint(&mut env, 9);
     let other = funded(&mut env.svm);
-    let ix = ix_queue_token(&other.pubkey(), sol, SOL_FEED, Tier::T1, 9);
+    let ix = ix_queue_token(&other.pubkey(), sol, pyth(SOL_FEED), Tier::T1, 9);
     expect_err(
         send(&mut env.svm, &[ix], &[&other]),
         ErrorCode::Unauthorized,
@@ -178,7 +178,7 @@ fn token_queue_rejects_wrong_decimals() {
             &[ix_queue_token(
                 &env.admin.pubkey(),
                 sol,
-                SOL_FEED,
+                pyth(SOL_FEED),
                 Tier::T1,
                 6,
             )],
@@ -349,7 +349,13 @@ fn queue(
     mint: Pubkey,
     decimals: u8,
 ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-    let ix = ix_queue_token(&env.admin.pubkey(), mint, SOL_FEED, Tier::T1, decimals);
+    let ix = ix_queue_token(
+        &env.admin.pubkey(),
+        mint,
+        pyth(SOL_FEED),
+        Tier::T1,
+        decimals,
+    );
     send(&mut env.svm, &[ix], &[&env.admin])
 }
 
@@ -379,4 +385,60 @@ fn token_queue_accepts_plain_mints() {
     let t22 = anchor_spl::token_2022::ID;
     let plain_t22 = write_mint(&mut env.svm, &admin, 6, &t22);
     queue(&mut env, plain_t22, 6).unwrap();
+}
+
+/// One of each price source, with distinct field values.
+fn every_source() -> [PriceSource; 3] {
+    [
+        pyth(SOL_FEED),
+        PriceSource::KaminoReserve {
+            reserve: Pubkey::new_unique(),
+            underlying_feed_id: BONK_FEED,
+            underlying_decimals: 6,
+        },
+        PriceSource::Switchboard {
+            feed: Pubkey::new_unique(),
+        },
+    ]
+}
+
+#[test]
+fn token_registry_stores_every_price_source_and_t3() {
+    for source in every_source() {
+        let mut env = setup();
+        let mint = create_mint(&mut env, 9);
+        let ix = ix_queue_token(&env.admin.pubkey(), mint, source, Tier::T3, 9);
+        send(&mut env.svm, &[ix], &[&env.admin]).unwrap();
+        let e: TokenEntry = read_account(&env.svm, &token_pda(&mint));
+        assert_eq!(e.pending_price_source, source);
+        assert_eq!(e.pending_tier, Tier::T3);
+        assert!(!e.active);
+        warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
+        send(&mut env.svm, &[ix_apply_token(mint)], &[&env.admin]).unwrap();
+        let e: TokenEntry = read_account(&env.svm, &token_pda(&mint));
+        assert_eq!(e.price_source, source);
+        assert_eq!(e.tier, Tier::T3);
+        assert!(e.active);
+    }
+}
+
+#[test]
+fn token_queue_screens_unsafe_mints_for_every_source() {
+    for source in every_source() {
+        let mut env = setup();
+        let admin = env.admin.pubkey();
+        let spl = spl_token_interface::ID;
+        let frozen = write_mint_with_freeze(&mut env.svm, &admin, 9, &spl, Some(admin));
+        let ix = ix_queue_token(&admin, frozen, source, Tier::T1, 9);
+        expect_err(
+            send(&mut env.svm, &[ix], &[&env.admin]),
+            ErrorCode::UnsafeMint,
+        );
+        let ext = write_t22_mint_with_extension(&mut env.svm, &admin, 9);
+        let ix = ix_queue_token(&admin, ext, source, Tier::T1, 9);
+        expect_err(
+            send(&mut env.svm, &[ix], &[&env.admin]),
+            ErrorCode::UnsafeMint,
+        );
+    }
 }

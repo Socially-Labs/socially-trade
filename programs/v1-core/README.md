@@ -7,7 +7,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | Promise | Enforced by |
 |---|---|
 | Only you withdraw | Funds sit in PDA-owned vaults. `exit` pays a member only their pro-rata slice. `swap` reads every vault after the venue CPI: input vault falls by exactly `amount_in`, output vault rises by at least `min_out`, all other vaults are unchanged, and vault data length is unchanged. |
-| Rules on every trade | `swap` checks: venue registry (an active `VenueEntry`; v1-core, system, token and ATA programs are always denied), token tier caps (T2 buys only), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps). Policy loosening waits 48 h. |
+| Rules on every trade | `swap` checks: venue registry (an active `VenueEntry`; v1-core, system, token and ATA programs are always denied), token tier caps (T2 buys only; T3 buys are rejected with `TierCapExceeded` until the open-seas rules exist), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps). Policy loosening waits 48 h. |
 | Exits never wait | `exit` has no pause, freeze or price dependency. Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. |
 | Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. At `exit` the fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so the choice of stale or fresh prices cannot lower the fee much: the residual difference is bounded by the Pyth confidence plus the spot/EMA gap. `charge_annual_fee` uses the fresh upper-bound price only, and moves the breaker before it computes the fee. The HWM rises only when at least one fee share is taken. |
 | Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate. It blocks `deposit`, `create_fund` and any swap whose output is not USDC. Exits and sales to USDC are never blocked. |
@@ -15,8 +15,9 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 
 ## Pricing
 
-- Source: Pyth `PriceUpdateV2` accounts, parsed by hand in `src/pyth.rs`. No Pyth SDK.
-- Checks: owner is the Pyth receiver, account discriminator, `Full` verification level, feed id equals the registered feed, price age at most 60 s, confidence at most 200 bps of price, price greater than 0.
+- Each `TokenEntry` stores a `PriceSource`: `Pyth { feed_id }`, `KaminoReserve { reserve, underlying_feed_id, underlying_decimals }` or `Switchboard { feed }`. `nav::price` dispatches on it. Only `Pyth` prices today; the other two fail with `PriceSourceUnsupported`.
+- Pyth: `PriceUpdateV2` accounts, parsed by hand in `src/pyth.rs`. No Pyth SDK.
+- Pyth checks: owner is the Pyth receiver, account discriminator, `Full` verification level, feed id equals the registered feed, price age at most 60 s, confidence at most 200 bps of price, price greater than 0.
 - Valuation modes (`nav::ValuationMode`). A caller can pick any price inside the 60 s window, so each use takes the side that cannot help the caller:
 
 | Mode | Value of a non-USDC holding | Used for |
@@ -33,7 +34,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 
 - **PermanentDelegate on the share mint.** The delegate is the fund PDA. Only the yearly fee burn (`fees.rs`, `charge_annual_fee`) uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares. Tests assert the extension and the delegate.
 - **USDC freeze authority (Circle)** is accepted.
-- **Registry mint screening.** `queue_token` rejects any non-USDC mint that has a freeze authority or any Token-2022 extension. Exits therefore do not depend on token behaviour. The check runs at queue time only.
+- **Registry mint screening.** `queue_token` rejects any non-USDC mint that has a freeze authority or any Token-2022 extension, for every price source. Exits therefore do not depend on token behaviour. The check runs at queue time only.
 - **Proposal data is off-chain.** Only `route_hash` is on-chain. The client must keep the route bytes and the exact account list. Lost bytes mean the proposal cannot execute. The hash covers runtime-merged signer and writable flags, so read `route_hash` from the `ProposalCreated` event and build the matching transaction.
 - **A voter who exits keeps their vote weight**. Captain fee shares minted after a proposal opens also count.
 - **Closed fund.** When `total_shares == 0` the fund is closed. `deposit` returns `FundClosed`. The captain must create a new fund id.
@@ -46,7 +47,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | Instruction | Caller | Checks |
 |---|---|---|
 | `initialize_config` | Program upgrade authority | Signer equals ProgramData upgrade authority. USDC mint has 6 decimals. Becomes admin. |
-| `queue_token` | Admin | Tier, Pyth feed id. Non-USDC mint has no freeze authority and no extension. ETA = now + 7 days. |
+| `queue_token` | Admin | `PriceSource`, tier (`T1`, `T2`, `T3`), decimals. Non-USDC mint has no freeze authority and no extension. ETA = now + 7 days. |
 | `apply_token` | Anyone | ETA passed. |
 | `queue_venue` / `apply_venue` | Admin / anyone | One `VenueEntry` PDA `[b"venue", program]` per venue, no count limit. `queue_venue(active)` sets the pending value, ETA = now + 7 days. Removal (`active = false`) is queued the same way. A new queue overwrites the pending change and restarts the clock. |
 | `set_paused` | Admin | Immediate. Blocks `deposit`, `create_fund` and swaps whose output is not USDC. Never blocks `exit` or sales to USDC. |
@@ -71,15 +72,15 @@ Remaining-accounts layouts (the order is `fund.holdings`; re-read it after a swa
 
 | Instruction | Remaining accounts |
 |---|---|
-| NAV users (`deposit`, `poke_nav`, `charge_annual_fee`) | 3 per holding: `[vault, token_entry, price]` |
+| NAV users (`deposit`, `poke_nav`, `charge_annual_fee`) | 4 per holding: `[vault, token_entry, price_a, price_b]`. Pyth: `price_a` = PriceUpdateV2, `price_b` not read (pass any key, for example the v1-core program id). KaminoReserve: `price_a` = reserve, `price_b` = underlying PriceUpdateV2. Switchboard: `price_a` = feed, `price_b` not read. USDC: entry and both price accounts not read, but present. |
 | `exit` | 3 per holding: `[vault (w), user_token (w), mint]`, matched by mint in any order, each holding once (`DuplicateHolding`); then the optional NAV layout (in `fund.holdings` order) |
-| `swap`, `execute_proposal` | NAV layout (3 per holding), then the output mint price if the output is a new non-USDC holding, then the venue accounts |
+| `swap`, `execute_proposal` | NAV layout (4 per holding), then the output mint's `[price_a, price_b]` (same pair as in the NAV layout) if the output is a new non-USDC holding, then the venue accounts |
 | `propose_trade` | The venue accounts only |
 
 `swap`, `propose_trade` and `execute_proposal` take `venue_entry` (the `VenueEntry` PDA of `venue_program`) right after `venue_program`. A missing, inactive or wrong entry gives `VenueNotAllowed`.
 
 Compute budget:
-- `swap`: about 47-54k (2 holdings, held output) to 107-127k (7 to 8 holdings, new output); runs vary with the random keys (PDA bump search). `execute_proposal`: about 70k.
+- `swap`: about 48-53k (2 holdings, held output) to 106-128k (7 to 8 holdings, new output); runs vary with the random keys (PDA bump search). `execute_proposal`: about 70k.
 - `exit` with 8 holdings plus NAV accounts is near 200k CU. Add a compute-budget instruction.
 - Real Jupiter routes do not fit a legacy transaction. Use a v0 transaction with an address lookup table. `venue_data` is limited to 1024 bytes.
 

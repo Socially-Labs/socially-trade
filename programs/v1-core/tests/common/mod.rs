@@ -34,7 +34,7 @@ pub use {
     v1_core::{
         constants::*,
         errors::ErrorCode,
-        state::{Config, Tier, TokenEntry, VenueEntry},
+        state::{Config, PriceSource, Tier, TokenEntry, VenueEntry},
     },
 };
 
@@ -51,6 +51,15 @@ pub struct Env {
 pub const USDC_FEED: [u8; 32] = [1; 32];
 pub const SOL_FEED: [u8; 32] = [2; 32];
 pub const BONK_FEED: [u8; 32] = [3; 32];
+
+/// A Pyth price source for `feed_id`.
+pub fn pyth(feed_id: [u8; 32]) -> PriceSource {
+    PriceSource::Pyth { feed_id }
+}
+
+/// The key the harness passes for a price slot the source does not read
+/// (Pyth `price_b`). The program never reads it.
+pub const UNUSED_PRICE_ACCOUNT: Pubkey = v1_core::ID;
 
 /// `setup_bare()` plus `initialize_config` sent by the admin.
 pub fn setup() -> Env {
@@ -383,7 +392,7 @@ pub fn ix_initialize_config_with(
 pub fn ix_queue_token(
     admin: &Pubkey,
     mint: Pubkey,
-    feed_id: [u8; 32],
+    price_source: PriceSource,
     tier: Tier,
     decimals: u8,
 ) -> Instruction {
@@ -396,7 +405,7 @@ pub fn ix_queue_token(
             system_program: anchor_lang::system_program::ID,
         },
         v1_core::instruction::QueueToken {
-            feed_id,
+            price_source,
             tier,
             decimals,
         },
@@ -455,11 +464,16 @@ pub fn ix_set_paused(admin: &Pubkey, paused: bool) -> Instruction {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-/// List `mint` (queue, wait out the timelock, apply). Decimals come from the mint.
+/// List `mint` with a Pyth source (queue, wait out the timelock, apply).
 pub fn register_token(env: &mut Env, mint: Pubkey, feed_id: [u8; 32], tier: Tier) {
+    register_token_with(env, mint, pyth(feed_id), tier);
+}
+
+/// List `mint` with any price source. Decimals come from the mint.
+pub fn register_token_with(env: &mut Env, mint: Pubkey, source: PriceSource, tier: Tier) {
     let data = env.svm.get_account(&mint).expect("mint account").data;
     let decimals = SplMint::unpack_from_slice(&data).expect("mint").decimals;
-    let ix = ix_queue_token(&env.admin.pubkey(), mint, feed_id, tier, decimals);
+    let ix = ix_queue_token(&env.admin.pubkey(), mint, source, tier, decimals);
     send(&mut env.svm, &[ix], &[&env.admin]).expect("queue_token");
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
     let ix = ix_apply_token(mint);
@@ -716,7 +730,8 @@ pub fn price_account(mint: &Pubkey) -> Pubkey {
 }
 
 /// NAV remaining accounts for the fund's current holdings:
-/// `[vault_i, token_entry_i, price_i]` per holding, in order.
+/// `[vault_i, token_entry_i, price_a_i, price_b_i]` per holding, in order.
+/// Every test token is Pyth: `price_a` = its price account, `price_b` unused.
 pub fn nav_accounts(env: &Env, f: &FundHandles) -> Vec<AccountMeta> {
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     fund.holdings[..fund.holdings_len as usize]
@@ -727,6 +742,7 @@ pub fn nav_accounts(env: &Env, f: &FundHandles) -> Vec<AccountMeta> {
                 AccountMeta::new_readonly(ata(&f.fund, mint, &token_program), false),
                 AccountMeta::new_readonly(token_pda(mint), false),
                 AccountMeta::new_readonly(price_account(mint), false),
+                AccountMeta::new_readonly(UNUSED_PRICE_ACCOUNT, false),
             ]
         })
         .collect()
@@ -1262,7 +1278,7 @@ pub fn venue_data(a: &SwapArgs) -> Vec<u8> {
     .data()
 }
 
-/// Remaining accounts of a trade: NAV accounts, then `[output price]` when the
+/// Remaining accounts of a trade: NAV accounts, then `[price_a, price_b]` of the output when the
 /// output is new to the fund, then the mock venue's accounts (fund vaults as
 /// user_in / user_out).
 pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountMeta> {
@@ -1270,6 +1286,7 @@ pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountM
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     if !fund.holdings[..fund.holdings_len as usize].contains(&a.output) {
         metas.push(AccountMeta::new_readonly(price_account(&a.output), false));
+        metas.push(AccountMeta::new_readonly(UNUSED_PRICE_ACCOUNT, false));
     }
     metas.extend(venue_accounts(env, f, a));
     metas
