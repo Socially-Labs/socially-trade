@@ -13,9 +13,17 @@
 //!   authority. Remaining accounts: `[from (w), to (w), mint, token_program]`.
 //! - `5` approve: honest swap, and also approve `pool_authority` as delegate
 //!   of `user_in` for 1 unit.
+//! - `6` close authority: honest swap, and also SetAuthority(CloseAccount) on
+//!   `user_in` to `pool_authority`.
+//! - `7` reallocate: honest swap, and also a Token-2022 Reallocate of `user_in`
+//!   (room for MemoTransfer), paid by `pool_authority` (must be writable and
+//!   hold lamports). Remaining accounts: `[system_program]`.
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::program::invoke_signed;
 use anchor_spl::token_interface::{
-    approve, transfer_checked, Approve, Mint, TokenAccount, TokenInterface, TransferChecked,
+    approve, set_authority,
+    spl_token_2022::{extension::ExtensionType, instruction::AuthorityType},
+    transfer_checked, Approve, Mint, SetAuthority, TokenAccount, TokenInterface, TransferChecked,
 };
 
 declare_id!("7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng");
@@ -39,7 +47,7 @@ pub mod mock_venue {
         out_den: u64,
         mode: u8,
     ) -> Result<()> {
-        require!(mode <= 5, VenueError::BadMode);
+        require!(mode <= 7, VenueError::BadMode);
         require!(out_den > 0, VenueError::Overflow);
         let honest = u64::try_from(
             (amount_in as u128)
@@ -118,6 +126,41 @@ pub mod mock_venue {
                     },
                 ),
                 1,
+            )?;
+        }
+        if mode == 6 {
+            set_authority(
+                CpiContext::new(
+                    a.token_program_in.key(),
+                    SetAuthority {
+                        current_authority: a.authority.to_account_info(),
+                        account_or_mint: a.user_in.to_account_info(),
+                    },
+                ),
+                AuthorityType::CloseAccount,
+                Some(a.pool_authority.key()),
+            )?;
+        }
+        if mode == 7 {
+            let system = ctx.remaining_accounts.first().ok_or(VenueError::BadMode)?;
+            let ix = anchor_spl::token_interface::spl_token_2022::instruction::reallocate(
+                &a.token_program_in.key(),
+                &a.user_in.key(),
+                &a.pool_authority.key(),
+                &a.authority.key(),
+                &[],
+                &[ExtensionType::MemoTransfer],
+            )?;
+            let seeds: &[&[u8]] = &[POOL_SEED, &[ctx.bumps.pool_authority]];
+            invoke_signed(
+                &ix,
+                &[
+                    a.user_in.to_account_info(),
+                    a.pool_authority.to_account_info(),
+                    system.clone(),
+                    a.authority.to_account_info(),
+                ],
+                &[seeds],
             )?;
         }
         Ok(())

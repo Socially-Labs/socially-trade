@@ -2,7 +2,10 @@
 //! Never blocked: no pause, freeze or price check can stop an exit.
 //!
 //! Remaining accounts:
-//! 1. 3 per holding, in `fund.holdings` order: `[vault_i (w), user_token_i (w), mint_i]`.
+//! 1. 3 per holding: `[vault_i (w), user_token_i (w), mint_i]`. Matched to the
+//!    holdings by mint key, in any order; each holding exactly once
+//!    (`DuplicateHolding` for a repeat, `HoldingNotFound` for a non-holding mint
+//!    or a short list).
 //!    `user_token_i` is the user's token account for `mint_i` on the mint's
 //!    token program. It is not read when the user's slice of that holding is 0.
 //! 2. Optional, after that: the NAV layout (see `nav`). The fee pps is
@@ -136,13 +139,20 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
 
     // Pay out shares/total of each vault. `total` still counts the fee shares
     // (minted to the captain, burned from the user below), so it is the real supply.
-    for (mint_key, accs) in a.fund.holdings[..len]
-        .iter()
-        .zip(exit_accs.chunks_exact(EXIT_ACCOUNTS_PER_HOLDING))
-    {
+    // Triples are matched to holdings by mint key, in any order (a swap-remove
+    // can reorder holdings after the client built the list). `len` triples,
+    // each a holding and none twice, cover every holding exactly once.
+    let mut seen = [false; MAX_HOLDINGS];
+    for accs in exit_accs.chunks_exact(EXIT_ACCOUNTS_PER_HOLDING) {
         let (vault, to, mint) = (&accs[0], &accs[1], &accs[2]);
+        let mint_key = mint.key;
+        let i = a.fund.holdings[..len]
+            .iter()
+            .position(|h| h == mint_key)
+            .ok_or(ErrorCode::HoldingNotFound)?;
+        require!(!seen[i], ErrorCode::DuplicateHolding);
+        seen[i] = true;
         let held = nav::vault_amount(vault, &fund_key, mint_key)?;
-        require_keys_eq!(mint.key(), *mint_key, ErrorCode::HoldingNotFound);
         let out = math::pro_rata(held, shares, total)?;
         if out == 0 {
             continue;

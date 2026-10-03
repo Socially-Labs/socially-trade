@@ -120,7 +120,8 @@ pub fn performance_fee(
     } else {
         to_u64(mul_div_floor(fee as u128, ONE, price_per_share as u128)?)?
     };
-    let new_hwm = if fee > 0 { value - fee } else { hwm };
+    // No shares taken (fee rounds to 0 shares): the HWM stays.
+    let new_hwm = if fee_shares > 0 { value - fee } else { hwm };
     Ok(FeeOutcome {
         fee_usdc: fee,
         fee_shares,
@@ -329,6 +330,16 @@ mod tests {
         // V = 0 here, so no gain; direct pps==0 path: hwm 0, shares>0 -> V=0 -> no fee
         let o = performance_fee(1_000, 0, 0).unwrap();
         assert_eq!((o.fee_usdc, o.fee_shares, o.new_hwm), (0, 0, 0));
+    }
+    #[test]
+    fn fee_below_one_share_keeps_hwm() {
+        // 1 share unit at $2M/share: value 2 USDC, gain 1 USDC, fee 0.1 USDC,
+        // but 0.1 USDC is 0.05 share units -> 0 shares. The HWM must not rise.
+        let o = performance_fee(1, 2_000_000_000_000, 1_000_000).unwrap();
+        assert_eq!(
+            (o.fee_usdc, o.fee_shares, o.new_hwm),
+            (100_000, 0, 1_000_000)
+        );
     }
     #[test]
     fn bps_floor() {

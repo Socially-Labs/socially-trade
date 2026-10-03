@@ -14,6 +14,9 @@ pub const SHARE_DECIMALS: u8 = 6;
 pub const USDC_DECIMALS: u8 = 6;
 pub const BPS_DENOMINATOR: u64 = 10_000;
 
+/// Length of the delegate day and of the fund's autonomous budget window.
+pub const DAY_SECS: i64 = 86_400;
+
 // Policy defaults.
 pub const DEFAULT_AUTONOMOUS_BPS: u16 = 1000;
 pub const DEFAULT_DRAWDOWN_BPS: u16 = 3000;

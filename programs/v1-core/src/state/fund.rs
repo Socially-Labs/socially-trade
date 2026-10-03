@@ -21,4 +21,8 @@ pub struct Fund {
     pub proposal_count: u64,
     pub created_at: i64,
     pub bump: u8,
+    /// Start of the rolling 24 h autonomous budget (captain and delegate trades).
+    pub window_start: i64,
+    /// USD (6 dp) traded autonomously since `window_start`. Votes do not count.
+    pub window_volume_usd: u64,
 }

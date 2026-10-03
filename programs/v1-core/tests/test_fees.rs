@@ -141,20 +141,22 @@ fn annual_fee_zero_below_hwm() {
 }
 
 #[test]
-fn annual_fee_uses_last_pps_when_higher() {
+fn annual_fee_ignores_stale_higher_last_pps() {
+    // Ruling 24: the annual fee uses the fresh upper-bound pps only.
     let (mut env, cap, m, f) = whitepaper();
     let keeper = funded_user(&mut env, 0);
     let mut fund = read_fund(&env, &f);
     fund.last_price_per_share = 1_300_000;
     write_fund(&mut env, &f, &fund);
     warp(&mut env.svm, YEAR_SECS);
-    // value at 1.30 = 1300, fee 30 USDC = 23.076923 shares (not the 1.15 fee).
+    // Fresh pps 1.15: the whitepaper fee (15 USDC = 13.043478 shares), not the 1.30 fee.
     charge(&mut env, &f, &m.pubkey(), &keeper).unwrap();
     assert_eq!(
         token_balance(&env.svm, &share_ata(&f, &cap.pubkey())),
-        300_000_000 + 23_076_923
+        300_000_000 + 13_043_478
     );
-    assert_eq!(member(&env, &f, &m.pubkey()).hwm, 1_270_000_000);
+    assert_eq!(member(&env, &f, &m.pubkey()).hwm, 1_135_000_000);
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 1_150_000);
 }
 
 #[test]

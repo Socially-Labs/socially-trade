@@ -147,6 +147,8 @@ struct Plan {
     out_idx: usize,
     out_is_new: bool,
     venue_start: usize,
+    /// The new `(window_start, window_volume_usd)`; None for a voted trade.
+    window: Option<(i64, u64)>,
 }
 
 /// The shared trade core: checks, venue CPI, balance checks, tier caps,
@@ -167,6 +169,10 @@ pub fn execute_swap<'info>(
         t2: [false; MAX_HOLDINGS],
     });
     let plan = prepare(t, remaining, p, delegate, now, &mut priced)?;
+    if let Some((start, volume)) = plan.window {
+        t.fund.window_start = start;
+        t.fund.window_volume_usd = volume;
+    }
     if let Some(want) = p.route_hash {
         require!(
             route_hash(p.venue_data, &remaining[plan.venue_start..]) == want,
@@ -286,11 +292,25 @@ fn prepare(
     let pre_nav = priced.valuation(ValuationMode::Spot)?.nav;
     let trade_usd = priced.value_at(in_idx, p.amount_in, ValuationMode::Spot)?;
 
-    // 5. Autonomous size limit.
-    if p.check_size {
+    // 5. Autonomous size limit, per trade and as a rolling 24 h budget for the
+    // fund (captain and delegates together), so a split trade cannot skip the
+    // vote. A trade the crew voted for skips both and does not use the budget.
+    let window = if p.check_size {
         let limit = math::bps_of(pre_nav, t.policy.params.autonomous_bps)?;
         require!(trade_usd <= limit, ErrorCode::TradeTooLarge);
-    }
+        let (start, used) = if now.saturating_sub(fund.window_start) >= DAY_SECS {
+            (now, 0)
+        } else {
+            (fund.window_start, fund.window_volume_usd)
+        };
+        let total = used
+            .checked_add(math::to_u64(trade_usd)?)
+            .ok_or(ErrorCode::MathOverflow)?;
+        require!(total as u128 <= limit, ErrorCode::TradeTooLarge);
+        Some((start, total))
+    } else {
+        None
+    };
 
     // 6. Delegate speed limits.
     if let Some(d) = delegate {
@@ -328,6 +348,7 @@ fn prepare(
         out_idx,
         out_is_new: out_held.is_none(),
         venue_start,
+        window,
     })
 }
 
@@ -447,7 +468,7 @@ fn settle<'info>(
     let mut after = [0u64; MAX_HOLDINGS];
     for (i, amount) in after[..priced.len].iter_mut().enumerate() {
         let vault = vault_at(t, remaining, i);
-        require!(vault.data_len() == lens[i], ErrorCode::HoldingNotFound);
+        require!(vault.data_len() == lens[i], ErrorCode::VaultResized);
         *amount = clean_vault_amount(vault, &fund_key)?;
     }
 

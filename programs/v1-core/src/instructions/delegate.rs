@@ -9,8 +9,6 @@ use {
     anchor_lang::prelude::*,
 };
 
-const DAY_SECS: i64 = 86_400;
-
 #[derive(Accounts)]
 #[instruction(key: Pubkey)]
 pub struct AddDelegate<'info> {

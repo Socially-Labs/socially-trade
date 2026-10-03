@@ -98,4 +98,8 @@ pub enum ErrorCode {
     VenueDataMismatch,
     #[msg("Venue or mints do not match the proposal")]
     ProposalMismatch,
+    #[msg("Venue changed the size of a fund vault")]
+    VaultResized,
+    #[msg("Exit accounts list the same holding twice")]
+    DuplicateHolding,
 }

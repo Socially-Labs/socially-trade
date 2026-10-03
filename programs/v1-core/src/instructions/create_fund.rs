@@ -157,6 +157,8 @@ pub fn create_fund(ctx: Context<CreateFund>, fund_id: u64, deposit: u64) -> Resu
         proposal_count: 0,
         created_at: now,
         bump: fund_bump,
+        window_start: now,
+        window_volume_usd: 0,
     });
     let params = PolicyParams {
         autonomous_bps: DEFAULT_AUTONOMOUS_BPS,

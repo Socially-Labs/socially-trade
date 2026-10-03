@@ -1119,6 +1119,23 @@ impl Trading {
         set_usd_price(&mut self.env, &bonk, &BONK_FEED, BONK_PRICE_E8);
     }
 
+    /// Empty the fund's 24 h autonomous budget (for tests about other checks).
+    pub fn reset_budget(&mut self) {
+        let mut fund = read_fund(&self.env, &self.f);
+        fund.window_volume_usd = 0;
+        write_fund(&mut self.env, &self.f, &fund);
+    }
+
+    /// `reset_budget`, then `swap`.
+    #[allow(clippy::result_large_err)] // LiteSVM's own error type.
+    pub fn swap_fresh(
+        &mut self,
+        args: &SwapArgs,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.reset_budget();
+        self.swap(args)
+    }
+
     /// Captain swap through the mock venue; see `SwapArgs::new`.
     #[allow(clippy::result_large_err)] // LiteSVM's own error type.
     pub fn swap(

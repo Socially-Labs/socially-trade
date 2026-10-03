@@ -146,7 +146,9 @@ fn fund(t: &Trading) -> Fund {
 #[test]
 fn captain_swaps_within_10pct() {
     let mut t = trading_fund();
-    let res = t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+    let res = t
+        .swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
     assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 6 * SOL);
     assert_eq!(token_balance(&t.env.svm, &t.f.usdc_vault), 9_100 * USDC);
     let fd = fund(&t);
@@ -158,7 +160,7 @@ fn captain_swaps_within_10pct() {
     assert!(events(&res) >= 1, "TradeExecuted");
 
     // A second buy of a held token does not add a holding.
-    t.swap(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
     assert_eq!(fund(&t).holdings_len, 2);
     assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 7 * SOL);
 }
@@ -335,14 +337,14 @@ fn delegate_of_other_fund_rejected() {
 fn t2_cap_25pct() {
     let mut t = trading_fund();
     // 900 USDC each (< 10% of NAV 10,000). 1,800 = 18% ok; 2,700 = 27% > 25%.
-    t.swap(&buy_bonk(&t, 900 * USDC)).unwrap();
-    t.swap(&buy_bonk(&t, 900 * USDC)).unwrap();
+    t.swap_fresh(&buy_bonk(&t, 900 * USDC)).unwrap();
+    t.swap_fresh(&buy_bonk(&t, 900 * USDC)).unwrap();
     expect_err(
-        t.swap(&buy_bonk(&t, 900 * USDC)),
+        t.swap_fresh(&buy_bonk(&t, 900 * USDC)),
         ErrorCode::TierCapExceeded,
     );
     // Exactly 25% is allowed.
-    t.swap(&buy_bonk(&t, 700 * USDC)).unwrap();
+    t.swap_fresh(&buy_bonk(&t, 700 * USDC)).unwrap();
     let bonk_vault = ata(&t.f.fund, &t.bonk, &spl_token_interface::ID);
     assert_eq!(token_balance(&t.env.svm, &bonk_vault), 2_500 * USDC * 5000);
 }
@@ -378,11 +380,12 @@ fn t2_total_cap_50pct() {
 #[test]
 fn paused_blocks_buys_allows_sell_to_usdc() {
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
     let ix = ix_set_paused(&t.env.admin.pubkey(), true);
     send(&mut t.env.svm, &[ix], &[&t.env.admin]).unwrap();
-    expect_err(t.swap(&buy_sol(&t, 100 * USDC, 0)), ErrorCode::Paused);
-    t.swap(&sell_sol(&t, 2 * SOL)).unwrap();
+    expect_err(t.swap_fresh(&buy_sol(&t, 100 * USDC, 0)), ErrorCode::Paused);
+    t.swap_fresh(&sell_sol(&t, 2 * SOL)).unwrap();
     assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 4 * SOL);
     assert_eq!(token_balance(&t.env.svm, &t.f.usdc_vault), 9_400 * USDC);
 }
@@ -390,21 +393,29 @@ fn paused_blocks_buys_allows_sell_to_usdc() {
 #[test]
 fn frozen_fund_only_sells_to_usdc() {
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
     let mut fd = fund(&t);
     fd.frozen = true;
     write_fund(&mut t.env, &t.f, &fd);
-    expect_err(t.swap(&buy_sol(&t, 100 * USDC, 0)), ErrorCode::FundFrozen);
-    expect_err(t.swap(&buy_bonk(&t, 100 * USDC)), ErrorCode::FundFrozen);
+    expect_err(
+        t.swap_fresh(&buy_sol(&t, 100 * USDC, 0)),
+        ErrorCode::FundFrozen,
+    );
+    expect_err(
+        t.swap_fresh(&buy_bonk(&t, 100 * USDC)),
+        ErrorCode::FundFrozen,
+    );
     // Selling to USDC is allowed and the breaker (EMA pps 1.0 >= 0.7 line) thaws the fund.
-    t.swap(&sell_sol(&t, SOL)).unwrap();
+    t.swap_fresh(&sell_sol(&t, SOL)).unwrap();
     assert!(!fund(&t).frozen);
 }
 
 #[test]
 fn swap_breaker_uses_ema_and_size_uses_spot() {
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
     // Spot $150 (trade size, price guard), EMA $50: EMA NAV = 9,100 + 6*50 = 9,400.
     let now_ts = now(&t.env);
     set_price_ema(
@@ -418,7 +429,7 @@ fn swap_breaker_uses_ema_and_size_uses_spot() {
         5_000_000_000,
         0,
     );
-    t.swap(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
     // After: USDC 8,950, SOL 7 -> EMA NAV 8,950 + 350 = 9,300 over 10,000 shares.
     assert_eq!(fund(&t).last_price_per_share, 930_000);
 }
@@ -495,7 +506,9 @@ fn swap_rejects_other_holding_moved_by_venue() {
     // The venue takes SOL (another holding) instead of USDC: the USDC vault is
     // unchanged (input not spent) and the SOL vault falls.
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    t.reset_budget();
     let mut ix = ix_swap(
         &t.env,
         &t.f,
@@ -686,7 +699,7 @@ fn sell_one_sol(
 ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
     let mut a = sell_sol(t, SOL);
     a.min_out = min_out;
-    t.swap(&a)
+    t.swap_fresh(&a)
 }
 
 #[test]
@@ -694,7 +707,8 @@ fn sell_to_usdc_is_price_guarded_with_3x_band() {
     // Band: 3 x 100 bps = 300 bps under the 150 USDC oracle amount -> 145.5 USDC.
     for state in ["normal", "paused", "frozen"] {
         let mut t = trading_fund();
-        t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+        t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+            .unwrap();
         match state {
             "paused" => {
                 let ix = ix_set_paused(&t.env.admin.pubkey(), true);
@@ -725,7 +739,8 @@ fn sell_to_usdc_is_price_guarded_with_3x_band() {
 #[test]
 fn sell_to_usdc_band_is_capped_at_15pct() {
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
     // Max slippage 600 bps (above the 500 floor, so only reachable by a direct
     // write): 3x = 1800, capped at 1500 bps -> 127.5 USDC. With a valid policy
     // (<= 500) the cap is never below 3x; this shows the min() binds.
@@ -753,15 +768,16 @@ fn tier_cap_only_blocks_t2_buys() {
     setup_venue_pool(&mut t.env, &sol, &t1b, 0, 1_000_000 * USDC);
     t.refresh_prices();
     set_usd_price(&mut t.env, &t1b, &[9; 32], 100_000_000);
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
-    t.swap(&buy_bonk(&t, 900 * USDC)).unwrap();
-    t.swap(&buy_bonk(&t, 900 * USDC)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    t.swap_fresh(&buy_bonk(&t, 900 * USDC)).unwrap();
+    t.swap_fresh(&buy_bonk(&t, 900 * USDC)).unwrap();
     // BONK doubles: 3,600 of NAV 11,800 = 30.5% > 25%.
     let bonk = t.bonk;
     set_usd_price(&mut t.env, &bonk, &BONK_FEED, 2 * BONK_PRICE_E8);
 
     // T2 -> T1: sell 100,000 BONK ($4) into SOL. 1 BONK unit = 1/375 SOL unit.
-    t.swap(&SwapArgs::new(
+    t.swap_fresh(&SwapArgs::new(
         bonk,
         sol,
         10_000_000_000,
@@ -771,38 +787,44 @@ fn tier_cap_only_blocks_t2_buys() {
     ))
     .unwrap();
     // T1 -> T1: 1 SOL into the second T1 token ($150 -> 150 tokens).
-    t.swap(&SwapArgs::new(sol, t1b, SOL, 148_500_000, 3, 20))
+    t.swap_fresh(&SwapArgs::new(sol, t1b, SOL, 148_500_000, 3, 20))
         .unwrap();
     // USDC -> T1 is fine too.
-    t.swap(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
     // Buying more T2 is still blocked.
-    expect_err(t.swap(&buy_bonk(&t, 10 * USDC)), ErrorCode::TierCapExceeded);
+    expect_err(
+        t.swap_fresh(&buy_bonk(&t, 10 * USDC)),
+        ErrorCode::TierCapExceeded,
+    );
 }
 
 #[test]
 fn emptied_input_leaves_holdings() {
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
     assert_eq!(fund(&t).holdings_len, 2);
-    t.swap(&sell_sol(&t, 6 * SOL)).unwrap();
+    t.swap_fresh(&sell_sol(&t, 6 * SOL)).unwrap();
     let fd = fund(&t);
     assert_eq!(fd.holdings_len, 1);
     assert_eq!(fd.holdings[1], Pubkey::default());
     // A partial sale keeps the holding.
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
-    t.swap(&sell_sol(&t, SOL)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    t.swap_fresh(&sell_sol(&t, SOL)).unwrap();
     assert_eq!(fund(&t).holdings_len, 2);
 }
 
 #[test]
 fn emptied_middle_holding_is_swap_removed() {
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
-    t.swap(&buy_bonk(&t, 100 * USDC)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    t.swap_fresh(&buy_bonk(&t, 100 * USDC)).unwrap();
     let fd = fund(&t);
     assert_eq!(fd.holdings[..3], [t.env.usdc, t.sol, t.bonk]);
     // Empty SOL (index 1): BONK moves into its slot.
-    t.swap(&sell_sol(&t, 6 * SOL)).unwrap();
+    t.swap_fresh(&sell_sol(&t, 6 * SOL)).unwrap();
     let fd = fund(&t);
     assert_eq!(fd.holdings_len, 2);
     assert_eq!(fd.holdings[..3], [t.env.usdc, t.bonk, Pubkey::default()]);
@@ -814,12 +836,13 @@ fn emptied_middle_holding_is_swap_removed() {
 #[test]
 fn emptied_last_holding_is_removed() {
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
-    t.swap(&buy_bonk(&t, 100 * USDC)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    t.swap_fresh(&buy_bonk(&t, 100 * USDC)).unwrap();
     // Sell all 500,000,000,000 BONK units (100 USDC); 1 BONK unit = 1/5000 USDC unit.
     let usdc = t.env.usdc;
     let a = SwapArgs::new(t.bonk, usdc, 500_000_000_000, 97 * USDC, 1, 5000);
-    t.swap(&a).unwrap();
+    t.swap_fresh(&a).unwrap();
     let fd = fund(&t);
     assert_eq!(fd.holdings_len, 2);
     assert_eq!(fd.holdings[..3], [usdc, t.sol, Pubkey::default()]);
@@ -829,10 +852,12 @@ fn emptied_last_holding_is_removed() {
 fn venue_that_moves_a_third_holding_reverts() {
     // Mode 4: an honest USDC -> SOL swap, plus 1 BONK unit out of the BONK vault.
     let mut t = trading_fund();
-    t.swap(&buy_sol(&t, 900 * USDC, 5_940_000_000)).unwrap();
-    t.swap(&buy_bonk(&t, 100 * USDC)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    t.swap_fresh(&buy_bonk(&t, 100 * USDC)).unwrap();
     let bonk_vault = ata(&t.f.fund, &t.bonk, &spl_token_interface::ID);
     let before = token_balance(&t.env.svm, &bonk_vault);
+    t.reset_budget();
     let a = buy_sol(&t, 150 * USDC, 990_000_000).mode(4);
     let mut ix = ix_swap(&t.env, &t.f, &t.cap.pubkey(), None, &a);
     let pool = venue_pool_authority();
@@ -855,4 +880,176 @@ fn venue_that_approves_a_delegate_reverts() {
     let mut t = trading_fund();
     let a = buy_sol(&t, 150 * USDC, 990_000_000).mode(5);
     expect_err(t.swap(&a), ErrorCode::HoldingNotFound);
+}
+
+// ---------------------------------------------------------------------------
+// Final review fixes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn split_trade_hits_24h_autonomous_budget() {
+    // Ruling 23: a 30% trade split into 3 x 10% must not skip the vote.
+    let mut t = trading_fund();
+    let start = now(&t.env);
+    t.swap(&buy_sol(&t, 1_000 * USDC, 6_600_000_000)).unwrap();
+    let fd = fund(&t);
+    assert_eq!(
+        (fd.window_start, fd.window_volume_usd),
+        (start, 1_000 * USDC)
+    );
+    expect_err(
+        t.swap(&buy_sol(&t, 1_000 * USDC, 6_600_000_000)),
+        ErrorCode::TradeTooLarge,
+    );
+    expect_err(
+        t.swap(&buy_sol(&t, USDC, 6_600_000)),
+        ErrorCode::TradeTooLarge,
+    );
+    // 1 s before the window ends: still full.
+    warp(&mut t.env.svm, 86_399);
+    t.refresh_prices();
+    expect_err(
+        t.swap(&buy_sol(&t, USDC, 6_600_000)),
+        ErrorCode::TradeTooLarge,
+    );
+    // 24 h after the window start: a new window.
+    warp(&mut t.env.svm, 1);
+    t.refresh_prices();
+    // (NAV is now a hair under 10,000 from rounding, so 990 not 1,000.)
+    t.swap(&buy_sol(&t, 990 * USDC, 6_534_000_000)).unwrap();
+    let fd = fund(&t);
+    assert_eq!(
+        (fd.window_start, fd.window_volume_usd),
+        (start + 86_400, 990 * USDC)
+    );
+}
+
+#[test]
+fn delegate_trades_count_against_fund_window() {
+    let mut t = trading_fund();
+    let bot = funded(&mut t.env.svm);
+    // The delegate's own limits are wide; only the fund window binds.
+    let ix = ix_add_delegate(
+        &t.cap.pubkey(),
+        &t.f,
+        &bot.pubkey(),
+        1_000 * USDC,
+        5_000 * USDC,
+    );
+    send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
+    let d = Some(delegate_pda(&t.f.fund, &bot.pubkey()));
+    let go = |t: &mut Trading, usdc: u64| {
+        let a = buy_sol(t, usdc, usdc * 20 / 3 * 99 / 100);
+        let ix = ix_swap(&t.env, &t.f, &bot.pubkey(), d, &a);
+        send(&mut t.env.svm, &[ix], &[&bot])
+    };
+    t.swap(&buy_sol(&t, 600 * USDC, 3_960_000_000)).unwrap();
+    go(&mut t, 400 * USDC).unwrap();
+    assert_eq!(fund(&t).window_volume_usd, 1_000 * USDC);
+    expect_err(go(&mut t, USDC), ErrorCode::TradeTooLarge);
+    expect_err(
+        t.swap(&buy_sol(&t, USDC, 6_600_000)),
+        ErrorCode::TradeTooLarge,
+    );
+    assert_eq!(delegate(&t.env, &t.f, &bot.pubkey()).day_volume, 400 * USDC);
+}
+
+#[test]
+fn venue_that_sets_close_authority_reverts() {
+    // Mode 6: an honest swap, plus SetAuthority(CloseAccount) on the input vault.
+    let mut t = trading_fund();
+    let a = buy_sol(&t, 150 * USDC, 990_000_000).mode(6);
+    expect_err(t.swap(&a), ErrorCode::HoldingNotFound);
+    assert_eq!(token_balance(&t.env.svm, &t.f.usdc_vault), 10_000 * USDC);
+}
+
+#[test]
+fn venue_that_reallocates_a_vault_reverts() {
+    // Mode 7: an honest swap, plus a Token-2022 Reallocate of the input vault
+    // (USDC is classic SPL, so the input is a Token-2022 holding).
+    let mut t = trading_fund();
+    let admin = t.env.admin.pubkey();
+    let t22 = write_mint(&mut t.env.svm, &admin, 6, &TOKEN_2022_ID);
+    let feed = [7u8; 32];
+    register_token(&mut t.env, t22, feed, Tier::T1);
+    let usdc = t.env.usdc;
+    setup_venue_pool(&mut t.env, &usdc, &t22, 0, 1_000_000 * USDC);
+    t.refresh_prices();
+    set_usd_price(&mut t.env, &t22, &feed, 200_000_000); // $2
+    t.swap(&SwapArgs::new(usdc, t22, 900 * USDC, 445_500_000, 1, 2))
+        .unwrap();
+    let vault = ata(&t.f.fund, &t22, &TOKEN_2022_ID);
+    let len = t.env.svm.get_account(&vault).unwrap().data.len();
+
+    let pool = venue_pool_authority();
+    t.env.svm.airdrop(&pool, 1_000_000_000).unwrap();
+    let a = SwapArgs::new(t22, usdc, 50 * USDC, 97 * USDC, 2, 1).mode(7);
+    let mut ix = ix_swap(&t.env, &t.f, &t.cap.pubkey(), None, &a);
+    // Venue accounts are the last 10; pool_authority (index 1) pays the rent.
+    let n = ix.accounts.len();
+    assert_eq!(ix.accounts[n - 9].pubkey, pool);
+    ix.accounts[n - 9].is_writable = true;
+    ix.accounts.push(AccountMeta::new_readonly(
+        anchor_lang::system_program::ID,
+        false,
+    ));
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&t.cap]),
+        ErrorCode::VaultResized,
+    );
+    assert_eq!(t.env.svm.get_account(&vault).unwrap().data.len(), len);
+    assert_eq!(token_balance(&t.env.svm, &vault), 450 * USDC);
+}
+
+/// Exit triples are matched by mint: holdings reordered by a swap-remove after
+/// the client built the exit still pay out.
+#[test]
+fn exit_matches_triples_by_mint_after_reorder() {
+    let mut t = trading_fund();
+    let m = funded_user(&mut t.env, 10_000 * USDC);
+    deposit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    t.swap_fresh(&buy_bonk(&t, 100 * USDC)).unwrap();
+    assert_eq!(fund(&t).holdings[..3], [t.env.usdc, t.sol, t.bonk]);
+    for mint in [t.sol, t.bonk] {
+        let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &mint, &spl_token_interface::ID);
+        send(&mut t.env.svm, &[ix], &[&m]).unwrap();
+    }
+    // Built for [USDC, SOL, BONK].
+    let old = ix_exit_unpriced(&t.env, &t.f, &m.pubkey(), 10_000 * USDC);
+
+    // Empty SOL (BONK moves into slot 1), then buy SOL again: [USDC, BONK, SOL].
+    t.swap_fresh(&sell_sol(&t, 6 * SOL)).unwrap();
+    t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
+        .unwrap();
+    assert_eq!(fund(&t).holdings[..3], [t.env.usdc, t.bonk, t.sol]);
+
+    // A list naming one holding twice (and so missing another) is rejected.
+    let mut dup = old.clone();
+    let n = dup.accounts.len();
+    let first = dup.accounts[n - 6..n - 3].to_vec();
+    dup.accounts[n - 3..].clone_from_slice(&first);
+    expect_err(
+        send(&mut t.env.svm, &[dup], &[&m]),
+        ErrorCode::DuplicateHolding,
+    );
+
+    let bonk_vault = ata(&t.f.fund, &t.bonk, &spl_token_interface::ID);
+    let (usdc_v, sol_v, bonk_v) = (
+        token_balance(&t.env.svm, &t.f.usdc_vault),
+        token_balance(&t.env.svm, &sol_vault(&t)),
+        token_balance(&t.env.svm, &bonk_vault),
+    );
+    send(&mut t.env.svm, &[old], &[&m]).unwrap();
+    // The member held half the shares: half of every vault.
+    let user = |mint: &Pubkey| {
+        token_balance(
+            &t.env.svm,
+            &ata(&m.pubkey(), mint, &spl_token_interface::ID),
+        )
+    };
+    assert_eq!(user(&t.sol), sol_v / 2);
+    assert_eq!(user(&t.bonk), bonk_v / 2);
+    assert_eq!(user(&t.env.usdc), usdc_v / 2);
 }

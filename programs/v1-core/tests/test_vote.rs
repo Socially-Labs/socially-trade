@@ -486,3 +486,32 @@ fn route_hash_counts_signer_flag() {
         ErrorCode::VenueDataMismatch,
     );
 }
+
+#[test]
+fn passed_proposal_executes_with_full_window() {
+    // Ruling 23: a crew-voted trade neither needs nor uses the 24 h budget.
+    let (mut t, _m) = crew();
+    // NAV 16,666.67: the window holds 1,666.67 USDC. Use 1,600 of it.
+    t.swap(&SwapArgs::new(
+        t.env.usdc,
+        t.sol,
+        1_600 * USDC,
+        10_560_000_000,
+        20,
+        3,
+    ))
+    .unwrap();
+    let small = SwapArgs::new(t.env.usdc, t.sol, 100 * USDC, 660_000_000, 20, 3);
+    expect_err(t.swap(&small), ErrorCode::TradeTooLarge);
+
+    let a = big_buy(&t);
+    propose(&mut t, &a).unwrap();
+    let cap = t.cap.insecure_clone();
+    vote(&mut t, &cap, 0, true).unwrap();
+    warp(&mut t.env.svm, 1800);
+    t.refresh_prices();
+    let stranger = funded(&mut t.env.svm);
+    execute(&mut t, &stranger, 0, &a).unwrap();
+    assert_eq!(read_fund(&t.env, &t.f).window_volume_usd, 1_600 * USDC);
+    assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 30_666_666_666);
+}

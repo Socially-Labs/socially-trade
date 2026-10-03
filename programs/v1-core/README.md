@@ -9,9 +9,9 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | Only you withdraw | Funds sit in PDA-owned vaults. `exit` pays a member only their pro-rata slice. `swap` reads every vault after the venue CPI: input vault falls by exactly `amount_in`, output vault rises by at least `min_out`, all other vaults are unchanged, and vault data length is unchanged. |
 | Rules on every trade | `swap` checks: venue allowlist, token tier caps (T2 buys only, Ruling 11), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps; Ruling 14). Policy loosening waits 48 h. |
 | Exits never wait | `exit` has no pause, freeze or price dependency (Rulings 3, 8, 9). Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. |
-| Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. Fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so a member cannot dodge the fee by choosing stale or fresh prices (Rulings 8, 21). |
+| Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. At `exit` the fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so the choice of stale or fresh prices cannot lower the fee much: the residual difference is bounded by the Pyth confidence plus the spot/EMA gap (Rulings 8, 21). `charge_annual_fee` uses the fresh upper-bound price only, and moves the breaker before it computes the fee (Ruling 24). The HWM rises only when at least one fee share is taken. |
 | Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate. It blocks `deposit`, `create_fund` and any swap whose output is not USDC. Exits and sales to USDC are never blocked. |
-| Big trades need the crew | `propose_trade` stores `route_hash`, a hash of the venue data and the ordered venue account metas (Rulings 16, 19). `execute_proposal` must match it. Vote weight is the share balance at vote time (Ruling 17). |
+| Big trades need the crew | A captain or delegate trade must fit two limits: `autonomous_bps` of spot NAV per trade, and the same amount as a rolling 24 h budget per fund (`window_start`, `window_volume_usd`), shared by the captain and all delegates. So a large trade split into small ones still needs a vote (Ruling 23). A voted trade does not use the budget. `propose_trade` stores `route_hash`, a hash of the venue data and the ordered venue account metas (Rulings 16, 19). `execute_proposal` must match it. Vote weight is the share balance at vote time (Ruling 17). |
 
 ## Pricing
 
@@ -21,11 +21,15 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 
 | Mode | Value of a non-USDC holding | Used for |
 |---|---|---|
-| `DepositUpperBound` | `max(price, ema_price) + conf` | Deposit share price, fee price per share |
+| `DepositUpperBound` | `max(price, ema_price) + conf` | Deposit share price, fee price per share (exit: max with `last_price_per_share`; annual fee: alone) |
 | `Ema` | `ema_price` | Drawdown breaker, peak NAV, `last_price_per_share` |
 | `Spot` | `price` | Swap size, price guard, tier caps |
 
 ## Disclosures and accepted risks
+
+- **The admin is the program upgrade authority.** An instant program upgrade bypasses every on-chain timelock (token, venue and policy queues). Before real money, the upgrade authority must be a timelocked multisig, or the program must be made immutable.
+- **Frozen fund with only USDC cannot unfreeze.** The breaker moves only on NAV. A fund more than `drawdown_bps` below its peak that holds only USDC has no trade that can raise its NAV, so it stays frozen. Members can still exit. The captain opens a new fund.
+- **Holders can burn their own shares.** NonTransferable does not block a holder's own `burn`. A self-burn lowers the mint supply but not `fund.total_shares`. Price per share and every other member's payout stay the same; the burned shares' slice stays in the vaults and no one can claim it. Self-harm only.
 
 - **PermanentDelegate on the share mint.** The delegate is the fund PDA. Only the yearly fee burn (`fees.rs`, `charge_annual_fee`) uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares (Ruling 21). Tests assert the extension and the delegate.
 - **USDC freeze authority (Circle)** is accepted.
@@ -50,7 +54,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | `deposit` | Anyone | Not paused, fund not closed, NAV (upper bound) nonzero. |
 | `exit` | Member | Own share balance only. No pause, freeze or price check. Pro-rata of every holding. Fee on profit above HWM. Captain must keep at least 5% of shares while others hold shares. |
 | `add_delegate` / `update_delegate` / `revoke_delegate` | Captain | Per-trade and daily USD limits. Revoke returns rent. |
-| `swap` | Captain or delegate | Venue, tiers, caps, delegate limits, breaker, price guard, vault balance deltas, share mint not in venue accounts. Size above the `autonomous_bps` limit needs a proposal. |
+| `swap` | Captain or delegate | Venue, tiers, caps, delegate limits, breaker, price guard, vault balance deltas, vault sizes (`VaultResized`), share mint not in venue accounts. A trade above `autonomous_bps` of spot NAV, or above the fund's rolling 24 h budget of the same size, needs a proposal. |
 | `propose_trade` | Captain or delegate | Stores `route_hash` and the trade terms. Opens the vote window from policy. |
 | `vote` | Member | One vote per member (VoteRecord `init`). Open proposal, before the deadline. Weight = share balance. |
 | `execute_proposal` | Anyone | Proposal open. `now <= deadline` (else `ProposalExpired`). `yes_weight * 2 > total_shares_snapshot` (else `ProposalNotPassed`). `venue_data` and venue accounts match `route_hash`. Then runs the same checks as `swap`, without the size limit. |
@@ -58,7 +62,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | `update_policy` | Captain | Within the protocol floor. Stricter applies now and cancels a pending loosen (Ruling 20). Looser queues 48 h. |
 | `apply_policy` | Anyone | ETA passed. |
 | `poke_nav` | Anyone | Valid NAV accounts. Moves peak NAV and the breaker on EMA prices. |
-| `charge_annual_fee` | Anyone | Target is not the captain. One year since last fee. Fresh prices required. |
+| `charge_annual_fee` | Anyone | Target is not the captain. One year since last fee. Fresh prices required. Fee price = fresh upper-bound pps; the breaker moves first. |
 | `captain_log` | Captain or delegate | Emits a reason hash. No state. |
 
 ## Client notes
@@ -68,12 +72,12 @@ Remaining-accounts layouts (the order is `fund.holdings`; re-read it after a swa
 | Instruction | Remaining accounts |
 |---|---|
 | NAV users (`deposit`, `poke_nav`, `charge_annual_fee`) | 3 per holding: `[vault, token_entry, price]` |
-| `exit` | 3 per holding: `[vault (w), user_token (w), mint]`, then optional NAV layout |
+| `exit` | 3 per holding: `[vault (w), user_token (w), mint]`, matched by mint in any order, each holding once (`DuplicateHolding`); then the optional NAV layout (in `fund.holdings` order) |
 | `swap`, `execute_proposal` | NAV layout (3 per holding), then the output mint price if the output is a new non-USDC holding, then the venue accounts |
 | `propose_trade` | The venue accounts only |
 
 Compute budget:
-- `swap`: 47k (2 holdings, held output) to 108k (8 holdings, new output). `execute_proposal`: about 64k.
+- `swap`: about 46-48k (2 holdings, held output) to 100-115k (7 to 8 holdings, new output); runs vary with the random keys (PDA bump search). `execute_proposal`: about 70k.
 - `exit` with 8 holdings plus NAV accounts is near 200k CU. Add a compute-budget instruction.
 - Real Jupiter routes do not fit a legacy transaction. Use a v0 transaction with an address lookup table. `venue_data` is limited to 1024 bytes.
 
