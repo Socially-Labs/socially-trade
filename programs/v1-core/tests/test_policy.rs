@@ -152,6 +152,21 @@ fn looser_waits_48h() {
 }
 
 #[test]
+fn stricter_cancels_pending_loosen() {
+    let (mut env, cap, m, f) = fund_with_member();
+    warp(&mut env.svm, 1);
+    update(&mut env, &f, &cap, params(2000, 3000, 100, 1800)).unwrap();
+    assert_ne!(read_policy(&env, &f).pending_eta, 0);
+    let strict = params(500, 2000, 50, 3600);
+    update(&mut env, &f, &cap, strict).unwrap();
+    let p = read_policy(&env, &f);
+    assert_eq!((p.params, p.pending, p.pending_eta), (strict, strict, 0));
+    warp(&mut env.svm, POLICY_LOOSEN_DELAY_SECS + 1);
+    expect_err(apply(&mut env, &f, &m), ErrorCode::NothingPending);
+    assert_eq!(read_policy(&env, &f).params, strict);
+}
+
+#[test]
 fn below_floor_rejected() {
     let (mut env, cap, _m, f) = fund_with_member();
     let over = [

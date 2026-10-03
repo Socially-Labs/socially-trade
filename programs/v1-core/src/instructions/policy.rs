@@ -32,8 +32,10 @@ pub fn update_policy(ctx: Context<UpdatePolicy>, new: PolicyParams) -> Result<()
     let fund = ctx.accounts.fund.key();
     let policy = &mut ctx.accounts.policy;
     if new.stricter_or_equal(&policy.params) {
-        // A pending loosen stays queued: it was announced and still waits its delay.
+        // Ruling 20: a stricter change cancels any pending loosen.
         policy.params = new;
+        policy.pending = new;
+        policy.pending_eta = 0;
         emit!(PolicyApplied { fund });
     } else {
         let eta = Clock::get()?
