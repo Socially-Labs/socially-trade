@@ -21,14 +21,68 @@ use {
 
 pub const ACCOUNTS_PER_HOLDING: usize = 3;
 
+/// How a non-USDC holding is priced. USDC is always 1:1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NavResult {
+pub enum ValuationMode {
+    /// Pyth spot price.
+    Spot,
+    /// `max(price, ema_price) + conf`: an upper bound, so a depositor cannot
+    /// pick a low in-window price to get more shares.
+    DepositUpperBound,
+    /// Pyth EMA price: slow to move, for the breaker / peak / recorded pps.
+    Ema,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Valuation {
     /// Total fund value, USDC base units.
     pub nav: u128,
     /// Value of each holding, USDC base units; 0 past `holdings_len`.
     pub values: [u128; MAX_HOLDINGS],
 }
 
+/// Validated vault amounts and prices. Read once, value in any mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NavResult {
+    pub len: usize,
+    pub amounts: [u64; MAX_HOLDINGS],
+    /// `None` = USDC (1:1). Otherwise the price and the token's decimals.
+    pub prices: [Option<(pyth::PythPrice, u8)>; MAX_HOLDINGS],
+}
+
+impl NavResult {
+    pub fn valuation(&self, mode: ValuationMode) -> Result<Valuation> {
+        let mut out = Valuation {
+            nav: 0,
+            values: [0; MAX_HOLDINGS],
+        };
+        for i in 0..self.len {
+            let amount = self.amounts[i];
+            let value = match self.prices[i] {
+                None => amount as u128,
+                Some((p, decimals)) => {
+                    let price = match mode {
+                        ValuationMode::Spot => p.price,
+                        ValuationMode::DepositUpperBound => {
+                            let hi = p.price.max(p.ema_price) as i128 + p.conf as i128;
+                            i64::try_from(hi).map_err(|_| ErrorCode::MathOverflow)?
+                        }
+                        ValuationMode::Ema => {
+                            require!(p.ema_price > 0, ErrorCode::PriceNonPositive);
+                            p.ema_price
+                        }
+                    };
+                    math::token_value_usdc(amount, price, p.expo, decimals)?
+                }
+            };
+            out.values[i] = value;
+            out.nav = out.nav.checked_add(value).ok_or(ErrorCode::MathOverflow)?;
+        }
+        Ok(out)
+    }
+}
+
+/// Read and validate every holding's vault, registry entry and Pyth price.
 pub fn compute(
     fund: &Fund,
     fund_key: &Pubkey,
@@ -43,25 +97,22 @@ pub fn compute(
         ErrorCode::PriceAccountMissing
     );
     let mut out = NavResult {
-        nav: 0,
-        values: [0; MAX_HOLDINGS],
+        len,
+        amounts: [0; MAX_HOLDINGS],
+        prices: [None; MAX_HOLDINGS],
     };
     for (i, (mint, accs)) in fund.holdings[..len]
         .iter()
         .zip(remaining.chunks_exact(ACCOUNTS_PER_HOLDING))
         .enumerate()
     {
-        let amount = vault_amount(&accs[0], fund_key, mint)?;
-        let value = if *mint == config.usdc_mint {
-            amount as u128
-        } else {
+        out.amounts[i] = vault_amount(&accs[0], fund_key, mint)?;
+        if *mint != config.usdc_mint {
             let entry = token_entry(&accs[1], mint, program_id)?;
-            let price = accs[2].try_borrow_data()?;
-            let p = pyth::parse_price_update(accs[2].owner, &price, &entry.feed_id, now)?;
-            math::token_value_usdc(amount, p.price, p.expo, entry.decimals)?
-        };
-        out.values[i] = value;
-        out.nav = out.nav.checked_add(value).ok_or(ErrorCode::MathOverflow)?;
+            let data = accs[2].try_borrow_data()?;
+            let p = pyth::parse_price_update(accs[2].owner, &data, &entry.feed_id, now)?;
+            out.prices[i] = Some((p, entry.decimals));
+        }
     }
     Ok(out)
 }

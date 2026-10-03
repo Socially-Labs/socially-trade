@@ -218,16 +218,11 @@ fn fund_with_member() -> (Env, Keypair, Keypair, FundHandles) {
 /// path that adds holdings comes in a later task), create the fund's vault
 /// for it, and mint `amount` into the vault.
 fn inject_holding(env: &mut Env, f: &FundHandles, mint: Pubkey, amount: u64) -> Pubkey {
-    use anchor_lang::AccountSerialize;
     let mut fund = read_fund(env, f);
     let i = fund.holdings_len as usize;
     fund.holdings[i] = mint;
     fund.holdings_len += 1;
-    let mut account = env.svm.get_account(&f.fund).unwrap();
-    let mut data = Vec::new();
-    fund.try_serialize(&mut data).unwrap();
-    account.data[..data.len()].copy_from_slice(&data);
-    env.svm.set_account(f.fund, account).unwrap();
+    write_fund(env, f, &fund);
 
     let token = spl_token_interface::ID;
     let vault = ata(&f.fund, &mint, &token);
@@ -481,26 +476,40 @@ fn nav_rejects_wrong_token_entry() {
     expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::TokenNotListed);
 }
 
-#[test]
-fn breaker_freezes_on_drawdown_and_thaws_on_recovery() {
+/// Write SOL's price account: spot and ema in whole dollars, conf in cents.
+fn sol_price(env: &mut Env, sol: &Pubkey, spot: i64, conf_cents: u64, ema: i64) {
+    let t = now(env);
+    let conf = conf_cents * 1_000_000;
+    set_price_ema(
+        &mut env.svm,
+        price_account(sol),
+        &SOL_FEED,
+        spot * 100_000_000,
+        conf,
+        -8,
+        t,
+        ema * 100_000_000,
+        conf,
+    );
+}
+
+/// Fund at pps 2.0 = peak: 600 USDC + 2 SOL @ $150 over 450 shares.
+fn fund_at_peak_with_sol() -> (Env, Keypair, FundHandles, Pubkey) {
     let (mut env, _cap, m, f) = fund_with_member();
     let sol = listed_sol(&mut env, 150);
     inject_holding(&mut env, &f, sol, 2_000_000_000); // NAV 600 / 300 shares
-    deposit(&mut env, &f, &m, 300_000_000).unwrap(); // pps 2.0 = peak; NAV 900 / 450
+    deposit(&mut env, &f, &m, 300_000_000).unwrap(); // pps 2.0; NAV 900 / 450
     let fund = read_fund(&env, &f);
     assert_eq!((fund.peak_price_per_share, fund.frozen), (2_000_000, false));
+    (env, m, f, sol)
+}
 
-    // SOL to $1: NAV 602 / 450 shares = 1.337777 < line 1.4 (30% drawdown).
-    let t = now(&env);
-    set_price(
-        &mut env.svm,
-        price_account(&sol),
-        &SOL_FEED,
-        100_000_000,
-        0,
-        -8,
-        t,
-    );
+#[test]
+fn breaker_freezes_on_ema_drawdown_and_thaws_on_recovery() {
+    let (mut env, m, f, sol) = fund_at_peak_with_sol();
+
+    // EMA to $1 (spot steady): EMA NAV 602 / 450 = 1.337777 < line 1.4.
+    sol_price(&mut env, &sol, 150, 0, 1);
     let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
     assert_eq!(events(&res), 2, "Deposited + BreakerChanged");
     let fund = read_fund(&env, &f);
@@ -508,22 +517,115 @@ fn breaker_freezes_on_drawdown_and_thaws_on_recovery() {
     assert_eq!(fund.peak_price_per_share, 2_000_000);
     assert!(fund.frozen);
 
-    // SOL back to $150: pps above the line again.
-    set_price(
-        &mut env.svm,
-        price_account(&sol),
-        &SOL_FEED,
-        150_00000000,
-        0,
-        -8,
-        t,
-    );
+    // EMA back to $150: 910 / 455 = 2.0, above the line again.
+    sol_price(&mut env, &sol, 150, 0, 150);
     let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
     assert_eq!(events(&res), 2, "Deposited + BreakerChanged");
-    let fund = read_fund(&env, &f);
-    assert!(!fund.frozen);
+    assert!(!read_fund(&env, &f).frozen);
     // No flip, no BreakerChanged.
     let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
     assert_eq!(events(&res), 1);
+    let fund = read_fund(&env, &f);
+    assert!(!fund.frozen);
     assert_eq!(fund.peak_price_per_share, 2_000_000);
+}
+
+#[test]
+fn breaker_ignores_spot_crash_with_steady_ema() {
+    let (mut env, m, f, sol) = fund_at_peak_with_sol();
+    sol_price(&mut env, &sol, 1, 0, 150);
+    let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
+    assert_eq!(events(&res), 1, "no BreakerChanged");
+    let fund = read_fund(&env, &f);
+    assert!(!fund.frozen);
+    assert_eq!(fund.last_price_per_share, 2_000_000);
+}
+
+#[test]
+fn deposit_values_at_upper_bound_with_conf() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    // $150 +- $1.50 (1%): 2 SOL valued at $151.50 = $303 -> NAV 603 / 300 shares.
+    sol_price(&mut env, &sol, 150, 150, 150);
+    deposit(&mut env, &f, &m, 300_000_000).unwrap();
+    // floor(300e6 * 300e6 / 603e6)
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        149_253_731
+    );
+    // Breaker records the EMA price: 600 / 300 = 2.0.
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
+}
+
+#[test]
+fn deposit_cannot_cherry_pick_low_spot() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    // Low in-window spot ($100), EMA $150: valued at max = $150 -> NAV 600.
+    // Spot NAV (500) would give 180 shares.
+    sol_price(&mut env, &sol, 100, 0, 150);
+    deposit(&mut env, &f, &m, 300_000_000).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        150_000_000
+    );
+}
+
+#[test]
+fn deposit_rejects_non_positive_ema() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    sol_price(&mut env, &sol, 150, 0, 0);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceNonPositive,
+    );
+}
+
+#[test]
+fn nav_rejects_wrong_price_account_type() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    let mut acc = env.svm.get_account(&price_account(&sol)).unwrap();
+    acc.data[0] ^= 1;
+    env.svm.set_account(price_account(&sol), acc).unwrap();
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceWrongAccountType,
+    );
+}
+
+/// Overwrite the Fund account with `fund`.
+fn write_fund(env: &mut Env, f: &FundHandles, fund: &Fund) {
+    use anchor_lang::AccountSerialize;
+    let mut account = env.svm.get_account(&f.fund).unwrap();
+    let mut data = Vec::new();
+    fund.try_serialize(&mut data).unwrap();
+    account.data[..data.len()].copy_from_slice(&data);
+    env.svm.set_account(f.fund, account).unwrap();
+}
+
+#[test]
+fn deposit_rejects_closed_fund() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let mut fund = read_fund(&env, &f);
+    fund.total_shares = 0;
+    write_fund(&mut env, &f, &fund);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::FundClosed,
+    );
+}
+
+#[test]
+fn deposit_rejects_zero_nav_with_shares() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let mut vault = env.svm.get_account(&f.usdc_vault).unwrap();
+    vault.data[64..72].fill(0); // empty vault, 300 shares outstanding
+    env.svm.set_account(f.usdc_vault, vault).unwrap();
+    expect_err(deposit(&mut env, &f, &m, 100_000_000), ErrorCode::NavZero);
 }

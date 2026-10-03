@@ -84,4 +84,10 @@ pub enum ErrorCode {
     FeeNotDue,
     #[msg("Input and output mint are the same")]
     SameMint,
+    #[msg("Price account is not a PriceUpdateV2 account")]
+    PriceWrongAccountType,
+    #[msg("Fund is closed (no shares outstanding)")]
+    FundClosed,
+    #[msg("Fund NAV is zero while shares are outstanding")]
+    NavZero,
 }

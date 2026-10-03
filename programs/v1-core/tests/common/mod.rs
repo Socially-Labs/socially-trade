@@ -569,7 +569,8 @@ pub fn read_config(env: &Env) -> Config {
     read_account(&env.svm, &config_pda())
 }
 
-/// Write a fake Pyth `PriceUpdateV2` account (Full verification, owner = Pyth receiver).
+/// Write a fake Pyth `PriceUpdateV2` account (Full verification, owner = Pyth
+/// receiver) with ema = spot (ema_price = price, ema_conf = conf).
 pub fn set_price(
     svm: &mut LiteSVM,
     address: Pubkey,
@@ -579,7 +580,42 @@ pub fn set_price(
     expo: i32,
     publish_time: i64,
 ) {
-    let data = v1_core::pyth::encode_price_update(true, feed_id, price, conf, expo, publish_time);
+    set_price_ema(
+        svm,
+        address,
+        feed_id,
+        price,
+        conf,
+        expo,
+        publish_time,
+        price,
+        conf,
+    );
+}
+
+/// `set_price` with an explicit EMA.
+#[allow(clippy::too_many_arguments)]
+pub fn set_price_ema(
+    svm: &mut LiteSVM,
+    address: Pubkey,
+    feed_id: &[u8; 32],
+    price: i64,
+    conf: u64,
+    expo: i32,
+    publish_time: i64,
+    ema_price: i64,
+    ema_conf: u64,
+) {
+    let data = v1_core::pyth::encode_price_update_ema(
+        true,
+        feed_id,
+        price,
+        conf,
+        expo,
+        publish_time,
+        ema_price,
+        ema_conf,
+    );
     svm.set_account(
         address,
         Account {

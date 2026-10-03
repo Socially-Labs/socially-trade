@@ -8,8 +8,11 @@ use {
 pub const PYTH_RECEIVER: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
 pub const MAX_PRICE_AGE_SECS: i64 = 60;
 pub const MAX_CONF_BPS: u128 = 200;
-// feed_id 32 + price 8 + conf 8 + expo 4 + publish_time 8.
-const MSG_LEN: usize = 60;
+/// First 8 bytes of sha256("account:PriceUpdateV2").
+pub const PRICE_UPDATE_V2_DISCRIMINATOR: [u8; 8] = [34, 241, 35, 99, 157, 126, 244, 205];
+// feed_id 32, price 8, conf 8, expo 4, publish_time 8, prev_publish_time 8,
+// ema_price 8, ema_conf 8.
+const MSG_LEN: usize = 84;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PythPrice {
@@ -17,6 +20,8 @@ pub struct PythPrice {
     pub conf: u64,
     pub expo: i32,
     pub publish_time: i64,
+    pub ema_price: i64,
+    pub ema_conf: u64,
 }
 
 pub fn parse_price_update(
@@ -27,6 +32,10 @@ pub fn parse_price_update(
 ) -> Result<PythPrice, ErrorCode> {
     if *owner != PYTH_RECEIVER {
         return Err(ErrorCode::PriceWrongOwner);
+    }
+    let disc = data.get(..8).ok_or(ErrorCode::PriceAccountMissing)?;
+    if disc != PRICE_UPDATE_V2_DISCRIMINATOR {
+        return Err(ErrorCode::PriceWrongAccountType);
     }
     // 8 discriminator + 32 write_authority, then the verification level tag.
     let tag = *data.get(40).ok_or(ErrorCode::PriceAccountMissing)?;
@@ -45,6 +54,9 @@ pub fn parse_price_update(
         conf: u64::from_le_bytes(msg[40..48].try_into().unwrap()),
         expo: i32::from_le_bytes(msg[48..52].try_into().unwrap()),
         publish_time: i64::from_le_bytes(msg[52..60].try_into().unwrap()),
+        // msg[60..68] = prev_publish_time.
+        ema_price: i64::from_le_bytes(msg[68..76].try_into().unwrap()),
+        ema_conf: u64::from_le_bytes(msg[76..84].try_into().unwrap()),
     };
     if now.saturating_sub(price.publish_time) > MAX_PRICE_AGE_SECS {
         return Err(ErrorCode::PriceStale);
@@ -58,7 +70,7 @@ pub fn parse_price_update(
     Ok(price)
 }
 
-/// Build `PriceUpdateV2` bytes. For tests and `test-helpers` only.
+/// Build `PriceUpdateV2` bytes with ema = spot. For tests and `test-helpers` only.
 #[cfg(any(test, feature = "test-helpers"))]
 pub fn encode_price_update(
     level_full: bool,
@@ -68,7 +80,33 @@ pub fn encode_price_update(
     expo: i32,
     publish_time: i64,
 ) -> Vec<u8> {
-    let mut d = vec![0u8; 8 + 32]; // discriminator + write_authority
+    encode_price_update_ema(
+        level_full,
+        feed_id,
+        price,
+        conf,
+        expo,
+        publish_time,
+        price,
+        conf,
+    )
+}
+
+/// Build `PriceUpdateV2` bytes with an explicit ema. For tests and `test-helpers` only.
+#[cfg(any(test, feature = "test-helpers"))]
+#[allow(clippy::too_many_arguments)]
+pub fn encode_price_update_ema(
+    level_full: bool,
+    feed_id: &[u8; 32],
+    price: i64,
+    conf: u64,
+    expo: i32,
+    publish_time: i64,
+    ema_price: i64,
+    ema_conf: u64,
+) -> Vec<u8> {
+    let mut d = PRICE_UPDATE_V2_DISCRIMINATOR.to_vec();
+    d.extend_from_slice(&[0u8; 32]); // write_authority
     if level_full {
         d.push(1);
     } else {
@@ -79,8 +117,10 @@ pub fn encode_price_update(
     d.extend_from_slice(&conf.to_le_bytes());
     d.extend_from_slice(&expo.to_le_bytes());
     d.extend_from_slice(&publish_time.to_le_bytes());
-    // prev_publish_time, ema_price, ema_conf, posted_slot
-    d.extend_from_slice(&[0u8; 32]);
+    d.extend_from_slice(&publish_time.to_le_bytes()); // prev_publish_time
+    d.extend_from_slice(&ema_price.to_le_bytes());
+    d.extend_from_slice(&ema_conf.to_le_bytes());
+    d.extend_from_slice(&[0u8; 8]); // posted_slot
     d
 }
 
@@ -107,9 +147,29 @@ mod tests {
                 price: 15_000_000_000,
                 conf: 1_000_000,
                 expo: -8,
-                publish_time: NOW - 5
+                publish_time: NOW - 5,
+                ema_price: 15_000_000_000,
+                ema_conf: 1_000_000,
             }
         );
+    }
+    #[test]
+    fn pyth_discriminator_is_sha256_of_account_name() {
+        let h = solana_sha256_hasher::hash(b"account:PriceUpdateV2").to_bytes();
+        assert_eq!(h[..8], PRICE_UPDATE_V2_DISCRIMINATOR);
+    }
+    #[test]
+    fn pyth_wrong_discriminator() {
+        let mut d = enc(true, &FEED, 100, 0, NOW);
+        d[0] ^= 1;
+        assert_eq!(parse(&d), Err(ErrorCode::PriceWrongAccountType));
+        assert_eq!(parse(&d[..7]), Err(ErrorCode::PriceAccountMissing));
+    }
+    #[test]
+    fn pyth_reads_ema() {
+        let d = encode_price_update_ema(true, &FEED, 100, 1, -8, NOW, 90, 2);
+        let p = parse(&d).unwrap();
+        assert_eq!((p.price, p.conf, p.ema_price, p.ema_conf), (100, 1, 90, 2));
     }
     #[test]
     fn pyth_wrong_owner() {
@@ -184,6 +244,8 @@ mod tests {
         let d = enc(true, &FEED, 100, 0, NOW);
         assert_eq!(parse(&d[..40]), Err(ErrorCode::PriceAccountMissing));
         assert_eq!(parse(&d[..100]), Err(ErrorCode::PriceAccountMissing));
+        assert_eq!(parse(&d[..124]), Err(ErrorCode::PriceAccountMissing));
+        assert!(parse(&d[..125]).is_ok());
         assert_eq!(parse(&[]), Err(ErrorCode::PriceAccountMissing));
     }
 }

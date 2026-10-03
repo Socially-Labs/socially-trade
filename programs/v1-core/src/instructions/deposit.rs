@@ -5,7 +5,8 @@ use {
         constants::*,
         errors::ErrorCode,
         events::Deposited,
-        math, nav,
+        math,
+        nav::{self, ValuationMode},
         state::{Config, Fund, Member, Policy},
     },
     anchor_lang::prelude::*,
@@ -79,17 +80,22 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
 
     // Price before the deposit lands in the vault.
     let total_before = a.fund.total_shares;
-    let nav = nav::compute(
+    require!(total_before > 0, ErrorCode::FundClosed);
+    let priced = nav::compute(
         &a.fund,
         &fund_key,
         &a.config,
         ctx.remaining_accounts,
         now,
         ctx.program_id,
-    )?
-    .nav;
-    let pps = math::price_per_share(nav, total_before)?;
-    let shares = math::shares_for_deposit(amount, total_before, nav)?;
+    )?;
+    // Shares from the upper-bound NAV (favor the fund); breaker from the EMA NAV.
+    let nav_upper = priced.valuation(ValuationMode::DepositUpperBound)?.nav;
+    require!(nav_upper > 0, ErrorCode::NavZero);
+    let nav_ema = priced.valuation(ValuationMode::Ema)?.nav;
+    let pps_paid = math::price_per_share(nav_upper, total_before)?;
+    let pps_ema = math::price_per_share(nav_ema, total_before)?;
+    let shares = math::shares_for_deposit(amount, total_before, nav_upper)?;
 
     token_interface::transfer_checked(
         CpiContext::new(
@@ -130,7 +136,7 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         .total_shares
         .checked_add(shares)
         .ok_or(ErrorCode::MathOverflow)?;
-    nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, pps)?;
+    nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, pps_ema)?;
 
     let member = &mut ctx.accounts.member;
     if member.owner == Pubkey::default() {
@@ -152,7 +158,7 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         member: user,
         amount,
         shares,
-        price_per_share: pps,
+        price_per_share: pps_paid,
     });
     Ok(())
 }
