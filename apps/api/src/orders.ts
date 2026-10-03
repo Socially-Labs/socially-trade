@@ -130,15 +130,6 @@ export async function submitOrder(
   });
 }
 
-export async function listOrders(pool: DbPool, fundId: string) {
-  const result = await pool.query(
-    `SELECT id, side, instrument_id, notional_usdc::text, status, reject_reason,
-            submitted_at, processed_at FROM orders
-     WHERE fund_id = $1 ORDER BY submitted_at DESC LIMIT 100`, [fundId],
-  );
-  return result.rows;
-}
-
 export async function getOrder(pool: DbPool, fundId: string, orderId: string) {
   const result = await pool.query(
     `SELECT o.id, o.side, o.instrument_id, o.notional_usdc::text, o.status,

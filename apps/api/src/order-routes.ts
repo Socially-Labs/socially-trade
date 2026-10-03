@@ -2,8 +2,9 @@ import type { FastifyInstance } from "fastify";
 import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
 import { getFund } from "./funds.js";
-import { cancelOrder, getOrder, listOrders, previewOrder, submitOrder } from "./orders.js";
+import { cancelOrder, getOrder, previewOrder, submitOrder } from "./orders.js";
 import { idempotencyKey } from "./request.js";
+import { historySchema, orderHistory, type HistoryQuery } from "./history.js";
 
 export function registerOrderRoutes(app: FastifyInstance, db: () => DbPool): void {
   const orderBody = {
@@ -36,9 +37,9 @@ export function registerOrderRoutes(app: FastifyInstance, db: () => DbPool): voi
     },
   );
 
-  app.get<{ Params: { fundId: string } }>("/v0/funds/:fundId/orders", async (request) => {
+  app.get<{ Params: { fundId: string }; Querystring: HistoryQuery }>("/v0/funds/:fundId/orders", { schema: historySchema }, async (request) => {
     await getFund(db(), request.params.fundId);
-    return { mode: "PAPER", orders: await listOrders(db(), request.params.fundId) };
+    return { mode: "PAPER", ...await orderHistory(db(), "fund", request.params.fundId, request.query) };
   });
 
   app.get<{ Params: { fundId: string; orderId: string } }>(
