@@ -63,6 +63,34 @@ pub fn token_value_usdc(
             .map_or(0, |scale| base / scale))
     }
 }
+/// Inverse of `token_value_usdc`: token base units worth `value` USDC base units, floor.
+pub fn usdc_to_token(
+    value: u128,
+    price: i64,
+    expo: i32,
+    token_decimals: u8,
+) -> Result<u128, ErrorCode> {
+    if price <= 0 {
+        return Err(ErrorCode::MathOverflow);
+    }
+    // amount = value * 10^(decimals - 6 - expo) / price
+    let exp = (token_decimals as i32)
+        .checked_sub(6)
+        .and_then(|e| e.checked_sub(expo))
+        .ok_or(ErrorCode::MathOverflow)?;
+    if exp >= 0 {
+        let scale = 10u128
+            .checked_pow(exp as u32)
+            .ok_or(ErrorCode::MathOverflow)?;
+        mul_div_floor(value, scale, price as u128)
+    } else {
+        // A divisor past u128 floors to 0.
+        Ok(10u128
+            .checked_pow(exp.unsigned_abs())
+            .and_then(|scale| scale.checked_mul(price as u128))
+            .map_or(0, |d| value / d))
+    }
+}
 pub fn pro_rata(amount: u64, part: u64, whole: u64) -> Result<u64, ErrorCode> {
     to_u64(mul_div_floor(amount as u128, part as u128, whole as u128)?)
 }
@@ -226,6 +254,33 @@ mod tests {
     fn value_non_positive_price_rejected() {
         assert_eq!(token_value_usdc(1, 0, -8, 9), Err(ErrorCode::MathOverflow));
         assert_eq!(token_value_usdc(1, -5, -8, 9), Err(ErrorCode::MathOverflow));
+    }
+    #[test]
+    fn usdc_to_token_inverts_value() {
+        // 900 USDC at $150 = 6 SOL (9 dp).
+        assert_eq!(
+            usdc_to_token(900_000_000, 15_000_000_000, -8, 9).unwrap(),
+            6_000_000_000
+        );
+        // 100 USDC at $0.00002 = 5,000,000 BONK (5 dp).
+        assert_eq!(
+            usdc_to_token(100_000_000, 2_000, -8, 5).unwrap(),
+            500_000_000_000
+        );
+        // Floors: 1 USDC unit at $150 = 6.67 SOL units -> 6.
+        assert_eq!(usdc_to_token(1, 15_000_000_000, -8, 9).unwrap(), 6);
+        // Negative exponent path: $500 (5 * 10^2), 6 dp -> 1 token for 500 USDC.
+        assert_eq!(usdc_to_token(500_000_000, 5, 2, 6).unwrap(), 1_000_000);
+        assert_eq!(usdc_to_token(1, 1, 60, 0).unwrap(), 0);
+    }
+    #[test]
+    fn usdc_to_token_errors() {
+        assert_eq!(usdc_to_token(1, 0, -8, 9), Err(ErrorCode::MathOverflow));
+        assert_eq!(usdc_to_token(1, 1, -60, 0), Err(ErrorCode::MathOverflow));
+        assert_eq!(
+            usdc_to_token(u128::MAX, 1, -8, 6),
+            Err(ErrorCode::MathOverflow)
+        );
     }
     #[test]
     fn pro_rata_floor() {

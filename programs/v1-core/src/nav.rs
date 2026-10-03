@@ -10,7 +10,7 @@ use {
         errors::ErrorCode,
         events::BreakerChanged,
         math, pyth,
-        state::{Config, Fund, Policy, TokenEntry},
+        state::{Config, Fund, Policy, Tier, TokenEntry},
     },
     anchor_lang::prelude::*,
     anchor_spl::{
@@ -48,6 +48,8 @@ pub struct NavResult {
     pub amounts: [u64; MAX_HOLDINGS],
     /// `None` = USDC (1:1). Otherwise the price and the token's decimals.
     pub prices: [Option<(pyth::PythPrice, u8)>; MAX_HOLDINGS],
+    /// True for a T2 holding (tier caps).
+    pub t2: [bool; MAX_HOLDINGS],
 }
 
 impl NavResult {
@@ -57,28 +59,30 @@ impl NavResult {
             values: [0; MAX_HOLDINGS],
         };
         for i in 0..self.len {
-            let amount = self.amounts[i];
-            let value = match self.prices[i] {
-                None => amount as u128,
-                Some((p, decimals)) => {
-                    let price = match mode {
-                        ValuationMode::Spot => p.price,
-                        ValuationMode::DepositUpperBound => {
-                            let hi = p.price.max(p.ema_price) as i128 + p.conf as i128;
-                            i64::try_from(hi).map_err(|_| ErrorCode::MathOverflow)?
-                        }
-                        ValuationMode::Ema => {
-                            require!(p.ema_price > 0, ErrorCode::PriceNonPositive);
-                            p.ema_price
-                        }
-                    };
-                    math::token_value_usdc(amount, price, p.expo, decimals)?
-                }
-            };
+            let value = self.value_at(i, self.amounts[i], mode)?;
             out.values[i] = value;
             out.nav = out.nav.checked_add(value).ok_or(ErrorCode::MathOverflow)?;
         }
         Ok(out)
+    }
+
+    /// USDC value of `amount` base units of holding `i`, priced in `mode`.
+    pub fn value_at(&self, i: usize, amount: u64, mode: ValuationMode) -> Result<u128> {
+        let Some((p, decimals)) = self.prices[i] else {
+            return Ok(amount as u128);
+        };
+        let price = match mode {
+            ValuationMode::Spot => p.price,
+            ValuationMode::DepositUpperBound => {
+                let hi = p.price.max(p.ema_price) as i128 + p.conf as i128;
+                i64::try_from(hi).map_err(|_| ErrorCode::MathOverflow)?
+            }
+            ValuationMode::Ema => {
+                require!(p.ema_price > 0, ErrorCode::PriceNonPositive);
+                p.ema_price
+            }
+        };
+        Ok(math::token_value_usdc(amount, price, p.expo, decimals)?)
     }
 }
 
@@ -100,6 +104,7 @@ pub fn compute(
         len,
         amounts: [0; MAX_HOLDINGS],
         prices: [None; MAX_HOLDINGS],
+        t2: [false; MAX_HOLDINGS],
     };
     for (i, (mint, accs)) in fund.holdings[..len]
         .iter()
@@ -112,6 +117,7 @@ pub fn compute(
             let data = accs[2].try_borrow_data()?;
             let p = pyth::parse_price_update(accs[2].owner, &data, &entry.feed_id, now)?;
             out.prices[i] = Some((p, entry.decimals));
+            out.t2[i] = entry.tier == Tier::T2;
         }
     }
     Ok(out)
@@ -140,7 +146,11 @@ pub(crate) fn vault_amount(vault: &AccountInfo, fund: &Pubkey, mint: &Pubkey) ->
 }
 
 /// The active registry entry of `mint`, at PDA `[b"token", mint]`.
-fn token_entry(info: &AccountInfo, mint: &Pubkey, program_id: &Pubkey) -> Result<TokenEntry> {
+pub(crate) fn token_entry(
+    info: &AccountInfo,
+    mint: &Pubkey,
+    program_id: &Pubkey,
+) -> Result<TokenEntry> {
     require_keys_eq!(*info.owner, *program_id, ErrorCode::TokenNotListed);
     let entry = TokenEntry::try_deserialize(&mut &info.try_borrow_data()?[..])
         .map_err(|_| ErrorCode::TokenNotListed)?;

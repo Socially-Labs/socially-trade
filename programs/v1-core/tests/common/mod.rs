@@ -39,6 +39,7 @@ pub use {
 };
 
 pub const AIRDROP_LAMPORTS: u64 = 100_000_000_000;
+pub const TOKEN_2022_ID: Pubkey = TOKEN_2022;
 
 pub struct Env {
     pub svm: LiteSVM,
@@ -1075,5 +1076,201 @@ pub fn ix_venue_swap(
             mode,
         }
         .data(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// swap
+// ---------------------------------------------------------------------------
+
+/// SOL $150, BONK $0.00002 (expo -8).
+pub const SOL_PRICE_E8: i64 = 15_000_000_000;
+pub const BONK_PRICE_E8: i64 = 2_000;
+
+/// Write the Pyth account of `mint` (`price_account(mint)`): spot = ema = `price_e8`,
+/// expo -8, conf 0, published now.
+pub fn set_usd_price(env: &mut Env, mint: &Pubkey, feed: &[u8; 32], price_e8: i64) {
+    let t = now(env);
+    set_price(&mut env.svm, price_account(mint), feed, price_e8, 0, -8, t);
+}
+
+/// A fund ready to trade (see `trading_fund`).
+pub struct Trading {
+    pub env: Env,
+    pub cap: Keypair,
+    pub f: FundHandles,
+    /// 9 dp, T1, $150.
+    pub sol: Pubkey,
+    /// 5 dp, T2, $0.00002.
+    pub bonk: Pubkey,
+}
+
+impl Trading {
+    /// Re-publish the SOL and BONK prices at the current clock.
+    pub fn refresh_prices(&mut self) {
+        let (sol, bonk) = (self.sol, self.bonk);
+        set_usd_price(&mut self.env, &sol, &SOL_FEED, SOL_PRICE_E8);
+        set_usd_price(&mut self.env, &bonk, &BONK_FEED, BONK_PRICE_E8);
+    }
+
+    /// Captain swap through the mock venue; see `SwapArgs::new`.
+    #[allow(clippy::result_large_err)] // LiteSVM's own error type.
+    pub fn swap(
+        &mut self,
+        args: &SwapArgs,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let ix = ix_swap(&self.env, &self.f, &self.cap.pubkey(), None, args);
+        send(&mut self.env.svm, &[ix], &[&self.cap])
+    }
+}
+
+/// SOL (T1, 9 dp) and BONK (T2, 5 dp) listed, the mock venue in slot 0 with
+/// deep pools of USDC, SOL and BONK, prices SOL $150 and BONK $0.00002, and a
+/// fund whose captain deposited 10,000 USDC (the captain keeps 10,000 more).
+pub fn trading_fund() -> Trading {
+    let mut env = setup();
+    let sol = create_mint(&mut env, 9);
+    let bonk = create_mint(&mut env, 5);
+    register_token(&mut env, sol, SOL_FEED, Tier::T1);
+    register_token(&mut env, bonk, BONK_FEED, Tier::T2);
+    register_venue(&mut env, 0, mock_venue::ID);
+    let usdc = env.usdc;
+    setup_venue_pool(&mut env, &usdc, &sol, 1_000_000_000_000, 1_000_000_000_000);
+    setup_venue_pool(&mut env, &bonk, &bonk, 1_000_000_000_000_000, 0);
+    let cap = funded_user(&mut env, 20_000_000_000);
+    let f = create_fund(&mut env, &cap, 1, 10_000_000_000).unwrap();
+    let mut t = Trading {
+        env,
+        cap,
+        f,
+        sol,
+        bonk,
+    };
+    t.refresh_prices();
+    t
+}
+
+/// One swap request. `out_num / out_den` is the mock venue's rate in base units.
+#[derive(Debug, Clone, Copy)]
+pub struct SwapArgs {
+    pub input: Pubkey,
+    pub output: Pubkey,
+    pub amount_in: u64,
+    pub min_out: u64,
+    pub out_num: u64,
+    pub out_den: u64,
+    pub mode: u8,
+    pub venue: Pubkey,
+}
+
+impl SwapArgs {
+    /// Honest mock-venue swap (mode 0).
+    pub fn new(
+        input: Pubkey,
+        output: Pubkey,
+        amount_in: u64,
+        min_out: u64,
+        out_num: u64,
+        out_den: u64,
+    ) -> Self {
+        Self {
+            input,
+            output,
+            amount_in,
+            min_out,
+            out_num,
+            out_den,
+            mode: 0,
+            venue: mock_venue::ID,
+        }
+    }
+    pub fn mode(mut self, mode: u8) -> Self {
+        self.mode = mode;
+        self
+    }
+}
+
+/// `swap` signed by `signer`, with `delegate` as the Delegate account (None = captain).
+/// Remaining: NAV accounts, then `[output price]` when the output is new to the
+/// fund, then the mock venue's accounts (fund vaults as user_in / user_out).
+pub fn ix_swap(
+    env: &Env,
+    f: &FundHandles,
+    signer: &Pubkey,
+    delegate: Option<Pubkey>,
+    a: &SwapArgs,
+) -> Instruction {
+    let prog = |mint: &Pubkey| env.svm.get_account(mint).expect("mint").owner;
+    let (in_prog, out_prog) = (prog(&a.input), prog(&a.output));
+    let in_vault = ata(&f.fund, &a.input, &in_prog);
+    let out_vault = ata(&f.fund, &a.output, &out_prog);
+    let mut ix = v1_ix(
+        v1_core::accounts::Swap {
+            signer: *signer,
+            delegate,
+            trade: v1_core::accounts::Trade {
+                config: config_pda(),
+                fund: f.fund,
+                policy: f.policy,
+                venue_program: a.venue,
+                input_mint: a.input,
+                output_mint: a.output,
+                input_entry: token_pda(&a.input),
+                output_entry: token_pda(&a.output),
+                fund_input_vault: in_vault,
+                fund_output_vault: out_vault,
+                output_token_program: out_prog,
+                associated_token_program: anchor_spl::associated_token::ID,
+                system_program: anchor_lang::system_program::ID,
+            },
+        },
+        v1_core::instruction::Swap {
+            amount_in: a.amount_in,
+            min_out: a.min_out,
+            venue_data: mock_venue::instruction::Swap {
+                amount_in: a.amount_in,
+                out_num: a.out_num,
+                out_den: a.out_den,
+                mode: a.mode,
+            }
+            .data(),
+        },
+    );
+    ix.accounts.extend(nav_accounts(env, f));
+    let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
+    if !fund.holdings[..fund.holdings_len as usize].contains(&a.output) {
+        ix.accounts
+            .push(AccountMeta::new_readonly(price_account(&a.output), false));
+    }
+    let pool = venue_pool_authority();
+    let venue = mock_venue::accounts::Swap {
+        authority: f.fund,
+        pool_authority: pool,
+        user_in: in_vault,
+        user_out: out_vault,
+        pool_in: ata(&pool, &a.input, &in_prog),
+        pool_out: ata(&pool, &a.output, &out_prog),
+        mint_in: a.input,
+        mint_out: a.output,
+        token_program_in: in_prog,
+        token_program_out: out_prog,
+    }
+    .to_account_metas(None);
+    // The fund PDA cannot sign the transaction; v1-core signs for it in the CPI.
+    ix.accounts.extend(venue.into_iter().map(|mut m| {
+        m.is_signer = false;
+        m
+    }));
+    ix
+}
+
+/// A ComputeBudget `SetComputeUnitLimit` instruction (no crate needed).
+pub fn ix_compute_limit(units: u32) -> Instruction {
+    let mut data = vec![2u8];
+    data.extend_from_slice(&units.to_le_bytes());
+    Instruction {
+        program_id: solana_pubkey::pubkey!("ComputeBudget111111111111111111111111111111"),
+        accounts: vec![],
+        data,
     }
 }

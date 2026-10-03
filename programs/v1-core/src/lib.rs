@@ -87,6 +87,17 @@ pub mod v1_core {
         instructions::delegate::update_delegate(ctx, max_trade_usd, daily_volume_usd)
     }
 
+    /// Captain or delegate: swap fund tokens through an allowlisted venue,
+    /// checked by vault balances. Remaining accounts: see `swap`.
+    pub fn swap<'info>(
+        ctx: Context<'info, Swap<'info>>,
+        amount_in: u64,
+        min_out: u64,
+        venue_data: Vec<u8>,
+    ) -> Result<()> {
+        instructions::swap::swap(ctx, amount_in, min_out, venue_data)
+    }
+
     /// Captain: remove a delegate and take back the rent.
     pub fn revoke_delegate(ctx: Context<RevokeDelegate>) -> Result<()> {
         instructions::delegate::revoke_delegate(ctx)

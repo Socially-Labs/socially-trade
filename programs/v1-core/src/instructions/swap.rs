@@ -1,0 +1,466 @@
+//! Trade fund tokens through an allowlisted venue (the autonomous zone).
+//!
+//! The fund PDA signs one CPI into the venue. The program does not trust the
+//! venue: after the CPI it reads the vaults again. The input vault must fall by
+//! exactly `amount_in`, the output vault must rise by at least `min_out`, and
+//! every other holding vault must not change.
+//!
+//! Remaining accounts, in this order:
+//! 1. The NAV layout for the current holdings (see `nav`), `3 * holdings_len`.
+//! 2. Only when the output mint is not a holding yet (and is not USDC): the
+//!    output mint's Pyth price account.
+//! 3. The venue's accounts, passed through as they are. The fund PDA is one of
+//!    them (the venue's swap authority); the program marks it as a signer.
+
+use {
+    crate::{
+        constants::*,
+        errors::ErrorCode,
+        events::TradeExecuted,
+        instructions::delegate::charge_delegate,
+        math,
+        nav::{self, NavResult, ValuationMode, ACCOUNTS_PER_HOLDING},
+        pyth,
+        state::{Config, Delegate, Fund, Policy, Tier, TokenEntry},
+    },
+    anchor_lang::{
+        prelude::*,
+        solana_program::{
+            instruction::{AccountMeta, Instruction},
+            program::invoke_signed,
+        },
+    },
+    anchor_spl::{
+        associated_token::{self, AssociatedToken},
+        token::ID as TOKEN_PROGRAM,
+        token_2022::ID as TOKEN_2022_PROGRAM,
+        token_interface::{Mint, TokenInterface},
+    },
+};
+
+/// The accounts every trade uses. `swap` (and the proposal executor) wrap it.
+#[derive(Accounts)]
+pub struct Trade<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        mut,
+        seeds = [FUND_SEED, fund.captain.as_ref(), &fund.fund_id.to_le_bytes()],
+        bump = fund.bump
+    )]
+    pub fund: Box<Account<'info, Fund>>,
+    #[account(seeds = [POLICY_SEED, fund.key().as_ref()], bump = policy.bump)]
+    pub policy: Box<Account<'info, Policy>>,
+    /// CHECK: must be in `config.venues`, and not v1-core or a token program.
+    pub venue_program: UncheckedAccount<'info>,
+    pub input_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(mint::token_program = output_token_program)]
+    pub output_mint: Box<InterfaceAccount<'info, Mint>>,
+    /// CHECK: the active TokenEntry PDA `[b"token", input_mint]`. Not read for USDC.
+    pub input_entry: UncheckedAccount<'info>,
+    /// CHECK: the active TokenEntry PDA `[b"token", output_mint]`. Not read for USDC.
+    pub output_entry: UncheckedAccount<'info>,
+    /// CHECK: ATA(fund, input_mint); must be the input holding's NAV vault.
+    #[account(mut)]
+    pub fund_input_vault: UncheckedAccount<'info>,
+    /// CHECK: ATA(fund, output_mint) on `output_token_program`; created when missing.
+    #[account(mut)]
+    pub fund_output_vault: UncheckedAccount<'info>,
+    pub output_token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Swap<'info> {
+    /// The captain or a delegate key. Pays for a new output vault.
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    /// Required unless the signer is the captain.
+    #[account(mut)]
+    pub delegate: Option<Box<Account<'info, Delegate>>>,
+    pub trade: Trade<'info>,
+}
+
+/// The trade request. `signer` and `via_proposal` only go into the event.
+pub struct SwapParams<'a> {
+    pub signer: Pubkey,
+    pub amount_in: u64,
+    pub min_out: u64,
+    pub venue_data: &'a [u8],
+    /// False for a trade the crew voted for (no autonomous size limit).
+    pub check_size: bool,
+    pub via_proposal: Option<u64>,
+}
+
+pub fn swap<'info>(
+    ctx: Context<'info, Swap<'info>>,
+    amount_in: u64,
+    min_out: u64,
+    venue_data: Vec<u8>,
+) -> Result<()> {
+    let Swap {
+        signer,
+        delegate,
+        trade,
+    } = ctx.accounts;
+    let signer_key = signer.key();
+    let delegate = if signer_key == trade.fund.captain {
+        None
+    } else {
+        let d = delegate.as_deref_mut().ok_or(ErrorCode::Unauthorized)?;
+        require!(
+            d.key == signer_key && d.fund == trade.fund.key(),
+            ErrorCode::Unauthorized
+        );
+        Some(&mut **d)
+    };
+    require!(
+        venue_data.len() <= MAX_VENUE_DATA,
+        ErrorCode::VenueDataTooLong
+    );
+    let params = SwapParams {
+        signer: signer_key,
+        amount_in,
+        min_out,
+        venue_data: &venue_data,
+        check_size: true,
+        via_proposal: None,
+    };
+    execute_swap(
+        trade,
+        &signer.to_account_info(),
+        ctx.remaining_accounts,
+        &params,
+        delegate,
+    )?;
+    Ok(())
+}
+
+/// What `prepare` found: holding indexes and where the venue accounts start.
+struct Plan {
+    in_idx: usize,
+    out_idx: usize,
+    out_is_new: bool,
+    venue_start: usize,
+    sell_to_usdc: bool,
+}
+
+/// The shared trade core: checks, venue CPI, balance checks, tier caps,
+/// breaker, event. Returns the amount the output vault received.
+/// The caller has already checked who may trade (captain, delegate or a vote).
+pub fn execute_swap<'info>(
+    t: &mut Trade<'info>,
+    payer: &AccountInfo<'info>,
+    remaining: &[AccountInfo<'info>],
+    p: &SwapParams,
+    delegate: Option<&mut Delegate>,
+) -> Result<u64> {
+    let now = Clock::get()?.unix_timestamp;
+    let mut priced = Box::new(NavResult {
+        len: 0,
+        amounts: [0; MAX_HOLDINGS],
+        prices: [None; MAX_HOLDINGS],
+        t2: [false; MAX_HOLDINGS],
+    });
+    let plan = prepare(t, remaining, p, delegate, now, &mut priced)?;
+    let mut before = priced.amounts;
+    before[plan.out_idx] = output_vault_before(t, payer, &plan, remaining)?;
+
+    call_venue(t, &remaining[plan.venue_start..], p.venue_data)?;
+
+    let amount_out = settle(t, remaining, p, &plan, &before, &mut priced)?;
+    emit!(TradeExecuted {
+        fund: t.fund.key(),
+        signer: p.signer,
+        venue: t.venue_program.key(),
+        input_mint: t.input_mint.key(),
+        output_mint: t.output_mint.key(),
+        amount_in: p.amount_in,
+        amount_out,
+        via_proposal: p.via_proposal,
+    });
+    Ok(amount_out)
+}
+
+/// Checks 1-7 (in the order of the spec), before any token moves.
+fn prepare(
+    t: &Trade,
+    remaining: &[AccountInfo],
+    p: &SwapParams,
+    delegate: Option<&mut Delegate>,
+    now: i64,
+    priced: &mut NavResult,
+) -> Result<Plan> {
+    let (input, output) = (t.input_mint.key(), t.output_mint.key());
+    let config = &t.config;
+    let fund = &t.fund;
+
+    // 1. Mints, amount, venue.
+    require_keys_neq!(input, output, ErrorCode::SameMint);
+    require!(p.amount_in > 0, ErrorCode::ZeroAmount);
+    let venue = t.venue_program.key();
+    require!(
+        venue != Pubkey::default()
+            && venue != crate::ID
+            && venue != TOKEN_PROGRAM
+            && venue != TOKEN_2022_PROGRAM
+            && config.venues.contains(&venue),
+        ErrorCode::VenueNotAllowed
+    );
+
+    // 2. Pause and breaker stop everything but sales into USDC.
+    let sell_to_usdc = output == config.usdc_mint;
+    if !sell_to_usdc {
+        require!(!config.paused, ErrorCode::Paused);
+        require!(!fund.frozen, ErrorCode::FundFrozen);
+    }
+
+    // 3. Listed and active; input held; room for a new output.
+    listed(&t.input_entry, &input, config)?;
+    let out_entry = listed(&t.output_entry, &output, config)?;
+    let len = fund.holdings_len as usize;
+    let held = &fund.holdings[..len];
+    let in_idx = held
+        .iter()
+        .position(|m| *m == input)
+        .ok_or(ErrorCode::HoldingNotFound)?;
+    let out_held = held.iter().position(|m| *m == output);
+    if out_held.is_none() {
+        require!(len < MAX_HOLDINGS, ErrorCode::TooManyHoldings);
+    }
+
+    // 4. Prices of every holding, plus the new output's price.
+    let fund_key = fund.key();
+    *priced = nav::compute(fund, &fund_key, config, remaining, now, &crate::ID)?;
+    let nav_end = len * ACCOUNTS_PER_HOLDING;
+    require_keys_eq!(
+        t.fund_input_vault.key(),
+        remaining[in_idx * ACCOUNTS_PER_HOLDING].key(),
+        ErrorCode::HoldingNotFound
+    );
+    let (out_idx, venue_start) = match out_held {
+        Some(i) => {
+            require_keys_eq!(
+                t.fund_output_vault.key(),
+                remaining[i * ACCOUNTS_PER_HOLDING].key(),
+                ErrorCode::HoldingNotFound
+            );
+            (i, nav_end)
+        }
+        None => {
+            priced.len = len + 1;
+            match out_entry {
+                // USDC is always holding 0, so this is only for safety.
+                None => (len, nav_end),
+                Some(entry) => {
+                    let info = remaining
+                        .get(nav_end)
+                        .ok_or(ErrorCode::PriceAccountMissing)?;
+                    let price = pyth::parse_price_update(
+                        info.owner,
+                        &info.try_borrow_data()?,
+                        &entry.feed_id,
+                        now,
+                    )?;
+                    priced.prices[len] = Some((price, entry.decimals));
+                    priced.t2[len] = entry.tier == Tier::T2;
+                    (len, nav_end + 1)
+                }
+            }
+        }
+    };
+    require!(
+        remaining.len() >= venue_start,
+        ErrorCode::PriceAccountMissing
+    );
+    let pre_nav = priced.valuation(ValuationMode::Spot)?.nav;
+    let trade_usd = priced.value_at(in_idx, p.amount_in, ValuationMode::Spot)?;
+
+    // 5. Autonomous size limit.
+    if p.check_size {
+        let limit = math::bps_of(pre_nav, t.policy.params.autonomous_bps)?;
+        require!(trade_usd <= limit, ErrorCode::TradeTooLarge);
+    }
+
+    // 6. Delegate speed limits.
+    if let Some(d) = delegate {
+        charge_delegate(d, math::to_u64(trade_usd)?, now)?;
+    }
+
+    // 7. Price guard: min_out within max slippage of the oracle amount.
+    if !sell_to_usdc {
+        let oracle_out = match priced.prices[out_idx] {
+            None => trade_usd,
+            Some((price, decimals)) => {
+                math::usdc_to_token(trade_usd, price.price, price.expo, decimals)?
+            }
+        };
+        let keep = 10_000u16
+            .checked_sub(t.policy.params.max_slippage_bps)
+            .ok_or(ErrorCode::MathOverflow)?;
+        require!(
+            p.min_out as u128 >= math::bps_of(oracle_out, keep)?,
+            ErrorCode::SlippageTooHigh
+        );
+    }
+
+    Ok(Plan {
+        in_idx,
+        out_idx,
+        out_is_new: out_held.is_none(),
+        venue_start,
+        sell_to_usdc,
+    })
+}
+
+/// The registry entry of `mint` (None for USDC, which needs none).
+fn listed(info: &AccountInfo, mint: &Pubkey, config: &Config) -> Result<Option<TokenEntry>> {
+    if *mint == config.usdc_mint {
+        return Ok(None);
+    }
+    nav::token_entry(info, mint, &crate::ID).map(Some)
+}
+
+/// The output vault balance before the trade. A new output gets its vault now.
+fn output_vault_before<'info>(
+    t: &Trade<'info>,
+    payer: &AccountInfo<'info>,
+    plan: &Plan,
+    remaining: &[AccountInfo<'info>],
+) -> Result<u64> {
+    if !plan.out_is_new {
+        return clean_vault_amount(
+            &remaining[plan.out_idx * ACCOUNTS_PER_HOLDING],
+            &t.fund.key(),
+        );
+    }
+    associated_token::create_idempotent(CpiContext::new(
+        t.associated_token_program.key(),
+        associated_token::Create {
+            payer: payer.clone(),
+            associated_token: t.fund_output_vault.to_account_info(),
+            authority: t.fund.to_account_info(),
+            mint: t.output_mint.to_account_info(),
+            system_program: t.system_program.to_account_info(),
+            token_program: t.output_token_program.to_account_info(),
+        },
+    ))?;
+    nav::vault_amount(&t.fund_output_vault, &t.fund.key(), &t.output_mint.key())
+}
+
+/// 8. One CPI into the venue, signed by the fund PDA.
+fn call_venue<'info>(
+    t: &Trade<'info>,
+    venue_accounts: &[AccountInfo<'info>],
+    data: &[u8],
+) -> Result<()> {
+    let fund_key = t.fund.key();
+    let share_mint = t.fund.share_mint;
+    let mut metas = Vec::with_capacity(venue_accounts.len());
+    for a in venue_accounts {
+        // The fund PDA is the share mint authority: the venue never sees the mint.
+        require_keys_neq!(*a.key, share_mint, ErrorCode::VenueNotAllowed);
+        metas.push(AccountMeta {
+            pubkey: *a.key,
+            is_signer: a.is_signer || *a.key == fund_key,
+            is_writable: a.is_writable,
+        });
+    }
+    let ix = Instruction {
+        program_id: t.venue_program.key(),
+        accounts: metas,
+        data: data.to_vec(),
+    };
+    let mut infos = venue_accounts.to_vec();
+    infos.push(t.venue_program.to_account_info());
+    let fund_id_le = t.fund.fund_id.to_le_bytes();
+    let seeds: &[&[u8]] = &[
+        FUND_SEED,
+        t.fund.captain.as_ref(),
+        &fund_id_le,
+        &[t.fund.bump],
+    ];
+    invoke_signed(&ix, &infos, &[seeds])?;
+    Ok(())
+}
+
+/// Checks 9-11 after the CPI: balances, tier caps, breaker, new holding.
+fn settle(
+    t: &mut Trade,
+    remaining: &[AccountInfo],
+    p: &SwapParams,
+    plan: &Plan,
+    before: &[u64; MAX_HOLDINGS],
+    priced: &mut NavResult,
+) -> Result<u64> {
+    let fund_key = t.fund.key();
+    let len = t.fund.holdings_len as usize;
+    let mut after = [0u64; MAX_HOLDINGS];
+    for (i, amount) in after[..len].iter_mut().enumerate() {
+        *amount = clean_vault_amount(&remaining[i * ACCOUNTS_PER_HOLDING], &fund_key)?;
+    }
+    if plan.out_is_new {
+        after[len] = clean_vault_amount(&t.fund_output_vault, &fund_key)?;
+    }
+
+    // 9. Input fell by exactly amount_in; output rose by >= min_out; nothing else moved.
+    for i in 0..priced.len {
+        if i != plan.in_idx && i != plan.out_idx {
+            require!(after[i] == before[i], ErrorCode::InputOverdrawn);
+        }
+    }
+    let spent = before[plan.in_idx]
+        .checked_sub(after[plan.in_idx])
+        .ok_or(ErrorCode::InputOverdrawn)?;
+    require!(spent == p.amount_in, ErrorCode::InputOverdrawn);
+    let amount_out = after[plan.out_idx]
+        .checked_sub(before[plan.out_idx])
+        .ok_or(ErrorCode::OutputNotReceived)?;
+    require!(amount_out >= p.min_out, ErrorCode::OutputNotReceived);
+
+    // 10. Tier caps on the post-trade spot NAV.
+    priced.amounts = after;
+    if !plan.sell_to_usdc {
+        let post = priced.valuation(ValuationMode::Spot)?;
+        let one_cap = math::bps_of(post.nav, T2_TOKEN_CAP_BPS)?;
+        let mut t2_total: u128 = 0;
+        for i in (0..priced.len).filter(|&i| priced.t2[i]) {
+            require!(post.values[i] <= one_cap, ErrorCode::TierCapExceeded);
+            t2_total = t2_total
+                .checked_add(post.values[i])
+                .ok_or(ErrorCode::MathOverflow)?;
+        }
+        require!(
+            t2_total <= math::bps_of(post.nav, T2_TOTAL_CAP_BPS)?,
+            ErrorCode::TierCapExceeded
+        );
+    }
+
+    // 11. New holding, then the breaker on the post-trade EMA pps.
+    let fund = &mut t.fund;
+    if plan.out_is_new {
+        fund.holdings[len] = t.output_mint.key();
+        fund.holdings_len += 1;
+    }
+    let ema_nav = priced.valuation(ValuationMode::Ema)?.nav;
+    let pps = math::price_per_share(ema_nav, fund.total_shares)?;
+    nav::update_breaker(fund, &fund_key, &t.policy, pps)?;
+    Ok(amount_out)
+}
+
+/// A fund vault after the CPI: still owned by the fund, no delegate and no
+/// close authority (the venue had the fund's signature). Returns the amount.
+fn clean_vault_amount(vault: &AccountInfo, fund: &Pubkey) -> Result<u64> {
+    // Base token-account layout (both programs): owner 32..64, amount 64..72,
+    // delegate COption tag 72..76, close_authority COption tag 129..133.
+    let data = vault.try_borrow_data()?;
+    require!(
+        data.len() >= 165
+            && data[32..64] == fund.as_ref()[..]
+            && data[72..76] == [0; 4]
+            && data[129..133] == [0; 4],
+        ErrorCode::HoldingNotFound
+    );
+    Ok(u64::from_le_bytes(data[64..72].try_into().unwrap()))
+}

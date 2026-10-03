@@ -2,6 +2,8 @@
 
 pub const MAX_HOLDINGS: usize = 8;
 pub const MAX_VENUES: usize = 4;
+/// Max venue instruction data (a proposal stores it in 64 bytes).
+pub const MAX_VENUE_DATA: usize = 64;
 pub const CAPTAIN_MIN_DEPOSIT: u64 = 250_000_000;
 pub const CAPTAIN_MIN_STAKE_BPS: u16 = 500;
 pub const PERF_FEE_BPS: u16 = 1000;
