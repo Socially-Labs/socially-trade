@@ -9,6 +9,7 @@ pub const ADMIN_TIMELOCK_SECS: i64 = 604_800;
 pub const POLICY_LOOSEN_DELAY_SECS: i64 = 172_800;
 pub const YEAR_SECS: i64 = 31_536_000;
 pub const SHARE_DECIMALS: u8 = 6;
+pub const USDC_DECIMALS: u8 = 6;
 pub const BPS_DENOMINATOR: u64 = 10_000;
 
 // Policy defaults.
