@@ -41,9 +41,9 @@ pub mod v1_core {
         instructions::admin::apply_token(ctx)
     }
 
-    /// Admin: queue a venue for a slot, or a removal (7-day timelock).
-    pub fn queue_venue(ctx: Context<QueueVenue>, slot: u8, venue: Pubkey) -> Result<()> {
-        instructions::admin::queue_venue(ctx, slot, venue)
+    /// Admin: queue a venue approval (`active`) or removal (7-day timelock).
+    pub fn queue_venue(ctx: Context<QueueVenue>, active: bool) -> Result<()> {
+        instructions::admin::queue_venue(ctx, active)
     }
 
     /// Anyone: apply the queued venue change after the timelock.

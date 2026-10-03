@@ -8,9 +8,6 @@ fn config_initialized() {
     assert_eq!(cfg.admin, env.admin.pubkey());
     assert_eq!(cfg.usdc_mint, env.usdc);
     assert!(!cfg.paused);
-    assert!(cfg.venues.iter().all(|v| *v == Pubkey::default()));
-    assert_eq!(cfg.pending_venue, Pubkey::default());
-    assert_eq!(cfg.pending_venue_eta, 0);
     assert_eq!(
         cfg.bump,
         Pubkey::find_program_address(&[CONFIG_SEED], &v1_core::ID).1
@@ -192,30 +189,42 @@ fn token_queue_rejects_wrong_decimals() {
 }
 
 #[test]
-fn venue_apply_waits_7_days_and_fills_slot() {
+fn venue_apply_waits_7_days_and_activates() {
     let mut env = setup();
     let id = mock_venue::ID;
+    // Nothing is queued yet: no entry account.
+    assert!(env.svm.get_account(&venue_pda(&id)).is_none());
+    let start = now(&env);
     send(
         &mut env.svm,
-        &[ix_queue_venue(&env.admin.pubkey(), 0, id)],
+        &[ix_queue_venue(&env.admin.pubkey(), id, true)],
         &[&env.admin],
     )
     .unwrap();
-    let cfg = read_config(&env);
-    assert_eq!(cfg.pending_venue, id);
-    assert_eq!(cfg.venues[0], Pubkey::default());
+    let e = read_venue(&env, &id);
+    assert_eq!(e.program, id);
+    assert!(!e.active);
+    assert!(e.pending_active);
+    assert_eq!(e.pending_eta, start + ADMIN_TIMELOCK_SECS);
+    assert_eq!(
+        e.bump,
+        Pubkey::find_program_address(&[VENUE_SEED, id.as_ref()], &v1_core::ID).1
+    );
+    // One second before the ETA: too early.
+    warp(&mut env.svm, ADMIN_TIMELOCK_SECS - 1);
     expect_err(
-        send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]),
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
         ErrorCode::TimelockNotElapsed,
     );
-    warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
-    send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]).unwrap();
-    let cfg = read_config(&env);
-    assert_eq!(cfg.venues[0], id);
-    assert_eq!(cfg.pending_venue, Pubkey::default());
-    assert_eq!(cfg.pending_venue_eta, 0);
+    // At the ETA: anyone applies.
+    warp(&mut env.svm, 1);
+    let anyone = funded(&mut env.svm);
+    send(&mut env.svm, &[ix_apply_venue(id)], &[&anyone]).unwrap();
+    let e = read_venue(&env, &id);
+    assert!(e.active);
+    assert_eq!(e.pending_eta, 0);
     expect_err(
-        send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]),
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
         ErrorCode::NothingPending,
     );
 }
@@ -223,69 +232,86 @@ fn venue_apply_waits_7_days_and_fills_slot() {
 #[test]
 fn venue_requeue_overwrites_and_restarts_clock() {
     let mut env = setup();
-    let a = Pubkey::new_unique();
-    let b = Pubkey::new_unique();
+    let id = Pubkey::new_unique();
     send(
         &mut env.svm,
-        &[ix_queue_venue(&env.admin.pubkey(), 1, a)],
+        &[ix_queue_venue(&env.admin.pubkey(), id, true)],
         &[&env.admin],
     )
     .unwrap();
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS - 10);
     send(
         &mut env.svm,
-        &[ix_queue_venue(&env.admin.pubkey(), 2, b)],
+        &[ix_queue_venue(&env.admin.pubkey(), id, false)],
         &[&env.admin],
     )
     .unwrap();
     warp(&mut env.svm, 10);
     expect_err(
-        send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]),
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
         ErrorCode::TimelockNotElapsed,
     );
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
-    send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]).unwrap();
-    let cfg = read_config(&env);
-    assert_eq!(cfg.venues[1], Pubkey::default());
-    assert_eq!(cfg.venues[2], b);
+    send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]).unwrap();
+    // The second queue (a removal) won.
+    assert!(!read_venue(&env, &id).active);
 }
 
 #[test]
-fn venue_remove_and_slot_rules() {
+fn venue_removal_is_timelocked_and_admin_only() {
     let mut env = setup();
     let id = mock_venue::ID;
-    register_venue(&mut env, 3, id);
-    // A taken slot needs a removal first.
-    expect_err(
-        send(
-            &mut env.svm,
-            &[ix_queue_venue(&env.admin.pubkey(), 3, Pubkey::new_unique())],
-            &[&env.admin],
-        ),
-        ErrorCode::VenueSlotTaken,
-    );
-    // Slot out of range.
-    expect_err(
-        send(
-            &mut env.svm,
-            &[ix_queue_venue(&env.admin.pubkey(), 4, Pubkey::new_unique())],
-            &[&env.admin],
-        ),
-        ErrorCode::VenueNotAllowed,
-    );
+    register_venue(&mut env, id);
     // Non-admin.
     let other = funded(&mut env.svm);
     expect_err(
         send(
             &mut env.svm,
-            &[ix_queue_venue(&other.pubkey(), 0, id)],
+            &[ix_queue_venue(&other.pubkey(), id, false)],
             &[&other],
         ),
         ErrorCode::Unauthorized,
     );
-    // Removal (default) is also timelocked.
-    register_venue(&mut env, 3, Pubkey::default());
-    assert_eq!(read_config(&env).venues[3], Pubkey::default());
+    send(
+        &mut env.svm,
+        &[ix_queue_venue(&env.admin.pubkey(), id, false)],
+        &[&env.admin],
+    )
+    .unwrap();
+    // The venue stays active until the removal is applied.
+    let e = read_venue(&env, &id);
+    assert!(e.active && !e.pending_active);
+    warp(&mut env.svm, ADMIN_TIMELOCK_SECS - 1);
+    expect_err(
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
+        ErrorCode::TimelockNotElapsed,
+    );
+    assert!(read_venue(&env, &id).active);
+    warp(&mut env.svm, 1);
+    send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]).unwrap();
+    assert!(!read_venue(&env, &id).active);
+}
+
+#[test]
+fn more_than_four_venues_active_at_once() {
+    let mut env = setup();
+    let ids: Vec<Pubkey> = (0..6).map(|_| Pubkey::new_unique()).collect();
+    for id in &ids {
+        send(
+            &mut env.svm,
+            &[ix_queue_venue(&env.admin.pubkey(), *id, true)],
+            &[&env.admin],
+        )
+        .unwrap();
+    }
+    warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
+    for id in &ids {
+        send(&mut env.svm, &[ix_apply_venue(*id)], &[&env.admin]).unwrap();
+    }
+    for id in &ids {
+        let e = read_venue(&env, id);
+        assert!(e.active && e.program == *id);
+    }
 }
 
 #[test]

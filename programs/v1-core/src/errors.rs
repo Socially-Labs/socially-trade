@@ -16,6 +16,7 @@ pub enum ErrorCode {
     NothingPending,
     #[msg("Venue is not on the allowlist")]
     VenueNotAllowed,
+    /// Unused since the venue registry. Kept so later codes do not move.
     #[msg("Venue slot is already taken")]
     VenueSlotTaken,
     #[msg("Token is not listed")]

@@ -21,7 +21,7 @@ use {
         math,
         nav::{self, NavResult, ValuationMode, ACCOUNTS_PER_HOLDING},
         pyth,
-        state::{Config, Delegate, Fund, Policy, Tier, TokenEntry},
+        state::{Config, Delegate, Fund, Policy, Tier, TokenEntry, VenueEntry},
     },
     anchor_lang::{
         prelude::*,
@@ -51,8 +51,11 @@ pub struct Trade<'info> {
     pub fund: Box<Account<'info, Fund>>,
     #[account(seeds = [POLICY_SEED, fund.key().as_ref()], bump = policy.bump)]
     pub policy: Box<Account<'info, Policy>>,
-    /// CHECK: must be in `config.venues`, and not v1-core or a token program.
+    /// CHECK: checked by `venue_allowed` against `venue_entry` and the denylist.
     pub venue_program: UncheckedAccount<'info>,
+    /// CHECK: the active VenueEntry PDA `[b"venue", venue_program]`. Read by
+    /// `venue_allowed`, so a missing or inactive entry gives `VenueNotAllowed`.
+    pub venue_entry: UncheckedAccount<'info>,
     pub input_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(mint::token_program = output_token_program)]
     pub output_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -219,10 +222,7 @@ fn prepare(
     // 1. Mints, amount, venue.
     require_keys_neq!(input, output, ErrorCode::SameMint);
     require!(p.amount_in > 0, ErrorCode::ZeroAmount);
-    require!(
-        venue_allowed(config, &t.venue_program.key()),
-        ErrorCode::VenueNotAllowed
-    );
+    venue_allowed(&t.venue_entry, &t.venue_program.key())?;
 
     // 2. Pause and breaker stop everything but sales into USDC.
     let sell_to_usdc = output == config.usdc_mint;
@@ -367,14 +367,25 @@ pub(crate) fn route_hash(venue_data: &[u8], venue_accounts: &[AccountInfo]) -> [
     solana_sha256_hasher::hash(&buf).to_bytes()
 }
 
-/// In `config.venues`, and not an empty slot, v1-core or a token program.
-pub(crate) fn venue_allowed(config: &Config, venue: &Pubkey) -> bool {
-    *venue != Pubkey::default()
-        && *venue != crate::ID
-        && *venue != TOKEN_PROGRAM
-        && *venue != TOKEN_2022_PROGRAM
-        && *venue != associated_token::ID
-        && config.venues.contains(venue)
+/// `venue` has an active `VenueEntry` (`entry`, the PDA of `venue`), and is not
+/// system, v1-core, a token program or the ATA program, even if approved.
+/// Shared by `swap`, `propose_trade` and `execute_proposal`.
+pub(crate) fn venue_allowed(entry: &AccountInfo, venue: &Pubkey) -> Result<()> {
+    const DENIED: [Pubkey; 5] = [
+        Pubkey::new_from_array([0; 32]), // system program
+        crate::ID,
+        TOKEN_PROGRAM,
+        TOKEN_2022_PROGRAM,
+        associated_token::ID,
+    ];
+    require!(!DENIED.contains(venue), ErrorCode::VenueNotAllowed);
+    require_keys_eq!(*entry.owner, crate::ID, ErrorCode::VenueNotAllowed);
+    let e = VenueEntry::try_deserialize(&mut &entry.try_borrow_data()?[..])
+        .map_err(|_| ErrorCode::VenueNotAllowed)?;
+    let pda = Pubkey::create_program_address(&[VENUE_SEED, venue.as_ref(), &[e.bump]], &crate::ID)
+        .map_err(|_| ErrorCode::VenueNotAllowed)?;
+    require!(entry.key() == pda && e.active, ErrorCode::VenueNotAllowed);
+    Ok(())
 }
 
 /// The registry entry of `mint` (None for USDC, which needs none).

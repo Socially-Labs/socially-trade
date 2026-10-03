@@ -208,19 +208,68 @@ fn swap_rejects_token_program_even_if_allowlisted() {
     // A compromised admin lists the token program: the fund PDA must still
     // never sign a raw token instruction.
     let mut t = trading_fund();
-    register_venue(&mut t.env, 1, spl_token_interface::ID);
-    register_venue(&mut t.env, 2, v1_core::ID);
-    register_venue(&mut t.env, 3, anchor_spl::associated_token::ID);
+    register_venue(&mut t.env, spl_token_interface::ID);
+    register_venue(&mut t.env, v1_core::ID);
+    register_venue(&mut t.env, anchor_spl::associated_token::ID);
+    register_venue(&mut t.env, Pubkey::default());
     t.refresh_prices();
     let mut a = buy_sol(&t, 100 * USDC, 0);
     for venue in [
         spl_token_interface::ID,
         v1_core::ID,
         anchor_spl::associated_token::ID,
+        Pubkey::default(),
     ] {
         a.venue = venue;
         expect_err(t.swap(&a), ErrorCode::VenueNotAllowed);
     }
+}
+
+#[test]
+fn swap_rejects_inactive_venue() {
+    let mut t = trading_fund();
+    let a = buy_sol(&t, 150 * USDC, 990_000_000);
+    // A removal is queued: the venue stays usable until it is applied.
+    send(
+        &mut t.env.svm,
+        &[ix_queue_venue(&t.env.admin.pubkey(), mock_venue::ID, false)],
+        &[&t.env.admin],
+    )
+    .unwrap();
+    t.swap_fresh(&a).unwrap();
+    warp(&mut t.env.svm, ADMIN_TIMELOCK_SECS);
+    send(
+        &mut t.env.svm,
+        &[ix_apply_venue(mock_venue::ID)],
+        &[&t.env.admin],
+    )
+    .unwrap();
+    t.refresh_prices();
+    expect_err(t.swap_fresh(&a), ErrorCode::VenueNotAllowed);
+    // Approved again (also timelocked), it trades again.
+    set_venue(&mut t.env, mock_venue::ID, true);
+    t.refresh_prices();
+    t.swap_fresh(&a).unwrap();
+}
+
+#[test]
+fn swap_rejects_venue_entry_of_another_program() {
+    // The entry account must be the PDA of the venue program itself.
+    let mut t = trading_fund();
+    let mut a = buy_sol(&t, 100 * USDC, 0);
+    a.venue = Keypair::new().pubkey();
+    let mut ix = ix_swap(&t.env, &t.f, &t.cap.pubkey(), None, &a);
+    // An unapproved venue, with the approved mock venue's entry.
+    let entry = ix
+        .accounts
+        .iter_mut()
+        .find(|m| m.pubkey == venue_pda(&a.venue))
+        .unwrap();
+    entry.pubkey = venue_pda(&mock_venue::ID);
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&t.cap]),
+        ErrorCode::VenueNotAllowed,
+    );
 }
 
 #[test]

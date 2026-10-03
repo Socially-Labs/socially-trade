@@ -515,3 +515,34 @@ fn passed_proposal_executes_with_full_window() {
     assert_eq!(read_fund(&t.env, &t.f).window_volume_usd, 1_600 * USDC);
     assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 30_666_666_666);
 }
+
+#[test]
+fn execute_fails_after_venue_removal() {
+    let (mut t, _m) = crew();
+    // A vote window as long as the admin timelock, so the removal lands first.
+    let mut policy = read_policy(&t.env, &t.f);
+    policy.params.vote_window_secs = MAX_VOTE_WINDOW_SECS;
+    write_policy(&mut t.env, &t.f, &policy);
+    let admin = t.env.admin.insecure_clone();
+    send(
+        &mut t.env.svm,
+        &[ix_queue_venue(&admin.pubkey(), mock_venue::ID, false)],
+        &[&admin],
+    )
+    .unwrap();
+    warp(&mut t.env.svm, 1);
+    t.refresh_prices();
+    // Created while the venue is still active.
+    let a = big_buy(&t);
+    propose(&mut t, &a).unwrap();
+    let cap = t.cap.insecure_clone();
+    vote(&mut t, &cap, 0, true).unwrap();
+    warp(&mut t.env.svm, ADMIN_TIMELOCK_SECS - 1);
+    send(&mut t.env.svm, &[ix_apply_venue(mock_venue::ID)], &[&admin]).unwrap();
+    t.refresh_prices();
+    assert!(now(&t.env) <= read_proposal(&t.env, &t.f, 0).deadline);
+    expect_err(execute(&mut t, &cap, 0, &a), ErrorCode::VenueNotAllowed);
+    assert_eq!(read_proposal(&t.env, &t.f, 0).status, ProposalStatus::Open);
+    // A new proposal through the removed venue fails too.
+    expect_err(propose(&mut t, &a), ErrorCode::VenueNotAllowed);
+}

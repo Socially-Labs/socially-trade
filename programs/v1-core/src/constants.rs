@@ -1,7 +1,6 @@
 //! Protocol constants. Amounts are USDC base units (6 dp).
 
 pub const MAX_HOLDINGS: usize = 8;
-pub const MAX_VENUES: usize = 4;
 /// Max venue instruction data for `swap` (fits a Jupiter route).
 pub const MAX_VENUE_DATA: usize = 1024;
 pub const CAPTAIN_MIN_DEPOSIT: u64 = 250_000_000;
@@ -45,6 +44,7 @@ pub const MAX_CONF_BPS: u64 = 200;
 // PDA seeds.
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const TOKEN_SEED: &[u8] = b"token";
+pub const VENUE_SEED: &[u8] = b"venue";
 pub const FUND_SEED: &[u8] = b"fund";
 pub const SHARES_SEED: &[u8] = b"shares";
 pub const MEMBER_SEED: &[u8] = b"member";

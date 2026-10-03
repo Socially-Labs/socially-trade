@@ -34,7 +34,7 @@ pub use {
     v1_core::{
         constants::*,
         errors::ErrorCode,
-        state::{Config, Tier, TokenEntry},
+        state::{Config, Tier, TokenEntry, VenueEntry},
     },
 };
 
@@ -340,6 +340,9 @@ pub fn proposal_pda(fund: &Pubkey, id: u64) -> Pubkey {
 pub fn vote_pda(proposal: &Pubkey, voter: &Pubkey) -> Pubkey {
     pda(&[VOTE_SEED, proposal.as_ref(), voter.as_ref()])
 }
+pub fn venue_pda(program: &Pubkey) -> Pubkey {
+    pda(&[VENUE_SEED, program.as_ref()])
+}
 
 // ---------------------------------------------------------------------------
 // Instruction builders
@@ -410,24 +413,32 @@ pub fn ix_apply_token(mint: Pubkey) -> Instruction {
     )
 }
 
-pub fn ix_queue_venue(admin: &Pubkey, slot: u8, venue: Pubkey) -> Instruction {
+/// Queue `venue` to become `active` (true = approve, false = remove).
+pub fn ix_queue_venue(admin: &Pubkey, venue: Pubkey, active: bool) -> Instruction {
     v1_ix(
         v1_core::accounts::QueueVenue {
             admin: *admin,
             config: config_pda(),
+            venue_program: venue,
+            venue_entry: venue_pda(&venue),
+            system_program: anchor_lang::system_program::ID,
         },
-        v1_core::instruction::QueueVenue { slot, venue },
+        v1_core::instruction::QueueVenue { active },
     )
 }
 
 /// Permissionless: no signer account.
-pub fn ix_apply_venue() -> Instruction {
+pub fn ix_apply_venue(venue: Pubkey) -> Instruction {
     v1_ix(
         v1_core::accounts::ApplyVenue {
-            config: config_pda(),
+            venue_entry: venue_pda(&venue),
         },
         v1_core::instruction::ApplyVenue {},
     )
+}
+
+pub fn read_venue(env: &Env, venue: &Pubkey) -> VenueEntry {
+    read_account(&env.svm, &venue_pda(venue))
 }
 
 pub fn ix_set_paused(admin: &Pubkey, paused: bool) -> Instruction {
@@ -455,12 +466,17 @@ pub fn register_token(env: &mut Env, mint: Pubkey, feed_id: [u8; 32], tier: Tier
     send(&mut env.svm, &[ix], &[&env.admin]).expect("apply_token");
 }
 
-/// Put `venue` into `slot` (queue, wait out the timelock, apply).
-pub fn register_venue(env: &mut Env, slot: u8, venue: Pubkey) {
-    let ix = ix_queue_venue(&env.admin.pubkey(), slot, venue);
+/// Approve `venue` (queue, wait out the timelock, apply).
+pub fn register_venue(env: &mut Env, venue: Pubkey) {
+    set_venue(env, venue, true);
+}
+
+/// Set `venue` to `active` (queue, wait out the timelock, apply).
+pub fn set_venue(env: &mut Env, venue: Pubkey, active: bool) {
+    let ix = ix_queue_venue(&env.admin.pubkey(), venue, active);
     send(&mut env.svm, &[ix], &[&env.admin]).expect("queue_venue");
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
-    send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]).expect("apply_venue");
+    send(&mut env.svm, &[ix_apply_venue(venue)], &[&env.admin]).expect("apply_venue");
 }
 
 // ---------------------------------------------------------------------------
@@ -1147,7 +1163,7 @@ impl Trading {
     }
 }
 
-/// SOL (T1, 9 dp) and BONK (T2, 5 dp) listed, the mock venue in slot 0 with
+/// SOL (T1, 9 dp) and BONK (T2, 5 dp) listed, the mock venue approved, with
 /// deep pools of USDC, SOL and BONK, prices SOL $150 and BONK $0.00002, and a
 /// fund whose captain deposited 10,000 USDC (the captain keeps 10,000 more).
 pub fn trading_fund() -> Trading {
@@ -1156,7 +1172,7 @@ pub fn trading_fund() -> Trading {
     let bonk = create_mint(&mut env, 5);
     register_token(&mut env, sol, SOL_FEED, Tier::T1);
     register_token(&mut env, bonk, BONK_FEED, Tier::T2);
-    register_venue(&mut env, 0, mock_venue::ID);
+    register_venue(&mut env, mock_venue::ID);
     let usdc = env.usdc;
     setup_venue_pool(&mut env, &usdc, &sol, 1_000_000_000_000, 1_000_000_000_000);
     setup_venue_pool(&mut env, &bonk, &bonk, 1_000_000_000_000_000, 0);
@@ -1222,6 +1238,7 @@ pub fn trade_accounts(env: &Env, f: &FundHandles, a: &SwapArgs) -> v1_core::acco
         fund: f.fund,
         policy: f.policy,
         venue_program: a.venue,
+        venue_entry: venue_pda(&a.venue),
         input_mint: a.input,
         output_mint: a.output,
         input_entry: token_pda(&a.input),
@@ -1334,6 +1351,7 @@ pub fn ix_propose(
             policy: f.policy,
             proposal: proposal_pda(&f.fund, id),
             venue_program: a.venue,
+            venue_entry: venue_pda(&a.venue),
             input_mint: a.input,
             output_mint: a.output,
             input_entry: token_pda(&a.input),

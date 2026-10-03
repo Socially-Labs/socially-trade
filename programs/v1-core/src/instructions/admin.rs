@@ -1,10 +1,10 @@
-//! Admin: timelocked token registry and venue allowlist, immediate pause.
+//! Admin: timelocked token and venue registries, immediate pause.
 
 use {
     crate::{
-        constants::{ADMIN_TIMELOCK_SECS, CONFIG_SEED, MAX_VENUES, TOKEN_SEED},
+        constants::{ADMIN_TIMELOCK_SECS, CONFIG_SEED, TOKEN_SEED, VENUE_SEED},
         errors::ErrorCode,
-        state::{Config, Tier, TokenEntry},
+        state::{Config, Tier, TokenEntry, VenueEntry},
     },
     anchor_lang::prelude::*,
     anchor_spl::{token_2022::ID as TOKEN_2022_PROGRAM, token_interface::Mint},
@@ -103,43 +103,48 @@ pub fn apply_token(ctx: Context<ApplyToken>) -> Result<()> {
 
 #[derive(Accounts)]
 pub struct QueueVenue<'info> {
+    #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ ErrorCode::Unauthorized)]
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ ErrorCode::Unauthorized)]
     pub config: Account<'info, Config>,
+    /// CHECK: only the key is used. The swap denylist (`venue_allowed`) still
+    /// rejects v1-core, the token programs, the ATA program and system.
+    pub venue_program: UncheckedAccount<'info>,
+    #[account(
+        init_if_needed,
+        payer = admin,
+        space = 8 + VenueEntry::INIT_SPACE,
+        seeds = [VENUE_SEED, venue_program.key().as_ref()],
+        bump
+    )]
+    pub venue_entry: Account<'info, VenueEntry>,
+    pub system_program: Program<'info, System>,
 }
 
-/// Queue `venue` into `slot`; `Pubkey::default()` queues a removal. One change
-/// is pending at a time: a new queue overwrites it and restarts the clock.
-pub fn queue_venue(ctx: Context<QueueVenue>, slot: u8, venue: Pubkey) -> Result<()> {
-    let config = &mut ctx.accounts.config;
-    let i = slot as usize;
-    require!(i < MAX_VENUES, ErrorCode::VenueNotAllowed);
-    require!(
-        venue == Pubkey::default() || config.venues[i] == Pubkey::default(),
-        ErrorCode::VenueSlotTaken
-    );
-    config.pending_venue = venue;
-    config.pending_venue_slot = slot;
-    config.pending_venue_eta = eta()?;
+/// Queue an approval (`active = true`) or a removal (`false`) of one venue.
+/// A new queue overwrites the pending change and restarts the clock. The live
+/// `active` stays in force until apply.
+pub fn queue_venue(ctx: Context<QueueVenue>, active: bool) -> Result<()> {
+    let entry = &mut ctx.accounts.venue_entry;
+    entry.program = ctx.accounts.venue_program.key();
+    entry.pending_active = active;
+    entry.pending_eta = eta()?;
+    entry.bump = ctx.bumps.venue_entry;
     Ok(())
 }
 
 #[derive(Accounts)]
 pub struct ApplyVenue<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
-    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [VENUE_SEED, venue_entry.program.as_ref()], bump = venue_entry.bump)]
+    pub venue_entry: Account<'info, VenueEntry>,
 }
 
 /// Permissionless: anyone may apply a venue change whose timelock has elapsed.
 pub fn apply_venue(ctx: Context<ApplyVenue>) -> Result<()> {
-    let config = &mut ctx.accounts.config;
-    check_due(config.pending_venue_eta)?;
-    // queue_venue bounds the slot, so the index is in range.
-    let slot = config.pending_venue_slot as usize;
-    config.venues[slot] = config.pending_venue;
-    config.pending_venue = Pubkey::default();
-    config.pending_venue_slot = 0;
-    config.pending_venue_eta = 0;
+    let entry = &mut ctx.accounts.venue_entry;
+    check_due(entry.pending_eta)?;
+    entry.active = entry.pending_active;
+    entry.pending_eta = 0;
     Ok(())
 }
 
