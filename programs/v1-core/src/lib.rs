@@ -50,4 +50,9 @@ pub mod v1_core {
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
         instructions::admin::set_paused(ctx, paused)
     }
+
+    /// Captain: open a fund with a USDC stake; mints 1:1 non-transferable shares.
+    pub fn create_fund(ctx: Context<CreateFund>, fund_id: u64, deposit: u64) -> Result<()> {
+        instructions::create_fund::create_fund(ctx, fund_id, deposit)
+    }
 }

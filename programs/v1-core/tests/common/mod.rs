@@ -3,12 +3,21 @@
 //! Build the programs first (`scripts/build-programs.sh`): the tests load
 //! `target/deploy/*.so` at compile time.
 
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)] // Each test binary uses a different subset.
 
 use {
     anchor_lang::solana_program::bpf_loader_upgradeable,
-    solana_instruction_error::InstructionError, solana_program_pack::Pack,
-    solana_transaction_error::TransactionError, spl_token_interface::state::Mint as SplMint,
+    anchor_spl::{
+        associated_token::{
+            get_associated_token_address_with_program_id,
+            spl_associated_token_account::instruction::create_associated_token_account,
+        },
+        token_2022::{spl_token_2022, ID as TOKEN_2022},
+    },
+    solana_instruction_error::InstructionError,
+    solana_program_pack::Pack,
+    solana_transaction_error::TransactionError,
+    spl_token_interface::state::Mint as SplMint,
 };
 pub use {
     anchor_lang::{prelude::Pubkey, AccountDeserialize, InstructionData, ToAccountMetas},
@@ -412,6 +421,148 @@ pub fn register_venue(env: &mut Env, slot: u8, venue: Pubkey) {
     send(&mut env.svm, &[ix], &[&env.admin]).expect("queue_venue");
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
     send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]).expect("apply_venue");
+}
+
+// ---------------------------------------------------------------------------
+// Funds
+// ---------------------------------------------------------------------------
+
+/// The addresses of one fund.
+#[derive(Debug, Clone, Copy)]
+pub struct FundHandles {
+    pub fund: Pubkey,
+    pub share_mint: Pubkey,
+    pub usdc_vault: Pubkey,
+    pub policy: Pubkey,
+}
+
+impl FundHandles {
+    pub fn new(captain: &Pubkey, fund_id: u64, usdc: &Pubkey) -> Self {
+        let fund = fund_pda(captain, fund_id);
+        Self {
+            fund,
+            share_mint: share_mint_pda(&fund),
+            usdc_vault: ata(&fund, usdc, &spl_token_interface::ID),
+            policy: policy_pda(&fund),
+        }
+    }
+}
+
+pub fn ata(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
+    get_associated_token_address_with_program_id(owner, mint, token_program)
+}
+pub fn usdc_ata(env: &Env, owner: &Pubkey) -> Pubkey {
+    ata(owner, &env.usdc, &spl_token_interface::ID)
+}
+/// The Token-2022 share ATA of `owner` in fund `f`.
+pub fn share_ata(f: &FundHandles, owner: &Pubkey) -> Pubkey {
+    ata(owner, &f.share_mint, &TOKEN_2022)
+}
+
+pub fn ix_create_ata(
+    payer: &Pubkey,
+    owner: &Pubkey,
+    mint: &Pubkey,
+    token_program: &Pubkey,
+) -> Instruction {
+    create_associated_token_account(payer, owner, mint, token_program)
+}
+
+/// A funded keypair with a USDC ATA holding `usdc` base units (minted by the admin).
+pub fn funded_user(env: &mut Env, usdc: u64) -> Keypair {
+    let user = funded(&mut env.svm);
+    let token = spl_token_interface::ID;
+    let create = ix_create_ata(&user.pubkey(), &user.pubkey(), &env.usdc, &token);
+    let mint = spl_token_interface::instruction::mint_to(
+        &token,
+        &env.usdc,
+        &usdc_ata(env, &user.pubkey()),
+        &env.admin.pubkey(),
+        &[],
+        usdc,
+    )
+    .unwrap();
+    send(&mut env.svm, &[create, mint], &[&user, &env.admin]).expect("funded_user");
+    user
+}
+
+pub fn ix_create_fund(env: &Env, captain: &Pubkey, fund_id: u64, deposit: u64) -> Instruction {
+    ix_create_fund_with(captain, fund_id, deposit, env.usdc)
+}
+
+/// `create_fund` with an explicit USDC mint (for negative tests).
+pub fn ix_create_fund_with(
+    captain: &Pubkey,
+    fund_id: u64,
+    deposit: u64,
+    usdc_mint: Pubkey,
+) -> Instruction {
+    let f = FundHandles::new(captain, fund_id, &usdc_mint);
+    v1_ix(
+        v1_core::accounts::CreateFund {
+            captain: *captain,
+            config: config_pda(),
+            fund: f.fund,
+            policy: f.policy,
+            member: member_pda(&f.fund, captain),
+            share_mint: f.share_mint,
+            usdc_mint,
+            captain_usdc: ata(captain, &usdc_mint, &spl_token_interface::ID),
+            fund_usdc_vault: f.usdc_vault,
+            captain_shares: share_ata(&f, captain),
+            usdc_token_program: spl_token_interface::ID,
+            share_token_program: TOKEN_2022,
+            associated_token_program: anchor_spl::associated_token::ID,
+            system_program: anchor_lang::system_program::ID,
+        },
+        v1_core::instruction::CreateFund { fund_id, deposit },
+    )
+}
+
+/// Send `create_fund` signed by the captain.
+#[allow(clippy::result_large_err)] // LiteSVM's own error type.
+pub fn create_fund(
+    env: &mut Env,
+    captain: &Keypair,
+    fund_id: u64,
+    deposit: u64,
+) -> Result<FundHandles, FailedTransactionMetadata> {
+    let ix = ix_create_fund(env, &captain.pubkey(), fund_id, deposit);
+    send(&mut env.svm, &[ix], &[captain])?;
+    Ok(FundHandles::new(&captain.pubkey(), fund_id, &env.usdc))
+}
+
+/// The amount of an SPL Token or Token-2022 account. Bytes 64..72 in both layouts.
+#[track_caller]
+pub fn token_balance(svm: &LiteSVM, address: &Pubkey) -> u64 {
+    let data = svm
+        .get_account(address)
+        .unwrap_or_else(|| panic!("token account {address} not found"))
+        .data;
+    u64::from_le_bytes(data[64..72].try_into().unwrap())
+}
+
+pub struct ShareMintState {
+    pub base: spl_token_2022::state::Mint,
+    pub non_transferable: bool,
+}
+
+/// Unpack a Token-2022 mint and report whether it has the NonTransferable extension.
+pub fn share_mint_state(svm: &LiteSVM, mint: &Pubkey) -> ShareMintState {
+    use spl_token_2022::extension::{
+        non_transferable::NonTransferable, BaseStateWithExtensions, StateWithExtensions,
+    };
+    let account = svm.get_account(mint).expect("share mint");
+    assert_eq!(
+        account.owner, TOKEN_2022,
+        "share mint not owned by Token-2022"
+    );
+    let state = StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&account.data)
+        .expect("unpack mint");
+    ShareMintState {
+        base: state.base,
+        non_transferable: state.get_extension::<NonTransferable>().is_ok(),
+    }
 }
 
 pub fn read_config(env: &Env) -> Config {
