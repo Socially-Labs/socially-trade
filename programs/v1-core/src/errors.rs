@@ -103,10 +103,15 @@ pub enum ErrorCode {
     VaultResized,
     #[msg("Exit accounts list the same holding twice")]
     DuplicateHolding,
+    /// Unused since every price source is supported. Kept so later codes do not move.
     #[msg("Price source not supported yet")]
     PriceSourceUnsupported,
     #[msg("Kamino reserve is not a klend Reserve account")]
     ReserveInvalid,
     #[msg("Kamino reserve does not match the token entry")]
     ReserveMismatch,
+    #[msg("Switchboard feed is not a PullFeedAccountData account")]
+    FeedInvalid,
+    #[msg("Switchboard feed does not match the token entry")]
+    FeedMismatch,
 }

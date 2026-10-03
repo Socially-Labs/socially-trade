@@ -1161,18 +1161,54 @@ fn swap_rejects_t3_buy_until_open_seas_exists() {
 }
 
 #[test]
-fn swap_new_output_with_unsupported_source_fails() {
+fn switchboard_token_buy_sell_nav_and_exit_pro_rata() {
+    const MEME: u64 = 1_000_000_000; // 9 dp
     let mut t = trading_fund();
-    let m = create_mint(&mut t.env, 6);
-    let source = PriceSource::Switchboard {
-        feed: Pubkey::new_unique(),
-    };
-    register_token_with(&mut t.env, m, source, Tier::T1);
-    t.refresh_prices();
+    let m = funded_user(&mut t.env, 10_000 * USDC);
+    let meme = listed_meme(&mut t.env, Tier::T1); // $0.05
     let usdc = t.env.usdc;
-    expect_err(
-        t.swap(&SwapArgs::new(usdc, m, USDC, 0, 1, 1)),
-        ErrorCode::PriceSourceUnsupported,
+    setup_venue_pool(&mut t.env, &usdc, &meme.mint, 0, 1_000_000 * MEME);
+    t.refresh_prices();
+    refresh_meme(&mut t.env, &meme);
+    deposit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap(); // NAV 20,000
+                                                           // Buy 500 USDC -> 10,000 MEME (20,000 base units per USDC base unit).
+                                                           // The guard prices the output from the feed: oracle 10,000 MEME.
+    let buy = |min_out| SwapArgs::new(usdc, meme.mint, 500 * USDC, min_out, 20_000, 1);
+    expect_err(t.swap(&buy(9_899 * MEME)), ErrorCode::SlippageTooHigh);
+    t.swap(&buy(9_900 * MEME)).unwrap();
+    let vault = ata(&t.f.fund, &meme.mint, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &vault), 10_000 * MEME);
+    assert_eq!(fund(&t).holdings[1], meme.mint);
+    let ix = ix_poke_nav(&t.env, &t.f);
+    send(&mut t.env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Sell 1,000 MEME for 50 USDC: the input is valued from the feed.
+    t.swap(&SwapArgs::new(
+        meme.mint,
+        usdc,
+        1_000 * MEME,
+        49 * USDC,
+        1,
+        20_000,
+    ))
+    .unwrap();
+    assert_eq!(token_balance(&t.env.svm, &vault), 9_000 * MEME);
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Exit half the shares: half of each vault.
+    let create = ix_create_ata(
+        &m.pubkey(),
+        &m.pubkey(),
+        &meme.mint,
+        &spl_token_interface::ID,
+    );
+    send(&mut t.env.svm, &[create], &[&m]).unwrap();
+    exit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap();
+    let m_meme = ata(&m.pubkey(), &meme.mint, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &m_meme), 4_500 * MEME);
+    assert_eq!(token_balance(&t.env.svm, &vault), 4_500 * MEME);
+    assert_eq!(
+        token_balance(&t.env.svm, &usdc_ata(&t.env, &m.pubkey())),
+        9_775 * USDC
     );
 }
 

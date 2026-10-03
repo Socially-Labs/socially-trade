@@ -537,18 +537,109 @@ fn deposit_rejects_zero_nav_with_shares() {
     expect_err(deposit(&mut env, &f, &m, 100_000_000), ErrorCode::NavZero);
 }
 
-#[test]
-fn nav_rejects_switchboard_until_supported() {
+/// Fund with 300 USDC (300 shares) + 6,000 MEME at $0.05 (= 300 USDC).
+fn fund_with_meme() -> (Env, Keypair, FundHandles, SbToken) {
     let (mut env, _cap, m, f) = fund_with_member();
-    let mint = create_mint(&mut env, 9);
-    let source = PriceSource::Switchboard {
-        feed: Pubkey::new_unique(),
-    };
-    register_token_with(&mut env, mint, source, Tier::T1);
-    inject_holding(&mut env, &f, mint, 2_000_000_000);
+    let t = listed_meme(&mut env, Tier::T2);
+    inject_holding(&mut env, &f, t.mint, 6_000_000_000_000);
+    (env, m, f, t)
+}
+
+#[test]
+fn nav_values_switchboard_token_at_feed_value() {
+    let (mut env, m, f, t) = fund_with_meme();
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 200_000_000);
+    // Last holding (MEME): [vault, entry, feed, price_b (not read)].
+    let n = ix.accounts.len();
+    assert_eq!(ix.accounts[n - 2].pubkey, t.feed);
+    ix.accounts[n - 1].pubkey = Pubkey::new_unique();
+    // NAV = 300 + 6,000 * 0.05 = 600 -> pps 2.0; 200 USDC buys 100 shares.
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        100_000_000
+    );
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
+}
+
+#[test]
+fn nav_values_switchboard_token_with_std_dev_upper_bound() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    t.fields.std_dev = SB_ONE / 2_000; // $0.0005 = 100 bps
+    refresh_meme(&mut env, &t);
+    // Ema (no EMA: the feed value): 300 + 300 = 600 -> pps 2.0.
+    let ix = ix_poke_nav(&env, &f);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
+    // Upper bound: 6,000 * (0.05 + 0.0005) = 303 -> NAV 603;
+    // 201 USDC buys exactly 100 shares.
+    deposit(&mut env, &f, &m, 201_000_000).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        100_000_000
+    );
+}
+
+#[test]
+fn nav_rejects_switchboard_feed_not_in_registry() {
+    let (mut env, m, f, t) = fund_with_meme();
+    // A valid, fresh feed, but not the one listed for this token.
+    let other = Pubkey::new_unique();
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    write_feed(&mut env.svm, other, &FeedFields { slot, ..t.fields });
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    let n = ix.accounts.len();
+    ix.accounts[n - 2].pubkey = other;
+    expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::FeedMismatch);
+}
+
+#[test]
+fn nav_rejects_switchboard_feed_not_owned_by_switchboard() {
+    let (mut env, m, f, t) = fund_with_meme();
+    let mut acc = env.svm.get_account(&t.feed).unwrap();
+    acc.owner = Pubkey::new_unique();
+    env.svm.set_account(t.feed, acc).unwrap();
     expect_err(
         deposit(&mut env, &f, &m, 100_000_000),
-        ErrorCode::PriceSourceUnsupported,
+        ErrorCode::FeedInvalid,
+    );
+}
+
+#[test]
+fn nav_rejects_stale_switchboard_feed() {
+    let (mut env, m, f, _t) = fund_with_meme();
+    // 60 s at 400 ms/slot = 150 slots.
+    let mut clock: Clock = env.svm.get_sysvar();
+    clock.slot += MAX_RESULT_AGE_SLOTS + 1;
+    env.svm.set_sysvar(&clock);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceStale,
+    );
+    // At exactly the limit it is still fresh.
+    clock.slot -= 1;
+    env.svm.set_sysvar(&clock);
+    env.svm.expire_blockhash();
+    deposit(&mut env, &f, &m, 100_000_000).unwrap();
+}
+
+#[test]
+fn nav_rejects_wide_or_non_positive_switchboard_result() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // std_dev 201 bps of $0.05.
+    t.fields.std_dev = SB_ONE / 20 * 201 / 10_000;
+    refresh_meme(&mut env, &t);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceConfTooWide,
+    );
+    t.fields.std_dev = 0;
+    t.fields.value = -SB_ONE;
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceNonPositive,
     );
 }
 

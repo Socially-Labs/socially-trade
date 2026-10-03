@@ -9,6 +9,7 @@ pub mod math;
 pub mod nav;
 pub mod pyth;
 pub mod state;
+pub mod switchboard;
 
 use {
     anchor_lang::prelude::*,

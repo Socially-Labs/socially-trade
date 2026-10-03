@@ -965,6 +965,68 @@ pub fn refresh_kusdc(env: &mut Env, k: &KToken) {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Switchboard On-Demand feeds
+// ---------------------------------------------------------------------------
+
+pub use v1_core::switchboard::{FeedFields, MAX_RESULT_AGE_SLOTS, SWITCHBOARD_ON_DEMAND};
+
+/// 10^18: Switchboard values are USD with 18 decimals.
+pub const SB_ONE: i128 = 1_000_000_000_000_000_000;
+
+/// A long-tail test token priced by a Switchboard pull feed.
+#[derive(Debug, Clone, Copy)]
+pub struct SbToken {
+    pub mint: Pubkey,
+    pub feed: Pubkey,
+    pub fields: FeedFields,
+}
+
+/// Write a `PullFeedAccountData` account (real layout, owner = Switchboard On-Demand).
+pub fn write_feed(svm: &mut LiteSVM, address: Pubkey, fields: &FeedFields) {
+    let data = v1_core::switchboard::encode_feed(fields);
+    svm.set_account(
+        address,
+        Account {
+            lamports: svm.minimum_balance_for_rent_exemption(data.len()),
+            data,
+            owner: SWITCHBOARD_ON_DEMAND,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+/// A 9-dp memecoin listed `tier` with a `Switchboard` source at $0.05
+/// (std_dev 0), feed fresh now. (T3 buys are rejected for now; NAV tests use T1/T2.)
+pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
+    let mint = create_mint(env, 9);
+    let feed = Pubkey::new_unique();
+    register_token_with(env, mint, PriceSource::Switchboard { feed }, tier);
+    let t = SbToken {
+        mint,
+        feed,
+        fields: FeedFields {
+            value: SB_ONE / 20,
+            std_dev: 0,
+            slot: 0,
+            max_staleness: 250,
+        },
+    };
+    refresh_meme(env, &t);
+    t
+}
+
+/// Re-write `t`'s feed with its fields at the current slot.
+pub fn refresh_meme(env: &mut Env, t: &SbToken) {
+    let fields = FeedFields {
+        slot: env.svm.get_sysvar::<Clock>().slot,
+        ..t.fields
+    };
+    write_feed(&mut env.svm, t.feed, &fields);
+}
+
 /// Write SOL's price account: spot and ema in whole dollars, conf in cents.
 pub fn sol_price(env: &mut Env, sol: &Pubkey, spot: i64, conf_cents: u64, ema: i64) {
     let t = now(env);

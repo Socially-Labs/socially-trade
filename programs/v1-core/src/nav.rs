@@ -8,9 +8,10 @@
 //!   refreshed: see `kamino`); `price_b` = the underlying's PriceUpdateV2.
 //!   A kToken amount is converted to underlying base units at the reserve
 //!   rate, then valued like a Pyth token (all modes, underlying EMA and conf).
-//! - Switchboard: `price_a` = the feed; `price_b` is not read.
+//! - Switchboard: `price_a` = the On-Demand pull feed in the entry (see
+//!   `switchboard`); `price_b` is not read. The feed has no EMA: Spot and Ema
+//!   use the feed value, DepositUpperBound adds the feed's std_dev.
 //!
-//! Switchboard is not priced yet: it fails with `PriceSourceUnsupported`.
 //! USDC is valued 1:1; its entry and price accounts are not read, but they
 //! must be present (uniform layout). This module is the only place that
 //! knows the layout: other code uses the constants and `price`.
@@ -23,6 +24,7 @@ use {
         kamino::{self, KaminoRate},
         math, pyth,
         state::{Config, Fund, Policy, PriceSource, Tier, TokenEntry},
+        switchboard,
     },
     anchor_lang::prelude::*,
     anchor_spl::{
@@ -59,7 +61,8 @@ pub struct Valuation {
 /// The validated price of a listed token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TokenPrice {
-    /// Pyth price of the token, or of the underlying for a kToken.
+    /// Pyth price of the token, or of the underlying for a kToken. A
+    /// Switchboard price in the same shape (`SbPrice::to_pyth`).
     pub pyth: pyth::PythPrice,
     /// Decimals `pyth` prices: the token's, or the underlying's for a kToken.
     pub decimals: u8,
@@ -211,7 +214,21 @@ pub(crate) fn price(entry: &TokenEntry, accs: &[AccountInfo], now: i64) -> Resul
                 rate: Some(rate),
             })
         }
-        PriceSource::Switchboard { .. } => err!(ErrorCode::PriceSourceUnsupported),
+        PriceSource::Switchboard { feed } => {
+            let a = &accs[0];
+            let p = switchboard::parse_feed(
+                a.key,
+                a.owner,
+                &a.try_borrow_data()?,
+                &feed,
+                Clock::get()?.slot,
+            )?;
+            Ok(TokenPrice {
+                pyth: p.to_pyth()?,
+                decimals: entry.decimals,
+                rate: None,
+            })
+        }
     }
 }
 
