@@ -4,6 +4,8 @@ pub mod constants;
 pub mod errors;
 pub mod events;
 pub mod instructions;
+pub mod math;
+pub mod pyth;
 pub mod state;
 
 use {anchor_lang::prelude::*, instructions::*, state::Tier};

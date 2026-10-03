@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 /// Program errors. On chain each code is `6000 + variant index`, so only append.
+#[derive(PartialEq, Eq)]
 #[error_code]
 pub enum ErrorCode {
     #[msg("Arithmetic overflow")]

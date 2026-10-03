@@ -417,3 +417,27 @@ pub fn register_venue(env: &mut Env, slot: u8, venue: Pubkey) {
 pub fn read_config(env: &Env) -> Config {
     read_account(&env.svm, &config_pda())
 }
+
+/// Write a fake Pyth `PriceUpdateV2` account (Full verification, owner = Pyth receiver).
+pub fn set_price(
+    svm: &mut LiteSVM,
+    address: Pubkey,
+    feed_id: &[u8; 32],
+    price: i64,
+    conf: u64,
+    expo: i32,
+    publish_time: i64,
+) {
+    let data = v1_core::pyth::encode_price_update(true, feed_id, price, conf, expo, publish_time);
+    svm.set_account(
+        address,
+        Account {
+            lamports: svm.minimum_balance_for_rent_exemption(data.len()),
+            data,
+            owner: v1_core::pyth::PYTH_RECEIVER,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
