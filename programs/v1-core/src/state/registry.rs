@@ -4,7 +4,9 @@ use anchor_lang::prelude::*;
 pub enum Tier {
     T1,
     T2,
-    /// Open-seas tokens. Buys are rejected until the open-seas rules exist.
+    /// Open-seas tokens. Only Open Seas funds may buy them, within the
+    /// captain-stake caps measured at cost; the captain's stake takes the
+    /// first loss on a sale.
     T3,
 }
 
@@ -21,8 +23,13 @@ pub enum PriceSource {
         underlying_feed_id: [u8; 32],
         underlying_decimals: u8,
     },
-    /// `price_a` = the Switchboard On-Demand feed; `price_b` not read.
-    Switchboard { feed: Pubkey },
+    /// `price_a` = the Switchboard On-Demand feed; `price_b` not read. The
+    /// feed's job hash and queue must still equal `feed_hash` and `queue`.
+    Switchboard {
+        feed: Pubkey,
+        feed_hash: [u8; 32],
+        queue: Pubkey,
+    },
 }
 
 /// A listed token. Seeds: `[b"token", mint]`.

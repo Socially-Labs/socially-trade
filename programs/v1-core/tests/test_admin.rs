@@ -398,6 +398,8 @@ fn every_source() -> [PriceSource; 3] {
         },
         PriceSource::Switchboard {
             feed: Pubkey::new_unique(),
+            feed_hash: [9; 32],
+            queue: Pubkey::new_unique(),
         },
     ]
 }

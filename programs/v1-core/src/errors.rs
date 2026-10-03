@@ -122,4 +122,6 @@ pub enum ErrorCode {
     T3CapExceeded,
     #[msg("T3 buy into a holding that has units without a cost basis")]
     T3UnbasedHolding,
+    #[msg("Switchboard feed job hash or queue differs from the token entry")]
+    FeedConfigChanged,
 }

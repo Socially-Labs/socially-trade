@@ -41,12 +41,13 @@ pub const ACCOUNTS_PER_HOLDING: usize = 2 + PRICE_ACCOUNTS;
 /// How a non-USDC holding is priced. USDC is always 1:1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValuationMode {
-    /// Pyth spot price.
+    /// Spot price of the token's price source.
     Spot,
     /// `max(price, ema_price) + conf`: an upper bound, so a depositor cannot
     /// pick a low in-window price to get more shares.
     DepositUpperBound,
-    /// Pyth EMA price: slow to move, for the breaker / peak / recorded pps.
+    /// EMA price of the price source (the spot value for a source without
+    /// one): slow to move, for the breaker / peak / recorded pps.
     Ema,
 }
 
@@ -214,13 +215,19 @@ pub(crate) fn price(entry: &TokenEntry, accs: &[AccountInfo], now: i64) -> Resul
                 rate: Some(rate),
             })
         }
-        PriceSource::Switchboard { feed } => {
+        PriceSource::Switchboard {
+            feed,
+            feed_hash,
+            queue,
+        } => {
             let a = &accs[0];
             let p = switchboard::parse_feed(
                 a.key,
                 a.owner,
                 &a.try_borrow_data()?,
                 &feed,
+                &feed_hash,
+                &queue,
                 Clock::get()?.slot,
             )?;
             Ok(TokenPrice {

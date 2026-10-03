@@ -105,12 +105,7 @@ fn second_token(s: &mut Seas, tier: Tier) -> SbToken {
 
 /// Re-list `token` as `tier` (7-day timelock), then re-publish every price.
 fn retier(s: &mut Seas, token: &SbToken, tier: Tier) {
-    register_token_with(
-        &mut s.t.env,
-        token.mint,
-        PriceSource::Switchboard { feed: token.feed },
-        tier,
-    );
+    register_token_with(&mut s.t.env, token.mint, token.source(), tier);
     s.refresh();
     refresh_meme(&mut s.t.env, token);
 }

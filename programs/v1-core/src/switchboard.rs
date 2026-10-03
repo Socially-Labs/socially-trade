@@ -11,6 +11,10 @@
 //!
 //! Values are `i128` with 18 decimals (`PRECISION = 18`): USD per whole token.
 //!
+//! The feed authority can repoint a feed to another job (`feed_hash`) or
+//! queue at any time, with no timelock. The registry pins both, so a repoint
+//! stops pricing (`FeedConfigChanged`) until the admin re-queues the token.
+//!
 //! Checks mirror the crate's `PullFeedAccountData::value(clock_slot)`: the
 //! result slot must be within `max_staleness` slots, and a slot of 0 means no
 //! result. We also cap the age at 60 s, require a positive value, and require
@@ -38,6 +42,10 @@ pub const MIN_SAMPLES: u8 = 3;
 /// Decimals of every Switchboard value.
 const PRECISION: i32 = 18;
 
+// After `submissions: [OracleSubmission; 32]` (64 bytes each, 8..2056) and
+// `authority` (2056): the queue oracles must be bound to, then the job hash.
+const QUEUE: usize = 2088;
+const FEED_HASH: usize = 2120;
 // result (CurrentResult) starts at 2264: value, std_dev, mean, range,
 // min_value, max_value (i128 each), num_samples u8, submission_idx u8,
 // padding [u8; 6], slot u64, min_slot u64, max_slot u64.
@@ -92,12 +100,15 @@ fn i128_at(data: &[u8], at: usize) -> i128 {
 }
 
 /// Validate the pull feed `key` (owner, data) against the registry entry's
-/// `expected_feed`, and read its current result.
+/// `expected_feed`, `expected_hash` and `expected_queue`, and read its
+/// current result.
 pub fn parse_feed(
     key: &Pubkey,
     owner: &Pubkey,
     data: &[u8],
     expected_feed: &Pubkey,
+    expected_hash: &[u8; 32],
+    expected_queue: &Pubkey,
     now_slot: u64,
 ) -> Result<SbPrice, ErrorCode> {
     if key != expected_feed {
@@ -109,6 +120,11 @@ pub fn parse_feed(
         || data[..8] != PULL_FEED_DISCRIMINATOR
     {
         return Err(ErrorCode::FeedInvalid);
+    }
+    if data[FEED_HASH..FEED_HASH + 32] != expected_hash[..]
+        || data[QUEUE..QUEUE + 32] != expected_queue.as_ref()[..]
+    {
+        return Err(ErrorCode::FeedConfigChanged);
     }
     let price = SbPrice {
         value: i128_at(data, RESULT_VALUE),
@@ -158,6 +174,9 @@ pub struct FeedFields {
     pub min_slot: u64,
     pub num_samples: u8,
     pub max_staleness: u32,
+    /// Job hash.
+    pub feed_hash: [u8; 32],
+    pub queue: Pubkey,
 }
 
 /// Build `PullFeedAccountData` account bytes (real length and offsets, other fields 0).
@@ -172,6 +191,8 @@ pub fn encode_feed(f: &FeedFields) -> Vec<u8> {
     put(RESULT_SLOT, &f.slot.to_le_bytes());
     put(RESULT_MIN_SLOT, &f.min_slot.to_le_bytes());
     put(MAX_STALENESS, &f.max_staleness.to_le_bytes());
+    put(FEED_HASH, &f.feed_hash);
+    put(QUEUE, f.queue.as_ref());
     d
 }
 
@@ -182,6 +203,12 @@ mod tests {
     const SLOT: u64 = 1_000;
     const E18: i128 = 1_000_000_000_000_000_000;
     const FEED: Pubkey = pubkey!("FTcFqwCjAgv2VMaowQ9XSBcesVzFzZkaju25nKio6bki");
+    /// Job hash and queue of the live POPCAT/USD feed (fixture).
+    const POPCAT_HASH: [u8; 32] = [
+        235, 79, 154, 67, 2, 79, 143, 51, 120, 107, 114, 145, 64, 69, 16, 175, 142, 148, 166, 110,
+        26, 203, 68, 149, 58, 49, 55, 135, 142, 231, 3, 63,
+    ];
+    const MAINNET_QUEUE: Pubkey = pubkey!("A43DyUGA7s8eXPxqEjJY6EBu1KKbNgfxF8h17VAHn13w");
 
     /// $0.05 +- 1%.
     fn fields() -> FeedFields {
@@ -192,16 +219,54 @@ mod tests {
             min_slot: SLOT,
             num_samples: MIN_SAMPLES,
             max_staleness: 250,
+            feed_hash: POPCAT_HASH,
+            queue: MAINNET_QUEUE,
         }
     }
-    fn parse(f: &FeedFields, now_slot: u64) -> Result<SbPrice, ErrorCode> {
+    fn parse_with(
+        key: &Pubkey,
+        owner: &Pubkey,
+        data: &[u8],
+        now_slot: u64,
+    ) -> Result<SbPrice, ErrorCode> {
         parse_feed(
+            key,
+            owner,
+            data,
             &FEED,
-            &SWITCHBOARD_ON_DEMAND,
-            &encode_feed(f),
-            &FEED,
+            &POPCAT_HASH,
+            &MAINNET_QUEUE,
             now_slot,
         )
+    }
+    fn parse(f: &FeedFields, now_slot: u64) -> Result<SbPrice, ErrorCode> {
+        parse_with(&FEED, &SWITCHBOARD_ON_DEMAND, &encode_feed(f), now_slot)
+    }
+
+    #[test]
+    fn accepts_matching_job_hash_and_queue() {
+        assert!(parse(&fields(), SLOT).is_ok());
+    }
+
+    #[test]
+    fn rejects_changed_job_hash() {
+        // The feed authority repoints the feed to another job.
+        let mut feed_hash = POPCAT_HASH;
+        feed_hash[31] ^= 1;
+        let f = FeedFields {
+            feed_hash,
+            ..fields()
+        };
+        assert_eq!(parse(&f, SLOT), Err(ErrorCode::FeedConfigChanged));
+    }
+
+    #[test]
+    fn rejects_changed_queue() {
+        let f = FeedFields {
+            queue: Pubkey::new_unique(),
+            ..fields()
+        };
+        assert_eq!(parse(&f, SLOT), Err(ErrorCode::FeedConfigChanged));
     }
 
     #[test]
@@ -252,7 +317,7 @@ mod tests {
         let other = Pubkey::new_unique();
         let d = encode_feed(&fields());
         assert_eq!(
-            parse_feed(&other, &SWITCHBOARD_ON_DEMAND, &d, &FEED, SLOT),
+            parse_with(&other, &SWITCHBOARD_ON_DEMAND, &d, SLOT),
             Err(ErrorCode::FeedMismatch)
         );
     }
@@ -261,23 +326,17 @@ mod tests {
     fn rejects_wrong_owner_type_and_length() {
         let d = encode_feed(&fields());
         assert_eq!(
-            parse_feed(&FEED, &Pubkey::new_unique(), &d, &FEED, SLOT),
+            parse_with(&FEED, &Pubkey::new_unique(), &d, SLOT),
             Err(ErrorCode::FeedInvalid)
         );
         let mut bad = d.clone();
         bad[0] ^= 1;
         assert_eq!(
-            parse_feed(&FEED, &SWITCHBOARD_ON_DEMAND, &bad, &FEED, SLOT),
+            parse_with(&FEED, &SWITCHBOARD_ON_DEMAND, &bad, SLOT),
             Err(ErrorCode::FeedInvalid)
         );
         assert_eq!(
-            parse_feed(
-                &FEED,
-                &SWITCHBOARD_ON_DEMAND,
-                &d[..PULL_FEED_LEN - 1],
-                &FEED,
-                SLOT
-            ),
+            parse_with(&FEED, &SWITCHBOARD_ON_DEMAND, &d[..PULL_FEED_LEN - 1], SLOT),
             Err(ErrorCode::FeedInvalid)
         );
     }
@@ -400,7 +459,15 @@ mod tests {
     fn parses_live_popcat_feed() {
         let d = include_bytes!("../tests/fixtures/popcat_pull_feed.bin");
         assert_eq!(d.len(), PULL_FEED_LEN);
-        let p = parse_feed(&FEED, &SWITCHBOARD_ON_DEMAND, d, &FEED, 428_452_357).unwrap();
+        // The registry pins the job hash and queue read from this account.
+        assert_eq!(d[FEED_HASH..FEED_HASH + 32], POPCAT_HASH);
+        assert_eq!(d[QUEUE..QUEUE + 32], MAINNET_QUEUE.to_bytes());
+        // The feed authority (can change the job hash) sits right before the queue.
+        assert_eq!(
+            d[QUEUE - 32..QUEUE],
+            pubkey!("69fYfCVsBvV5CJQeiALyZZ5Auuh1GtqY8f8NnhMt39na").to_bytes()
+        );
+        let p = parse_with(&FEED, &SWITCHBOARD_ON_DEMAND, d, 428_452_357).unwrap();
         assert_eq!(
             p,
             SbPrice {
@@ -412,9 +479,9 @@ mod tests {
         // 4 samples; oldest at slot 428452349. Its own max_staleness is
         // 250 slots, so our 150-slot cap binds, counted from the oldest sample.
         assert_eq!(d[RESULT_NUM_SAMPLES], 4);
-        assert!(parse_feed(&FEED, &SWITCHBOARD_ON_DEMAND, d, &FEED, 428_452_349 + 150).is_ok());
+        assert!(parse_with(&FEED, &SWITCHBOARD_ON_DEMAND, d, 428_452_349 + 150).is_ok());
         assert_eq!(
-            parse_feed(&FEED, &SWITCHBOARD_ON_DEMAND, d, &FEED, 428_452_349 + 151),
+            parse_with(&FEED, &SWITCHBOARD_ON_DEMAND, d, 428_452_349 + 151),
             Err(ErrorCode::PriceStale)
         );
         // 1,000 POPCAT (9 dp) = 51.508418 USDC.

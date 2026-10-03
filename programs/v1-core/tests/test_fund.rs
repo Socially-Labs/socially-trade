@@ -599,6 +599,42 @@ fn nav_rejects_switchboard_feed_not_in_registry() {
 }
 
 #[test]
+fn nav_rejects_switchboard_feed_repointed_by_its_authority() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // NAV 600 -> pps 2.0; 100 USDC buys 50 shares.
+    deposit(&mut env, &f, &m, 100_000_000).unwrap();
+    // The feed authority moves the feed to another job: pricing stops.
+    t.fields.feed_hash[0] ^= 1;
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::FeedConfigChanged,
+    );
+    // The same for a move to another oracle queue.
+    t.fields.feed_hash[0] ^= 1;
+    t.fields.queue = Pubkey::new_unique();
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::FeedConfigChanged,
+    );
+    // Exits stay in-kind and need no price.
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    let shares = token_balance(&env.svm, &share_ata(&f, &m.pubkey()));
+    assert_eq!(shares, 50_000_000);
+    let ix = ix_exit_unpriced(&env, &f, &m.pubkey(), shares);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(token_balance(&env.svm, &share_ata(&f, &m.pubkey())), 0);
+    // 50 of 350 shares: 1/7 of 6,000 MEME, floor.
+    let meme = ata(&m.pubkey(), &t.mint, &token);
+    assert_eq!(token_balance(&env.svm, &meme), 857_142_857_142);
+}
+
+#[test]
 fn nav_rejects_switchboard_feed_not_owned_by_switchboard() {
     let (mut env, m, f, t) = fund_with_meme();
     let mut acc = env.svm.get_account(&t.feed).unwrap();

@@ -760,7 +760,7 @@ pub fn price_accounts(env: &Env, mint: &Pubkey) -> [Pubkey; 2] {
         });
     match source {
         Some(PriceSource::KaminoReserve { reserve, .. }) => [reserve, price_account(&reserve)],
-        Some(PriceSource::Switchboard { feed }) => [feed, UNUSED_PRICE_ACCOUNT],
+        Some(PriceSource::Switchboard { feed, .. }) => [feed, UNUSED_PRICE_ACCOUNT],
         _ => [price_account(mint), UNUSED_PRICE_ACCOUNT],
     }
 }
@@ -997,6 +997,17 @@ pub struct SbToken {
     pub fields: FeedFields,
 }
 
+impl SbToken {
+    /// The registry source that matches the feed's job hash and queue.
+    pub fn source(&self) -> PriceSource {
+        PriceSource::Switchboard {
+            feed: self.feed,
+            feed_hash: self.fields.feed_hash,
+            queue: self.fields.queue,
+        }
+    }
+}
+
 /// Write a `PullFeedAccountData` account (real layout, owner = Switchboard On-Demand).
 pub fn write_feed(svm: &mut LiteSVM, address: Pubkey, fields: &FeedFields) {
     let data = v1_core::switchboard::encode_feed(fields);
@@ -1017,11 +1028,9 @@ pub fn write_feed(svm: &mut LiteSVM, address: Pubkey, fields: &FeedFields) {
 /// (std_dev 0, 3 samples), feed fresh now.
 pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
     let mint = create_mint(env, 9);
-    let feed = Pubkey::new_unique();
-    register_token_with(env, mint, PriceSource::Switchboard { feed }, tier);
     let t = SbToken {
         mint,
-        feed,
+        feed: Pubkey::new_unique(),
         fields: FeedFields {
             value: SB_ONE / 20,
             std_dev: 0,
@@ -1029,8 +1038,11 @@ pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
             min_slot: 0,
             num_samples: v1_core::switchboard::MIN_SAMPLES,
             max_staleness: 250,
+            feed_hash: [7; 32],
+            queue: Pubkey::new_unique(),
         },
     };
+    register_token_with(env, mint, t.source(), tier);
     refresh_meme(env, &t);
     t
 }
