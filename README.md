@@ -8,6 +8,15 @@ Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SO
 
 The current delivery is backend only, as requested. Verification uses API calls, PostgreSQL simulations and test cases; no frontend or Android application is included.
 
+### Trade and Crew history
+
+- `GET /v0/funds/:fundId/orders`: full cursor-paginated order history with fill details.
+- `GET /v0/captains/:captainId/orders`: cursor-paginated orders across Captain funds.
+- `GET /v0/captains/:captainId/trade-statistics`: lifetime order counts and executed volume.
+- `GET /v0/me/crew-transactions`: private contributions, exits and settlement payouts.
+
+See [history API contracts](docs/paper-history-api.md) for cursor and accounting semantics.
+
 ### Performance reads
 
 - `GET /v0/funds/:fundId/performance`: current/historical NAV, unit returns, drawdown, fees and trial status.

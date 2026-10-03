@@ -15,6 +15,7 @@ graphify-out/.*
 graphify-out/cache/
 graphify-out/cost.json
 graphify-out/manifest.json
+graphify-out/20??-??-??/
 .superpowers/
 
 # Rust / Solana build output (includes target/deploy/*-keypair.json).

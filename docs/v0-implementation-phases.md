@@ -124,6 +124,8 @@ These are backend checkpoints, not completion of Phase 6 or 7. The mobile client
 
 ### Implemented backend checkpoint
 
+Full fund order pagination, Captain-wide order history and statistics, and an authenticated Crew contribution/exit/settlement timeline are now implemented. See [the history API contracts](./paper-history-api.md).
+
 Fund performance/history, personal P&L, authenticated active/former allocation records, permanent Captain records, gross/net returns, drawdown, daily high-water-mark fees, and automatic virtual trial settlement are implemented and covered by the [simulation report](./backend-simulation-report.md). Fee checks assess the first eligible positive gain per UTC day; they do not wait for an end-of-day price. Valuation, fee and expiration sweeps scan funds in bounded pages and are verified with 101 funds.
 
 Rankings currently use net return with a minimum seven-day age and display drawdown; the response explicitly says they are not risk-adjusted. A risk-adjusted ranking model and the mobile presentation remain open, so this checkpoint does not mark the full product phase complete.

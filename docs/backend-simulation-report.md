@@ -71,3 +71,7 @@ Rankings currently order net returns among the most recent 100 funds with curren
 This validates the implemented paper backend, including performance fees, automatic trial settlement and JWT verification against a localhost JWKS server, under synthetic prices, localhost HTTP and PostgreSQL. It does not validate managed identity-provider account setup or its live sign-in flow, Pyth response parsing against a live provider, external push delivery, deployment/network infrastructure, long-duration load, or a risk-adjusted ranking model. Frontend and Android implementation are outside the requested delivery.
 
 Order/trial clocks are accelerated in test fixtures. Failure tests inject database exceptions and retry transactions; they do not kill an operating-system worker process mid-commit. The results provide regression coverage for these cases, rather than a guarantee against all possible failures.
+
+## History extension — October 4, 2026
+
+The full backend suite passes 80 test results with zero failures, skips or cancellations. Seven new scenario groups plus their enclosing suite check full order and Crew event pagination beyond 100 entries, tied timestamps, stable pages during new submissions, cross-fund Captain history and statistics, partial-fill counts, fill amounts, private settlement fields, Crew exits, authentication and invalid/foreign cursors. Each run uses a disposable local PostgreSQL schema; no Pyth or external market requests are made.
