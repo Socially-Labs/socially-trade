@@ -98,6 +98,32 @@ pub mod v1_core {
         instructions::swap::swap(ctx, amount_in, min_out, venue_data)
     }
 
+    /// Captain or delegate: propose a trade of any size for a crew vote.
+    pub fn propose_trade(
+        ctx: Context<ProposeTrade>,
+        amount_in: u64,
+        min_out: u64,
+        venue_data: Vec<u8>,
+    ) -> Result<()> {
+        instructions::proposal::propose_trade(ctx, amount_in, min_out, venue_data)
+    }
+
+    /// Member: vote once on an open proposal, weighted by share balance.
+    pub fn vote(ctx: Context<CastVote>, yes: bool) -> Result<()> {
+        instructions::proposal::vote(ctx, yes)
+    }
+
+    /// Anyone: execute a passed proposal through the swap core.
+    /// Accounts and remaining accounts: as `swap`, plus the proposal.
+    pub fn execute_proposal<'info>(ctx: Context<'info, ExecuteProposal<'info>>) -> Result<()> {
+        instructions::proposal::execute_proposal(ctx)
+    }
+
+    /// Captain: cancel an open proposal.
+    pub fn cancel_proposal(ctx: Context<CancelProposal>) -> Result<()> {
+        instructions::proposal::cancel_proposal(ctx)
+    }
+
     /// Captain: remove a delegate and take back the rent.
     pub fn revoke_delegate(ctx: Context<RevokeDelegate>) -> Result<()> {
         instructions::delegate::revoke_delegate(ctx)

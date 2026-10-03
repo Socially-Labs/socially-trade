@@ -203,14 +203,8 @@ fn prepare(
     // 1. Mints, amount, venue.
     require_keys_neq!(input, output, ErrorCode::SameMint);
     require!(p.amount_in > 0, ErrorCode::ZeroAmount);
-    let venue = t.venue_program.key();
     require!(
-        venue != Pubkey::default()
-            && venue != crate::ID
-            && venue != TOKEN_PROGRAM
-            && venue != TOKEN_2022_PROGRAM
-            && venue != associated_token::ID
-            && config.venues.contains(&venue),
+        venue_allowed(config, &t.venue_program.key()),
         ErrorCode::VenueNotAllowed
     );
 
@@ -327,8 +321,22 @@ fn prepare(
     })
 }
 
+/// In `config.venues`, and not an empty slot, v1-core or a token program.
+pub(crate) fn venue_allowed(config: &Config, venue: &Pubkey) -> bool {
+    *venue != Pubkey::default()
+        && *venue != crate::ID
+        && *venue != TOKEN_PROGRAM
+        && *venue != TOKEN_2022_PROGRAM
+        && *venue != associated_token::ID
+        && config.venues.contains(venue)
+}
+
 /// The registry entry of `mint` (None for USDC, which needs none).
-fn listed(info: &AccountInfo, mint: &Pubkey, config: &Config) -> Result<Option<TokenEntry>> {
+pub(crate) fn listed(
+    info: &AccountInfo,
+    mint: &Pubkey,
+    config: &Config,
+) -> Result<Option<TokenEntry>> {
     if *mint == config.usdc_mint {
         return Ok(None);
     }

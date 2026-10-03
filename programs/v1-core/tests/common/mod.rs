@@ -1190,64 +1190,55 @@ impl SwapArgs {
     }
 }
 
-/// `swap` signed by `signer`, with `delegate` as the Delegate account (None = captain).
-/// Remaining: NAV accounts, then `[output price]` when the output is new to the
-/// fund, then the mock venue's accounts (fund vaults as user_in / user_out).
-pub fn ix_swap(
-    env: &Env,
-    f: &FundHandles,
-    signer: &Pubkey,
-    delegate: Option<Pubkey>,
-    a: &SwapArgs,
-) -> Instruction {
+/// The `Trade` accounts of a swap or a proposal execution for `a`.
+pub fn trade_accounts(env: &Env, f: &FundHandles, a: &SwapArgs) -> v1_core::accounts::Trade {
     let prog = |mint: &Pubkey| env.svm.get_account(mint).expect("mint").owner;
     let (in_prog, out_prog) = (prog(&a.input), prog(&a.output));
-    let in_vault = ata(&f.fund, &a.input, &in_prog);
-    let out_vault = ata(&f.fund, &a.output, &out_prog);
-    let mut ix = v1_ix(
-        v1_core::accounts::Swap {
-            signer: *signer,
-            delegate,
-            trade: v1_core::accounts::Trade {
-                config: config_pda(),
-                fund: f.fund,
-                policy: f.policy,
-                venue_program: a.venue,
-                input_mint: a.input,
-                output_mint: a.output,
-                input_entry: token_pda(&a.input),
-                output_entry: token_pda(&a.output),
-                fund_input_vault: in_vault,
-                fund_output_vault: out_vault,
-                output_token_program: out_prog,
-                associated_token_program: anchor_spl::associated_token::ID,
-                system_program: anchor_lang::system_program::ID,
-            },
-        },
-        v1_core::instruction::Swap {
-            amount_in: a.amount_in,
-            min_out: a.min_out,
-            venue_data: mock_venue::instruction::Swap {
-                amount_in: a.amount_in,
-                out_num: a.out_num,
-                out_den: a.out_den,
-                mode: a.mode,
-            }
-            .data(),
-        },
-    );
-    ix.accounts.extend(nav_accounts(env, f));
+    v1_core::accounts::Trade {
+        config: config_pda(),
+        fund: f.fund,
+        policy: f.policy,
+        venue_program: a.venue,
+        input_mint: a.input,
+        output_mint: a.output,
+        input_entry: token_pda(&a.input),
+        output_entry: token_pda(&a.output),
+        fund_input_vault: ata(&f.fund, &a.input, &in_prog),
+        fund_output_vault: ata(&f.fund, &a.output, &out_prog),
+        output_token_program: out_prog,
+        associated_token_program: anchor_spl::associated_token::ID,
+        system_program: anchor_lang::system_program::ID,
+    }
+}
+
+/// The mock venue's instruction data for `a`.
+pub fn venue_data(a: &SwapArgs) -> Vec<u8> {
+    mock_venue::instruction::Swap {
+        amount_in: a.amount_in,
+        out_num: a.out_num,
+        out_den: a.out_den,
+        mode: a.mode,
+    }
+    .data()
+}
+
+/// Remaining accounts of a trade: NAV accounts, then `[output price]` when the
+/// output is new to the fund, then the mock venue's accounts (fund vaults as
+/// user_in / user_out).
+pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountMeta> {
+    let prog = |mint: &Pubkey| env.svm.get_account(mint).expect("mint").owner;
+    let (in_prog, out_prog) = (prog(&a.input), prog(&a.output));
+    let mut metas = nav_accounts(env, f);
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     if !fund.holdings[..fund.holdings_len as usize].contains(&a.output) {
-        ix.accounts
-            .push(AccountMeta::new_readonly(price_account(&a.output), false));
+        metas.push(AccountMeta::new_readonly(price_account(&a.output), false));
     }
     let pool = venue_pool_authority();
     let venue = mock_venue::accounts::Swap {
         authority: f.fund,
         pool_authority: pool,
-        user_in: in_vault,
-        user_out: out_vault,
+        user_in: ata(&f.fund, &a.input, &in_prog),
+        user_out: ata(&f.fund, &a.output, &out_prog),
         pool_in: ata(&pool, &a.input, &in_prog),
         pool_out: ata(&pool, &a.output, &out_prog),
         mint_in: a.input,
@@ -1257,11 +1248,142 @@ pub fn ix_swap(
     }
     .to_account_metas(None);
     // The fund PDA cannot sign the transaction; v1-core signs for it in the CPI.
-    ix.accounts.extend(venue.into_iter().map(|mut m| {
+    metas.extend(venue.into_iter().map(|mut m| {
         m.is_signer = false;
         m
     }));
+    metas
+}
+
+/// `swap` signed by `signer`, with `delegate` as the Delegate account (None = captain).
+pub fn ix_swap(
+    env: &Env,
+    f: &FundHandles,
+    signer: &Pubkey,
+    delegate: Option<Pubkey>,
+    a: &SwapArgs,
+) -> Instruction {
+    let mut ix = v1_ix(
+        v1_core::accounts::Swap {
+            signer: *signer,
+            delegate,
+            trade: trade_accounts(env, f, a),
+        },
+        v1_core::instruction::Swap {
+            amount_in: a.amount_in,
+            min_out: a.min_out,
+            venue_data: venue_data(a),
+        },
+    );
+    ix.accounts.extend(trade_remaining(env, f, a));
     ix
+}
+
+// ---------------------------------------------------------------------------
+// Proposals
+// ---------------------------------------------------------------------------
+
+/// `propose_trade` for `a` (venue data = the mock venue data of `a`). The new
+/// proposal id is the fund's current `proposal_count`.
+pub fn ix_propose(
+    env: &Env,
+    f: &FundHandles,
+    proposer: &Pubkey,
+    delegate: Option<Pubkey>,
+    a: &SwapArgs,
+    data: Vec<u8>,
+) -> Instruction {
+    let id = read_fund(env, f).proposal_count;
+    v1_ix(
+        v1_core::accounts::ProposeTrade {
+            proposer: *proposer,
+            delegate,
+            config: config_pda(),
+            fund: f.fund,
+            policy: f.policy,
+            proposal: proposal_pda(&f.fund, id),
+            venue_program: a.venue,
+            input_mint: a.input,
+            output_mint: a.output,
+            input_entry: token_pda(&a.input),
+            output_entry: token_pda(&a.output),
+            system_program: anchor_lang::system_program::ID,
+        },
+        v1_core::instruction::ProposeTrade {
+            amount_in: a.amount_in,
+            min_out: a.min_out,
+            venue_data: data,
+        },
+    )
+}
+
+/// `vote` on proposal `id`, with the voter's Token-2022 share ATA.
+pub fn ix_vote(f: &FundHandles, voter: &Pubkey, id: u64, yes: bool) -> Instruction {
+    let proposal = proposal_pda(&f.fund, id);
+    v1_ix(
+        v1_core::accounts::CastVote {
+            voter: *voter,
+            fund: f.fund,
+            proposal,
+            member: member_pda(&f.fund, voter),
+            voter_shares: share_ata(f, voter),
+            vote_record: vote_pda(&proposal, voter),
+            system_program: anchor_lang::system_program::ID,
+        },
+        v1_core::instruction::Vote { yes },
+    )
+}
+
+/// `execute_proposal` of `id`, signed by `caller`; `a` gives the trade accounts.
+pub fn ix_execute_proposal(
+    env: &Env,
+    f: &FundHandles,
+    caller: &Pubkey,
+    id: u64,
+    a: &SwapArgs,
+) -> Instruction {
+    let mut ix = v1_ix(
+        v1_core::accounts::ExecuteProposal {
+            caller: *caller,
+            trade: trade_accounts(env, f, a),
+            proposal: proposal_pda(&f.fund, id),
+        },
+        v1_core::instruction::ExecuteProposal {},
+    );
+    ix.accounts.extend(trade_remaining(env, f, a));
+    ix
+}
+
+pub fn ix_cancel_proposal(captain: &Pubkey, f: &FundHandles, id: u64) -> Instruction {
+    v1_ix(
+        v1_core::accounts::CancelProposal {
+            captain: *captain,
+            fund: f.fund,
+            proposal: proposal_pda(&f.fund, id),
+        },
+        v1_core::instruction::CancelProposal {},
+    )
+}
+
+pub fn read_proposal(env: &Env, f: &FundHandles, id: u64) -> v1_core::state::Proposal {
+    read_account(&env.svm, &proposal_pda(&f.fund, id))
+}
+
+/// The `TradeExecuted` events of a transaction, decoded from `Program data:` logs.
+pub fn trade_events(res: &TransactionMetadata) -> Vec<v1_core::events::TradeExecuted> {
+    use anchor_lang::{
+        AnchorDeserialize, Discriminator,
+        __private::base64::{engine::general_purpose::STANDARD, Engine},
+    };
+    use v1_core::events::TradeExecuted;
+    let disc = TradeExecuted::DISCRIMINATOR;
+    res.logs
+        .iter()
+        .filter_map(|l| l.strip_prefix("Program data: "))
+        .filter_map(|b| STANDARD.decode(b).ok())
+        .filter(|d| d.starts_with(disc))
+        .map(|d| TradeExecuted::try_from_slice(&d[disc.len()..]).expect("TradeExecuted"))
+        .collect()
 }
 
 /// A ComputeBudget `SetComputeUnitLimit` instruction (no crate needed).
