@@ -184,3 +184,346 @@ fn create_fund_survives_prefunded_share_mint_pda() {
     let f = create_fund(&mut env, &cap, 1, 300_000_000).unwrap();
     assert!(share_mint_state(&env.svm, &f.share_mint).non_transferable);
 }
+
+// ---------------------------------------------------------------------------
+// deposit + NAV
+// ---------------------------------------------------------------------------
+
+fn now(env: &Env) -> i64 {
+    env.svm.get_sysvar::<Clock>().unix_timestamp
+}
+
+/// Number of emitted Anchor events (`Program data:` log lines).
+fn events(res: &TransactionMetadata) -> usize {
+    res.logs
+        .iter()
+        .filter(|l| l.starts_with("Program data: "))
+        .count()
+}
+
+fn read_fund(env: &Env, f: &FundHandles) -> Fund {
+    read_account(&env.svm, &f.fund)
+}
+
+/// Captain (300 USDC stake) + one funded member.
+fn fund_with_member() -> (Env, Keypair, Keypair, FundHandles) {
+    let mut env = setup();
+    let cap = funded_user(&mut env, 1_000_000_000);
+    let m = funded_user(&mut env, 1_000_000_000);
+    let f = create_fund(&mut env, &cap, 1, 300_000_000).unwrap();
+    (env, cap, m, f)
+}
+
+/// Add `mint` as a holding by writing the Fund account directly (the swap
+/// path that adds holdings comes in a later task), create the fund's vault
+/// for it, and mint `amount` into the vault.
+fn inject_holding(env: &mut Env, f: &FundHandles, mint: Pubkey, amount: u64) -> Pubkey {
+    use anchor_lang::AccountSerialize;
+    let mut fund = read_fund(env, f);
+    let i = fund.holdings_len as usize;
+    fund.holdings[i] = mint;
+    fund.holdings_len += 1;
+    let mut account = env.svm.get_account(&f.fund).unwrap();
+    let mut data = Vec::new();
+    fund.try_serialize(&mut data).unwrap();
+    account.data[..data.len()].copy_from_slice(&data);
+    env.svm.set_account(f.fund, account).unwrap();
+
+    let token = spl_token_interface::ID;
+    let vault = ata(&f.fund, &mint, &token);
+    let create = ix_create_ata(&env.admin.pubkey(), &f.fund, &mint, &token);
+    let mint_ix = spl_token_interface::instruction::mint_to(
+        &token,
+        &mint,
+        &vault,
+        &env.admin.pubkey(),
+        &[],
+        amount,
+    )
+    .unwrap();
+    send(&mut env.svm, &[create, mint_ix], &[&env.admin]).expect("inject_holding");
+    vault
+}
+
+/// A 9-dp "SOL" mint, listed T1, priced at `usd` dollars (expo -8), fresh now.
+fn listed_sol(env: &mut Env, usd: i64) -> Pubkey {
+    let sol = create_mint(env, 9);
+    register_token(env, sol, SOL_FEED, Tier::T1);
+    let t = now(env);
+    set_price(
+        &mut env.svm,
+        price_account(&sol),
+        &SOL_FEED,
+        usd * 100_000_000,
+        0,
+        -8,
+        t,
+    );
+    sol
+}
+
+#[test]
+fn second_member_gets_shares_at_nav() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    deposit(&mut env, &f, &m, 150_000_000).unwrap(); // NAV 300 USDC, 300 shares -> 150 shares
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        150_000_000
+    );
+    assert_eq!(token_balance(&env.svm, &f.usdc_vault), 450_000_000);
+    assert_eq!(
+        token_balance(&env.svm, &usdc_ata(&env, &m.pubkey())),
+        850_000_000
+    );
+    let fund = read_fund(&env, &f);
+    assert_eq!(fund.total_shares, 450_000_000);
+    assert_eq!(
+        share_mint_state(&env.svm, &f.share_mint).base.supply,
+        450_000_000
+    );
+    assert_eq!(fund.last_price_per_share, 1_000_000);
+
+    let mem: Member = read_account(&env.svm, &member_pda(&f.fund, &m.pubkey()));
+    let t = now(&env);
+    assert_eq!((mem.fund, mem.owner), (f.fund, m.pubkey()));
+    assert!(!mem.is_captain);
+    assert_eq!(mem.hwm, 150_000_000);
+    assert_eq!(
+        (mem.joined_at, mem.last_fee_at, mem.last_deposit_ts),
+        (t, t, t)
+    );
+}
+
+#[test]
+fn donation_raises_share_price_for_everyone() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    mint_usdc(&mut env, &f.usdc_vault, 300_000_000); // NAV 600, pps 2.0
+    deposit(&mut env, &f, &m, 300_000_000).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        150_000_000
+    );
+    let fund = read_fund(&env, &f);
+    assert_eq!(fund.last_price_per_share, 2_000_000);
+    assert_eq!(fund.peak_price_per_share, 2_000_000);
+    assert_eq!(fund.total_shares, 450_000_000);
+}
+
+#[test]
+fn deposit_rejects_zero_shares() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    mint_usdc(&mut env, &f.usdc_vault, 1_000_000_000_000);
+    expect_err(deposit(&mut env, &f, &m, 1), ErrorCode::ZeroShares);
+}
+
+#[test]
+fn deposit_rejects_zero_amount() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    expect_err(deposit(&mut env, &f, &m, 0), ErrorCode::ZeroAmount);
+}
+
+#[test]
+fn deposit_blocked_when_paused() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let ix = ix_set_paused(&env.admin.pubkey(), true);
+    send(&mut env.svm, &[ix], &[&env.admin]).unwrap();
+    expect_err(deposit(&mut env, &f, &m, 100_000_000), ErrorCode::Paused);
+}
+
+#[test]
+fn deposit_updates_hwm_and_last_deposit_ts() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    deposit(&mut env, &f, &m, 100_000_000).unwrap();
+    let joined = now(&env);
+    warp(&mut env.svm, 100);
+    deposit(&mut env, &f, &m, 100_000_000).unwrap();
+    let mem: Member = read_account(&env.svm, &member_pda(&f.fund, &m.pubkey()));
+    assert_eq!(mem.hwm, 200_000_000);
+    assert_eq!(mem.last_deposit_ts, now(&env));
+    assert_eq!((mem.joined_at, mem.last_fee_at), (joined, joined));
+}
+
+#[test]
+fn captain_top_up_keeps_captain_flag() {
+    let (mut env, cap, _m, f) = fund_with_member();
+    deposit(&mut env, &f, &cap, 50_000_000).unwrap();
+    let mem: Member = read_account(&env.svm, &member_pda(&f.fund, &cap.pubkey()));
+    assert!(mem.is_captain);
+    assert_eq!(mem.hwm, 350_000_000);
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &cap.pubkey())),
+        350_000_000
+    );
+}
+
+#[test]
+fn deposit_rejects_missing_nav_accounts() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let mut ix = ix_deposit_bare(&env, &f, &m.pubkey(), 100_000_000);
+    let nav = nav_accounts(&env, &f);
+    ix.accounts.extend_from_slice(&nav[..2]); // one short
+    expect_err(
+        send(&mut env.svm, &[ix], &[&m]),
+        ErrorCode::PriceAccountMissing,
+    );
+}
+
+#[test]
+fn deposit_rejects_wrong_vault_in_nav() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    // A real USDC account with more money in it than the vault.
+    let whale = funded_user(&mut env, 1_000_000_000_000);
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    let n = ix.accounts.len();
+    ix.accounts[n - 3].pubkey = usdc_ata(&env, &whale.pubkey());
+    expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::HoldingNotFound);
+}
+
+#[test]
+fn deposit_rejects_other_funds_share_mint() {
+    let (mut env, cap, m, f) = fund_with_member();
+    let other = create_fund(&mut env, &cap, 2, 300_000_000).unwrap();
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    for meta in ix.accounts.iter_mut() {
+        if meta.pubkey == f.share_mint {
+            meta.pubkey = other.share_mint;
+        } else if meta.pubkey == share_ata(&f, &m.pubkey()) {
+            meta.pubkey = share_ata(&other, &m.pubkey());
+        }
+    }
+    expect_anchor_err(
+        send(&mut env.svm, &[ix], &[&m]),
+        anchor_lang::error::ErrorCode::ConstraintAddress,
+    );
+}
+
+#[test]
+fn nav_values_pyth_priced_holding() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000); // 2 SOL = $300 -> NAV 600, pps 2.0
+    deposit(&mut env, &f, &m, 300_000_000).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        150_000_000
+    );
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
+}
+
+#[test]
+fn nav_rejects_stale_price() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    warp(&mut env.svm, 61);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceStale,
+    );
+}
+
+#[test]
+fn nav_rejects_wrong_feed_price_account() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    let t = now(&env);
+    set_price(&mut env.svm, price_account(&sol), &BONK_FEED, 1, 0, -8, t);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceFeedMismatch,
+    );
+}
+
+#[test]
+fn nav_rejects_inactive_token() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = create_mint(&mut env, 9);
+    let ix = ix_queue_token(&env.admin.pubkey(), sol, SOL_FEED, Tier::T1, 9);
+    send(&mut env.svm, &[ix], &[&env.admin]).unwrap(); // queued, never applied
+    let t = now(&env);
+    set_price(
+        &mut env.svm,
+        price_account(&sol),
+        &SOL_FEED,
+        150_00000000,
+        0,
+        -8,
+        t,
+    );
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::TokenInactive,
+    );
+}
+
+#[test]
+fn nav_rejects_wrong_token_entry() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    let bonk = create_mint(&mut env, 5);
+    register_token(&mut env, bonk, BONK_FEED, Tier::T2);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    let t = now(&env);
+    set_price(
+        &mut env.svm,
+        price_account(&sol),
+        &SOL_FEED,
+        150_00000000,
+        0,
+        -8,
+        t,
+    );
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    let n = ix.accounts.len();
+    ix.accounts[n - 2].pubkey = token_pda(&bonk); // a real, active entry for another mint
+    expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::TokenNotListed);
+}
+
+#[test]
+fn breaker_freezes_on_drawdown_and_thaws_on_recovery() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000); // NAV 600 / 300 shares
+    deposit(&mut env, &f, &m, 300_000_000).unwrap(); // pps 2.0 = peak; NAV 900 / 450
+    let fund = read_fund(&env, &f);
+    assert_eq!((fund.peak_price_per_share, fund.frozen), (2_000_000, false));
+
+    // SOL to $1: NAV 602 / 450 shares = 1.337777 < line 1.4 (30% drawdown).
+    let t = now(&env);
+    set_price(
+        &mut env.svm,
+        price_account(&sol),
+        &SOL_FEED,
+        100_000_000,
+        0,
+        -8,
+        t,
+    );
+    let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
+    assert_eq!(events(&res), 2, "Deposited + BreakerChanged");
+    let fund = read_fund(&env, &f);
+    assert_eq!(fund.last_price_per_share, 1_337_777);
+    assert_eq!(fund.peak_price_per_share, 2_000_000);
+    assert!(fund.frozen);
+
+    // SOL back to $150: pps above the line again.
+    set_price(
+        &mut env.svm,
+        price_account(&sol),
+        &SOL_FEED,
+        150_00000000,
+        0,
+        -8,
+        t,
+    );
+    let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
+    assert_eq!(events(&res), 2, "Deposited + BreakerChanged");
+    let fund = read_fund(&env, &f);
+    assert!(!fund.frozen);
+    // No flip, no BreakerChanged.
+    let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
+    assert_eq!(events(&res), 1);
+    assert_eq!(fund.peak_price_per_share, 2_000_000);
+}

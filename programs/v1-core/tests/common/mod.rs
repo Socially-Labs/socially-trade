@@ -27,7 +27,7 @@ pub use {
     },
     solana_account::Account,
     solana_clock::Clock,
-    solana_instruction::Instruction,
+    solana_instruction::{AccountMeta, Instruction},
     solana_keypair::Keypair,
     solana_signer::Signer,
     solana_transaction::Transaction,
@@ -591,4 +591,87 @@ pub fn set_price(
         },
     )
     .unwrap();
+}
+
+/// Mint `amount` USDC base units into the token account `to` (admin is mint authority).
+pub fn mint_usdc(env: &mut Env, to: &Pubkey, amount: u64) {
+    let ix = spl_token_interface::instruction::mint_to(
+        &spl_token_interface::ID,
+        &env.usdc,
+        to,
+        &env.admin.pubkey(),
+        &[],
+        amount,
+    )
+    .unwrap();
+    send(&mut env.svm, &[ix], &[&env.admin]).expect("mint_usdc");
+}
+
+// ---------------------------------------------------------------------------
+// NAV + deposit
+// ---------------------------------------------------------------------------
+
+/// The test convention for where the Pyth price account of `mint` lives.
+/// Write it with `set_price(&mut env.svm, price_account(&mint), ...)`.
+pub fn price_account(mint: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[b"price", mint.as_ref()], &v1_core::pyth::PYTH_RECEIVER).0
+}
+
+/// NAV remaining accounts for the fund's current holdings:
+/// `[vault_i, token_entry_i, price_i]` per holding, in order.
+pub fn nav_accounts(env: &Env, f: &FundHandles) -> Vec<AccountMeta> {
+    let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
+    fund.holdings[..fund.holdings_len as usize]
+        .iter()
+        .flat_map(|mint| {
+            let token_program = env.svm.get_account(mint).expect("holding mint").owner;
+            [
+                AccountMeta::new_readonly(ata(&f.fund, mint, &token_program), false),
+                AccountMeta::new_readonly(token_pda(mint), false),
+                AccountMeta::new_readonly(price_account(mint), false),
+            ]
+        })
+        .collect()
+}
+
+/// `deposit` with the NAV remaining accounts of the fund's current holdings.
+pub fn ix_deposit(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -> Instruction {
+    let mut ix = ix_deposit_bare(env, f, user, amount);
+    ix.accounts.extend(nav_accounts(env, f));
+    ix
+}
+
+/// `deposit` with NO remaining accounts (append your own).
+pub fn ix_deposit_bare(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -> Instruction {
+    v1_ix(
+        v1_core::accounts::Deposit {
+            user: *user,
+            config: config_pda(),
+            fund: f.fund,
+            policy: f.policy,
+            member: member_pda(&f.fund, user),
+            share_mint: f.share_mint,
+            usdc_mint: env.usdc,
+            user_usdc: usdc_ata(env, user),
+            fund_usdc_vault: f.usdc_vault,
+            user_shares: share_ata(f, user),
+            usdc_token_program: spl_token_interface::ID,
+            share_token_program: TOKEN_2022,
+            associated_token_program: anchor_spl::associated_token::ID,
+            system_program: anchor_lang::system_program::ID,
+        },
+        v1_core::instruction::Deposit { amount },
+    )
+}
+
+/// Send `deposit` of `amount` USDC signed by `user`.
+#[allow(clippy::result_large_err)] // LiteSVM's own error type.
+pub fn deposit(
+    env: &mut Env,
+    f: &FundHandles,
+    user: &Keypair,
+    amount: u64,
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let ix = ix_deposit(env, f, &user.pubkey(), amount);
+    send(&mut env.svm, &[ix], &[user])
 }
