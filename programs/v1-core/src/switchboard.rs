@@ -32,6 +32,9 @@ pub const PULL_FEED_LEN: usize = 8 + 3200;
 /// slot time (`solana_clock::DEFAULT_MS_PER_SLOT` = 400 ms) = 150 slots.
 pub const MAX_RESULT_AGE_SLOTS: u64 =
     crate::pyth::MAX_PRICE_AGE_SECS as u64 * 1_000 / DEFAULT_MS_PER_SLOT;
+/// Fewest oracle samples in the current result. With one sample std_dev is
+/// 0, so the spread check and the deposit upper bound would mean nothing.
+pub const MIN_SAMPLES: u8 = 3;
 /// Decimals of every Switchboard value.
 const PRECISION: i32 = 18;
 
@@ -40,9 +43,9 @@ const PRECISION: i32 = 18;
 // padding [u8; 6], slot u64, min_slot u64, max_slot u64.
 const RESULT_VALUE: usize = 2264;
 const RESULT_STD_DEV: usize = 2280;
-#[cfg(any(test, feature = "test-helpers"))]
 const RESULT_NUM_SAMPLES: usize = 2360;
 const RESULT_SLOT: usize = 2368;
+const RESULT_MIN_SLOT: usize = 2376; // slot of the oldest sample in the result
 const MAX_STALENESS: usize = 2392; // u32, right after the result
 
 /// The feed's current aggregated result.
@@ -59,10 +62,14 @@ pub struct SbPrice {
 impl SbPrice {
     /// The same price in the Pyth shape NAV uses: `price * 10^expo`, with
     /// ema = spot (no EMA) and conf = std_dev. The 18-decimal value is cut
-    /// to fit `i64` (floor; std_dev rounds up), so it keeps 18+ digits.
+    /// until `value + std_dev` fits `i64` (the deposit upper bound; floor,
+    /// std_dev rounds up), so it keeps 18+ digits.
     pub fn to_pyth(&self) -> Result<PythPrice, ErrorCode> {
         let (mut value, mut std_dev, mut expo) = (self.value, self.std_dev, -PRECISION);
-        while value > i64::MAX as i128 {
+        while value
+            .checked_add(std_dev)
+            .is_none_or(|hi| hi > i64::MAX as i128)
+        {
             value /= 10;
             std_dev = (std_dev + 9) / 10;
             expo += 1;
@@ -110,8 +117,17 @@ pub fn parse_feed(
     };
     let feed_max = u32::from_le_bytes(data[MAX_STALENESS..MAX_STALENESS + 4].try_into().unwrap());
     let max_age = MAX_RESULT_AGE_SLOTS.min(feed_max as u64);
-    if price.slot == 0 || now_slot.saturating_sub(price.slot) > max_age {
+    // Every sample in the result must be fresh: age from the oldest one.
+    let min_slot = u64::from_le_bytes(
+        data[RESULT_MIN_SLOT..RESULT_MIN_SLOT + 8]
+            .try_into()
+            .unwrap(),
+    );
+    if price.slot == 0 || now_slot.saturating_sub(min_slot.min(price.slot)) > max_age {
         return Err(ErrorCode::PriceStale);
+    }
+    if data[RESULT_NUM_SAMPLES] < MIN_SAMPLES {
+        return Err(ErrorCode::FeedTooFewSamples);
     }
     if price.value <= 0 {
         return Err(ErrorCode::PriceNonPositive);
@@ -138,6 +154,9 @@ pub struct FeedFields {
     pub value: i128,
     pub std_dev: i128,
     pub slot: u64,
+    /// Slot of the oldest sample in the result.
+    pub min_slot: u64,
+    pub num_samples: u8,
     pub max_staleness: u32,
 }
 
@@ -149,8 +168,9 @@ pub fn encode_feed(f: &FeedFields) -> Vec<u8> {
     put(0, &PULL_FEED_DISCRIMINATOR);
     put(RESULT_VALUE, &f.value.to_le_bytes());
     put(RESULT_STD_DEV, &f.std_dev.to_le_bytes());
-    put(RESULT_NUM_SAMPLES, &[1]);
+    put(RESULT_NUM_SAMPLES, &[f.num_samples]);
     put(RESULT_SLOT, &f.slot.to_le_bytes());
+    put(RESULT_MIN_SLOT, &f.min_slot.to_le_bytes());
     put(MAX_STALENESS, &f.max_staleness.to_le_bytes());
     d
 }
@@ -169,6 +189,8 @@ mod tests {
             value: E18 / 20,
             std_dev: E18 / 2_000,
             slot: SLOT,
+            min_slot: SLOT,
+            num_samples: MIN_SAMPLES,
             max_staleness: 250,
         }
     }
@@ -314,6 +336,65 @@ mod tests {
         assert_eq!(parse(&f, SLOT), Err(ErrorCode::FeedInvalid));
     }
 
+    #[test]
+    fn rejects_fewer_than_three_samples() {
+        for (n, ok) in [(0, false), (1, false), (2, false), (3, true), (4, true)] {
+            let f = FeedFields {
+                num_samples: n,
+                ..fields()
+            };
+            let res = parse(&f, SLOT);
+            assert_eq!(res.is_ok(), ok, "{n} samples");
+            if !ok {
+                assert_eq!(res, Err(ErrorCode::FeedTooFewSamples));
+            }
+        }
+    }
+
+    #[test]
+    fn age_counts_from_the_oldest_sample() {
+        // Fresh result slot, but its oldest sample is 151 slots old.
+        let f = FeedFields {
+            slot: SLOT + 100,
+            min_slot: SLOT,
+            ..fields()
+        };
+        assert!(parse(&f, SLOT + MAX_RESULT_AGE_SLOTS).is_ok());
+        assert_eq!(
+            parse(&f, SLOT + MAX_RESULT_AGE_SLOTS + 1),
+            Err(ErrorCode::PriceStale)
+        );
+        // min_slot 0 (unset) with a fresh result: stale.
+        let f = FeedFields {
+            min_slot: 0,
+            ..fields()
+        };
+        assert_eq!(parse(&f, SLOT), Err(ErrorCode::PriceStale));
+    }
+
+    #[test]
+    fn upper_bound_fits_i64() {
+        // $9.10 + $0.15: the value fits i64 at 18 decimals, value + std_dev does not.
+        let p = SbPrice {
+            value: 9_100_000_000_000_000_000,
+            std_dev: 150_000_000_000_000_000,
+            slot: SLOT,
+        };
+        let py = p.to_pyth().unwrap();
+        assert_eq!(
+            (py.price, py.conf, py.expo),
+            (910_000_000_000_000_000, 15_000_000_000_000_000, -17)
+        );
+        assert!(i64::try_from(py.price as i128 + py.conf as i128).is_ok());
+        // At i64::MAX with std_dev 0 there is no cut.
+        let p = SbPrice {
+            value: i64::MAX as i128,
+            std_dev: 0,
+            slot: SLOT,
+        };
+        assert_eq!(p.to_pyth().unwrap().expo, -18);
+    }
+
     /// The live mainnet POPCAT/USD pull feed (RPC context slot 453046410).
     #[test]
     fn parses_live_popcat_feed() {
@@ -328,9 +409,12 @@ mod tests {
                 slot: 428_452_357,
             }
         );
-        // Its own max_staleness is 250 slots, so our 150-slot cap binds.
+        // 4 samples; oldest at slot 428452349. Its own max_staleness is
+        // 250 slots, so our 150-slot cap binds, counted from the oldest sample.
+        assert_eq!(d[RESULT_NUM_SAMPLES], 4);
+        assert!(parse_feed(&FEED, &SWITCHBOARD_ON_DEMAND, d, &FEED, 428_452_349 + 150).is_ok());
         assert_eq!(
-            parse_feed(&FEED, &SWITCHBOARD_ON_DEMAND, d, &FEED, 428_452_357 + 151),
+            parse_feed(&FEED, &SWITCHBOARD_ON_DEMAND, d, &FEED, 428_452_349 + 151),
             Err(ErrorCode::PriceStale)
         );
         // 1,000 POPCAT (9 dp) = 51.508418 USDC.

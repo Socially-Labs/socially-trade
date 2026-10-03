@@ -999,7 +999,7 @@ pub fn write_feed(svm: &mut LiteSVM, address: Pubkey, fields: &FeedFields) {
 }
 
 /// A 9-dp memecoin listed `tier` with a `Switchboard` source at $0.05
-/// (std_dev 0), feed fresh now. (T3 buys are rejected for now; NAV tests use T1/T2.)
+/// (std_dev 0, 3 samples), feed fresh now. (T3 buys are rejected for now; NAV tests use T1/T2.)
 pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
     let mint = create_mint(env, 9);
     let feed = Pubkey::new_unique();
@@ -1011,6 +1011,8 @@ pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
             value: SB_ONE / 20,
             std_dev: 0,
             slot: 0,
+            min_slot: 0,
+            num_samples: v1_core::switchboard::MIN_SAMPLES,
             max_staleness: 250,
         },
     };
@@ -1018,10 +1020,12 @@ pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
     t
 }
 
-/// Re-write `t`'s feed with its fields at the current slot.
+/// Re-write `t`'s feed with its fields, all samples at the current slot.
 pub fn refresh_meme(env: &mut Env, t: &SbToken) {
+    let slot = env.svm.get_sysvar::<Clock>().slot;
     let fields = FeedFields {
-        slot: env.svm.get_sysvar::<Clock>().slot,
+        slot,
+        min_slot: slot,
         ..t.fields
     };
     write_feed(&mut env.svm, t.feed, &fields);

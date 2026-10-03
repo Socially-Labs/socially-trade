@@ -586,7 +586,12 @@ fn nav_rejects_switchboard_feed_not_in_registry() {
     // A valid, fresh feed, but not the one listed for this token.
     let other = Pubkey::new_unique();
     let slot = env.svm.get_sysvar::<Clock>().slot;
-    write_feed(&mut env.svm, other, &FeedFields { slot, ..t.fields });
+    let fields = FeedFields {
+        slot,
+        min_slot: slot,
+        ..t.fields
+    };
+    write_feed(&mut env.svm, other, &fields);
     let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
     let n = ix.accounts.len();
     ix.accounts[n - 2].pubkey = other;
@@ -621,6 +626,53 @@ fn nav_rejects_stale_switchboard_feed() {
     env.svm.set_sysvar(&clock);
     env.svm.expire_blockhash();
     deposit(&mut env, &f, &m, 100_000_000).unwrap();
+}
+
+#[test]
+fn nav_rejects_switchboard_result_with_an_old_sample() {
+    let (mut env, m, f, t) = fund_with_meme();
+    // Result slot is now, but its oldest sample is 151 slots old.
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    let fields = FeedFields {
+        slot,
+        min_slot: slot - MAX_RESULT_AGE_SLOTS - 1,
+        ..t.fields
+    };
+    write_feed(&mut env.svm, t.feed, &fields);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceStale,
+    );
+}
+
+#[test]
+fn nav_rejects_switchboard_result_with_two_samples() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    t.fields.num_samples = 2;
+    refresh_meme(&mut env, &t);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::FeedTooFewSamples,
+    );
+    t.fields.num_samples = 3;
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    deposit(&mut env, &f, &m, 100_000_000).unwrap();
+}
+
+#[test]
+fn deposit_values_switchboard_price_near_i64_limit() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // $9.10 +- $0.15 (165 bps): 9.10e18 fits i64, 9.25e18 does not.
+    t.fields.value = SB_ONE * 91 / 10;
+    t.fields.std_dev = SB_ONE * 15 / 100;
+    refresh_meme(&mut env, &t);
+    // Upper bound NAV = 300 + 6,000 * 9.25 = 55,800; floor(100 * 300 / 55,800) shares.
+    deposit(&mut env, &f, &m, 100_000_000).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        537_634
+    );
 }
 
 #[test]

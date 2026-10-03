@@ -114,4 +114,6 @@ pub enum ErrorCode {
     FeedInvalid,
     #[msg("Switchboard feed does not match the token entry")]
     FeedMismatch,
+    #[msg("Switchboard result has too few oracle samples")]
+    FeedTooFewSamples,
 }
