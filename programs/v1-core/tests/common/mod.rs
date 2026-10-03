@@ -560,12 +560,23 @@ pub fn ix_create_fund(env: &Env, captain: &Pubkey, fund_id: u64, deposit: u64) -
     ix_create_fund_with(captain, fund_id, deposit, env.usdc)
 }
 
-/// `create_fund` with an explicit USDC mint (for negative tests).
+/// `create_fund` with an explicit USDC mint (for negative tests). Not Open Seas.
 pub fn ix_create_fund_with(
     captain: &Pubkey,
     fund_id: u64,
     deposit: u64,
     usdc_mint: Pubkey,
+) -> Instruction {
+    ix_create_fund_full(captain, fund_id, deposit, usdc_mint, false)
+}
+
+/// `create_fund` with every argument.
+pub fn ix_create_fund_full(
+    captain: &Pubkey,
+    fund_id: u64,
+    deposit: u64,
+    usdc_mint: Pubkey,
+    open_seas: bool,
 ) -> Instruction {
     let f = FundHandles::new(captain, fund_id, &usdc_mint);
     v1_ix(
@@ -585,7 +596,11 @@ pub fn ix_create_fund_with(
             associated_token_program: anchor_spl::associated_token::ID,
             system_program: anchor_lang::system_program::ID,
         },
-        v1_core::instruction::CreateFund { fund_id, deposit },
+        v1_core::instruction::CreateFund {
+            fund_id,
+            deposit,
+            open_seas,
+        },
     )
 }
 
@@ -999,7 +1014,7 @@ pub fn write_feed(svm: &mut LiteSVM, address: Pubkey, fields: &FeedFields) {
 }
 
 /// A 9-dp memecoin listed `tier` with a `Switchboard` source at $0.05
-/// (std_dev 0, 3 samples), feed fresh now. (T3 buys are rejected for now; NAV tests use T1/T2.)
+/// (std_dev 0, 3 samples), feed fresh now.
 pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
     let mint = create_mint(env, 9);
     let feed = Pubkey::new_unique();
@@ -1447,18 +1462,40 @@ pub fn venue_data(a: &SwapArgs) -> Vec<u8> {
 }
 
 /// Remaining accounts of a trade: NAV accounts, then `[price_a, price_b]` of the output when the
-/// output is new to the fund, then the mock venue's accounts (fund vaults as
-/// user_in / user_out).
+/// output is new to the fund, then the T3 accounts for a T3 trade (`t3_accounts`),
+/// then the mock venue's accounts (fund vaults as user_in / user_out).
 pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountMeta> {
     let mut metas = nav_accounts(env, f);
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
-    if !fund.holdings[..fund.holdings_len as usize].contains(&a.output) {
+    let held = &fund.holdings[..fund.holdings_len as usize];
+    if !held.contains(&a.output) {
         let [pa, pb] = price_accounts(env, &a.output);
         metas.push(AccountMeta::new_readonly(pa, false));
         metas.push(AccountMeta::new_readonly(pb, false));
     }
+    let t3_buy = env
+        .svm
+        .get_account(&token_pda(&a.output))
+        .is_some_and(|e| TokenEntry::try_deserialize(&mut &e.data[..]).unwrap().tier == Tier::T3);
+    let t3_sell = held
+        .iter()
+        .position(|m| *m == a.input)
+        .is_some_and(|i| fund.t3_basis_usd[i] > 0);
+    if t3_buy || t3_sell {
+        metas.extend(t3_accounts(f, &fund.captain));
+    }
     metas.extend(venue_accounts(env, f, a));
     metas
+}
+
+/// The T3 accounts of a trade: `[captain_member, captain_shares, share_mint, Token-2022]`.
+pub fn t3_accounts(f: &FundHandles, captain: &Pubkey) -> Vec<AccountMeta> {
+    vec![
+        AccountMeta::new(member_pda(&f.fund, captain), false),
+        AccountMeta::new(share_ata(f, captain), false),
+        AccountMeta::new(f.share_mint, false),
+        AccountMeta::new_readonly(TOKEN_2022, false),
+    ]
 }
 
 /// The mock venue's accounts for `a` (10, in `mock_venue::accounts::Swap` order).

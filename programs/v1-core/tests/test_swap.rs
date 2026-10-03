@@ -1147,8 +1147,9 @@ fn exit_matches_triples_by_mint_after_reorder() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn swap_rejects_t3_buy_until_open_seas_exists() {
+fn swap_rejects_t3_buy_in_a_fund_that_is_not_open_seas() {
     let mut t = trading_fund();
+    assert!(!fund(&t).open_seas);
     let m = create_mint(&mut t.env, 6);
     register_token(&mut t.env, m, [40; 32], Tier::T3);
     t.refresh_prices();
@@ -1156,7 +1157,7 @@ fn swap_rejects_t3_buy_until_open_seas_exists() {
     let usdc = t.env.usdc;
     expect_err(
         t.swap(&SwapArgs::new(usdc, m, USDC, 0, 1, 1)),
-        ErrorCode::TierCapExceeded,
+        ErrorCode::NotOpenSeas,
     );
 }
 

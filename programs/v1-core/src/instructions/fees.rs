@@ -77,7 +77,7 @@ pub fn charge_annual_fee<'info>(ctx: Context<'info, ChargeAnnualFee<'info>>) -> 
 
     let fund_key = a.fund.key();
     // Invalid or missing prices fail the call.
-    let (pps, ema_pps) = fresh_pps(
+    let (pps, ema_pps, _) = fresh_pps(
         &a.fund,
         &fund_key,
         &a.config,

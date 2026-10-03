@@ -116,4 +116,8 @@ pub enum ErrorCode {
     FeedMismatch,
     #[msg("Switchboard result has too few oracle samples")]
     FeedTooFewSamples,
+    #[msg("T3 buys need an Open Seas fund")]
+    NotOpenSeas,
+    #[msg("T3 buys exceed the captain's stake")]
+    T3CapExceeded,
 }

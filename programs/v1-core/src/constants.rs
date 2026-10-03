@@ -34,6 +34,8 @@ pub const MAX_VOTE_WINDOW_SECS: u32 = 604_800;
 // Tier caps after every buy, in bps of NAV.
 pub const T2_TOKEN_CAP_BPS: u16 = 2500;
 pub const T2_TOTAL_CAP_BPS: u16 = 5000;
+/// Length of the rolling T3 buy window (30 days).
+pub const T3_WINDOW_SECS: i64 = 2_592_000;
 
 // Pyth.
 pub const PYTH_RECEIVER_ID: anchor_lang::prelude::Pubkey =

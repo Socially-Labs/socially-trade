@@ -25,4 +25,14 @@ pub struct Fund {
     pub window_start: i64,
     /// USD (6 dp) traded autonomously since `window_start`. Votes do not count.
     pub window_volume_usd: u64,
+    /// Open Seas fund: may buy T3 tokens. Set at creation, never changed.
+    pub open_seas: bool,
+    /// Cost of the T3 positions still held, USD (6 dp). Sum of `t3_basis_usd`.
+    pub t3_cost_basis_usd: u64,
+    /// Start of the rolling 30-day T3 buy window.
+    pub t3_window_start: i64,
+    /// USD (6 dp) of T3 buys since `t3_window_start`.
+    pub t3_window_buys_usd: u64,
+    /// Cost basis of each holding bought as T3, USD (6 dp), in `holdings` order.
+    pub t3_basis_usd: [u64; MAX_HOLDINGS],
 }

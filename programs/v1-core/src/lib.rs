@@ -59,8 +59,14 @@ pub mod v1_core {
     }
 
     /// Captain: open a fund with a USDC stake; mints 1:1 non-transferable shares.
-    pub fn create_fund(ctx: Context<CreateFund>, fund_id: u64, deposit: u64) -> Result<()> {
-        instructions::create_fund::create_fund(ctx, fund_id, deposit)
+    /// `open_seas` lets the fund buy T3 tokens (see `swap`).
+    pub fn create_fund(
+        ctx: Context<CreateFund>,
+        fund_id: u64,
+        deposit: u64,
+        open_seas: bool,
+    ) -> Result<()> {
+        instructions::create_fund::create_fund(ctx, fund_id, deposit, open_seas)
     }
 
     /// Anyone: buy shares at NAV with USDC. Remaining accounts: NAV layout (see `nav`).

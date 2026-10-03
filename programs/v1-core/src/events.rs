@@ -92,3 +92,12 @@ pub struct CaptainLog {
     pub reason_hash: [u8; 32],
     pub slot: u64,
 }
+
+/// A T3 sale realized a loss against its cost basis: captain shares worth the
+/// loss (at the pre-trade spot price per share, at most the captain's balance) were burned.
+#[event]
+pub struct FirstLossApplied {
+    pub fund: Pubkey,
+    pub loss_usd: u64,
+    pub captain_shares_burned: u64,
+}

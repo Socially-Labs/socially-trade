@@ -7,8 +7,8 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | Promise | Enforced by |
 |---|---|
 | Only you withdraw | Funds sit in PDA-owned vaults. `exit` pays a member only their pro-rata slice. `swap` reads every vault after the venue CPI: input vault falls by exactly `amount_in`, output vault rises by at least `min_out`, all other vaults are unchanged, and vault data length is unchanged. |
-| Rules on every trade | `swap` checks: venue registry (an active `VenueEntry`; v1-core, system, token and ATA programs are always denied), token tier caps (T2 buys only; T3 buys are rejected with `TierCapExceeded` until the open-seas rules exist), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps). Policy loosening waits 48 h. |
-| Exits never wait | `exit` has no pause, freeze or price dependency. Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. |
+| Rules on every trade | `swap` checks: venue registry (an active `VenueEntry`; v1-core, system, token and ATA programs are always denied), token tier caps (T2 buys), T3 first-loss rules (T3 buys only in Open Seas funds, see below), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps). Policy loosening waits 48 h. |
+| Exits never wait | `exit` has no pause, freeze or price dependency. Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. One exception: a captain exit while the fund holds T3 cost basis and others hold shares needs valid fresh prices (the T3 floor below). |
 | Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. At `exit` the fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so the choice of stale or fresh prices cannot lower the fee much: the residual difference is bounded by the Pyth confidence plus the spot/EMA gap. `charge_annual_fee` uses the fresh upper-bound price only, and moves the breaker before it computes the fee. The HWM rises only when at least one fee share is taken. |
 | Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate. It blocks `deposit`, `create_fund` and any swap whose output is not USDC. Exits and sales to USDC are never blocked. |
 | Big trades need the crew | A captain or delegate trade must fit two limits: `autonomous_bps` of spot NAV per trade, and the same amount as a rolling 24 h budget per fund (`window_start`, `window_volume_usd`), shared by the captain and all delegates. So a large trade split into small ones still needs a vote. A voted trade does not use the budget. `propose_trade` stores `route_hash`, a hash of the venue data and the ordered venue account metas. `execute_proposal` must match it. Vote weight is the share balance at vote time. |
@@ -26,15 +26,26 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 |---|---|---|
 | `DepositUpperBound` | `max(price, ema_price) + conf` | Deposit share price, fee price per share (exit: max with `last_price_per_share`; annual fee: alone) |
 | `Ema` | `ema_price` | Drawdown breaker, peak NAV, `last_price_per_share` |
-| `Spot` | `price` | Swap size, price guard, tier caps |
+| `Spot` | `price` | Swap size, price guard, tier caps, T3 cost basis, proceeds and captain stake value |
+
+## Open Seas funds and T3 tokens
+
+A fund created with `open_seas = true` may buy T3 tokens. Any other fund gets `NotOpenSeas`. The rules sit in the shared swap core, so captain swaps, delegate swaps and executed proposals all obey them. A T3 trade passes 4 more remaining accounts (see `swap.rs`): the captain's Member PDA, the captain's share ATA, the share mint and the Token-2022 program.
+
+- **Cost basis.** A T3 buy adds the spot USD value of the input to `t3_basis_usd[i]` of the output holding and to `t3_cost_basis_usd` (the sum). An exit scales every basis by the same fraction as the holdings.
+- **Caps at cost.** After a T3 buy, `t3_cost_basis_usd` and the T3 buys of the 30-day window (`t3_window_start`, `t3_window_buys_usd`, reset when 30 days have passed since the start) must each be at most the captain's stake value: captain share balance x pre-trade spot price per share. Else `T3CapExceeded`.
+- **First loss.** A sale of a holding with a basis takes out `basis * amount_in / position`. If the spot value of the output received is less, the loss burns captain shares worth the loss at the pre-trade spot price per share (rounded up, at most the captain's balance), with the captain's high-water mark scaled like a partial exit. Event `FirstLossApplied`. A T3 to T3 trade is a sale, then a buy.
+- **Captain floor.** While `t3_cost_basis_usd > 0` and others hold shares, a captain exit must leave a stake (at the fresh spot price per share) at least the basis left after the exit, in addition to the 5% rule.
+- **Not enforced: the linked-wallet block** of the whitepaper. It needs off-chain wallet-graph data.
 
 ## Disclosures and accepted risks
 
 - **The admin is the program upgrade authority.** An instant program upgrade bypasses every on-chain timelock (token, venue and policy queues). Before real money, the upgrade authority must be a timelocked multisig, or the program must be made immutable.
 - **Frozen fund with only USDC cannot unfreeze.** The breaker moves only on NAV. A fund more than `drawdown_bps` below its peak that holds only USDC has no trade that can raise its NAV, so it stays frozen. Members can still exit. The captain opens a new fund.
+- **T3 first loss is measured per sale.** The burn prices the loss at the pre-trade spot pps. When the price fell before the sale, that pps already holds the unrealized loss, so the burn takes more shares than the loss at the pre-buy pps, and the crew can end above its pre-buy value. When the loss comes from the sale itself (slippage), the crew pps is unchanged. A loss above the captain's stake burns the whole stake; the rest falls on the crew.
 - **Holders can burn their own shares.** Holders can burn their own NonTransferable shares; burned shares stay counted in `total_shares`, which locks the burned value in the fund and can leave the captain unable to exit the last dust share unit. No value moves to anyone else.
 
-- **PermanentDelegate on the share mint.** The delegate is the fund PDA. Only the yearly fee burn (`fees.rs`, `charge_annual_fee`) uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares. Tests assert the extension and the delegate.
+- **PermanentDelegate on the share mint.** The delegate is the fund PDA. Two burns use it: the yearly fee burn (`fees.rs`, `charge_annual_fee`) and the T3 first-loss burn of captain shares (`swap.rs`, `burn_captain_shares`). No other code uses it. The swap guard also keeps the share mint out of every venue account list, so no venue sees the burn authority. A bug in this program could burn member shares. Tests assert the extension and the delegate.
 - **USDC freeze authority (Circle)** is accepted.
 - **Registry mint screening.** `queue_token` rejects any non-USDC mint that has a freeze authority or any Token-2022 extension, for every price source. Exits therefore do not depend on token behaviour. The check runs at queue time only.
 - **Proposal data is off-chain.** Only `route_hash` is on-chain. The client must keep the route bytes and the exact account list. Lost bytes mean the proposal cannot execute. The hash covers runtime-merged signer and writable flags, so read `route_hash` from the `ProposalCreated` event and build the matching transaction.
@@ -53,11 +64,11 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | `apply_token` | Anyone | ETA passed. |
 | `queue_venue` / `apply_venue` | Admin / anyone | One `VenueEntry` PDA `[b"venue", program]` per venue, no count limit. `queue_venue(active)` sets the pending value, ETA = now + 7 days. Removal (`active = false`) is queued the same way. A new queue overwrites the pending change and restarts the clock. |
 | `set_paused` | Admin | Immediate. Blocks `deposit`, `create_fund` and swaps whose output is not USDC. Never blocks `exit` or sales to USDC. |
-| `create_fund` | Captain | Deposit at least 250 USDC. Mints 1:1 shares. Creates policy, member, vaults and share mint (NonTransferable, PermanentDelegate). |
+| `create_fund` | Captain | Deposit at least 250 USDC. Mints 1:1 shares. Creates policy, member, vaults and share mint (NonTransferable, PermanentDelegate). `open_seas` allows T3 buys; fixed at creation. |
 | `deposit` | Anyone | Not paused, fund not closed, NAV (upper bound) nonzero. |
-| `exit` | Member | Own share balance only. No pause, freeze or price check. Pro-rata of every holding. Fee on profit above HWM. Captain must keep at least 5% of shares while others hold shares. |
+| `exit` | Member | Own share balance only. No pause, freeze or price check. Pro-rata of every holding. Fee on profit above HWM. Captain must keep at least 5% of shares while others hold shares, and a stake worth the T3 basis left while T3 is held (fresh prices needed). |
 | `add_delegate` / `update_delegate` / `revoke_delegate` | Captain | Per-trade and daily USD limits. Revoke returns rent. |
-| `swap` | Captain or delegate | Venue, tiers, caps, delegate limits, breaker, price guard, vault balance deltas, vault sizes (`VaultResized`), share mint not in venue accounts. A trade above `autonomous_bps` of spot NAV, or above the fund's rolling 24 h budget of the same size, needs a proposal. |
+| `swap` | Captain or delegate | Venue, tiers, caps, delegate limits, breaker, price guard, vault balance deltas, vault sizes (`VaultResized`), share mint not in venue accounts, T3 rules (Open Seas). A trade above `autonomous_bps` of spot NAV, or above the fund's rolling 24 h budget of the same size, needs a proposal. |
 | `propose_trade` | Captain or delegate | Stores `route_hash` and the trade terms. Opens the vote window from policy. |
 | `vote` | Member | One vote per member (VoteRecord `init`). Open proposal, before the deadline. Weight = share balance. |
 | `execute_proposal` | Anyone | Proposal open. `now <= deadline` (else `ProposalExpired`). `yes_weight * 2 > total_shares_snapshot` (else `ProposalNotPassed`). `venue_data` and venue accounts match `route_hash`. Then runs the same checks as `swap`, without the size limit. |
@@ -112,5 +123,6 @@ Mainnet keypairs are not in the repo.
 ## Out of scope (Phase 2)
 
 - Position adapters in NAV, breaker and exit: perps, prediction markets.
-- Memecoin T3 tier: pool TWAP price, capped by a captain first-loss stake.
+- Memecoin T3 tier: pool TWAP price.
+- The linked-wallet block for T3 tokens (needs off-chain wallet-graph data).
 - Discover fee split. Multisig admin and admin rotation.

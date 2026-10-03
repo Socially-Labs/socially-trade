@@ -14,6 +14,9 @@
 //!    absent or invalid, the fee pps is `fund.last_price_per_share` and the
 //!    breaker does not move. So the exiter cannot lower the fee by the choice
 //!    of fresh vs stale prices.
+//!
+//! One exception to "no price check": while the fund holds T3 cost basis and
+//! others hold shares, a captain exit needs valid fresh prices (see below).
 
 use {
     crate::{
@@ -100,7 +103,7 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     // Fresh prices can only raise the fee pps, never lower it below the last pps.
     let fresh = fresh_pps(&a.fund, &fund_key, &a.config, nav_accs, now, ctx.program_id).ok();
     let last = a.fund.last_price_per_share;
-    let pps = fresh.map_or(last, |(up, _)| up.max(last));
+    let pps = fresh.map_or(last, |(up, _, _)| up.max(last));
 
     let fund_id_le = a.fund.fund_id.to_le_bytes();
     let fund_seeds: &[&[u8]] = &[FUND_SEED, captain.as_ref(), &fund_id_le, &[a.fund.bump]];
@@ -135,6 +138,20 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
         let keep = (balance - shares) as u128 * BPS_DENOMINATOR as u128;
         let floor = (total - shares) as u128 * CAPTAIN_MIN_STAKE_BPS as u128;
         require!(keep >= floor, ErrorCode::CaptainStakeFloor);
+
+        // While T3 is held, the stake left must cover the T3 basis left, at
+        // the fresh spot pps. A stale pps must not let the captain leave
+        // early, so this needs valid prices (the call below returns the error).
+        let basis = a.fund.t3_cost_basis_usd;
+        if basis > 0 {
+            let spot = match fresh {
+                Some((_, _, spot)) => spot,
+                None => fresh_pps(&a.fund, &fund_key, &a.config, nav_accs, now, ctx.program_id)?.2,
+            };
+            let stake = math::value_of_shares(balance - shares, spot)?;
+            let basis_left = math::pro_rata(basis, total - shares, total)?;
+            require!(stake >= basis_left, ErrorCode::CaptainStakeFloor);
+        }
     }
 
     // Pay out shares/total of each vault. `total` still counts the fee shares
@@ -195,7 +212,16 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
 
     let fund = &mut ctx.accounts.fund;
     fund.total_shares = total.checked_sub(shares).ok_or(ErrorCode::MathOverflow)?;
-    if let Some((_, ema_pps)) = fresh {
+    // Every holding fell by shares/total, so the T3 cost basis does too.
+    if fund.t3_cost_basis_usd > 0 {
+        let mut sum: u64 = 0;
+        for b in fund.t3_basis_usd.iter_mut() {
+            *b = math::pro_rata(*b, total - shares, total)?;
+            sum = sum.checked_add(*b).ok_or(ErrorCode::MathOverflow)?;
+        }
+        fund.t3_cost_basis_usd = sum;
+    }
+    if let Some((_, ema_pps, _)) = fresh {
         nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, ema_pps)?;
     }
 
@@ -256,7 +282,7 @@ pub(crate) fn charge_fee<'info>(
     Ok(fee)
 }
 
-/// `(fee pps from the upper-bound NAV, breaker pps from the EMA NAV)`.
+/// `(fee pps from the upper-bound NAV, breaker pps from the EMA NAV, spot pps)`.
 pub(crate) fn fresh_pps(
     fund: &Fund,
     fund_key: &Pubkey,
@@ -264,12 +290,15 @@ pub(crate) fn fresh_pps(
     nav_accs: &[AccountInfo],
     now: i64,
     program_id: &Pubkey,
-) -> Result<(u64, u64)> {
+) -> Result<(u64, u64, u64)> {
     let priced = nav::compute(fund, fund_key, config, nav_accs, now, program_id)?;
-    let upper = priced.valuation(ValuationMode::DepositUpperBound)?.nav;
-    let ema = priced.valuation(ValuationMode::Ema)?.nav;
+    let pps = |mode| -> Result<u64> {
+        let nav = priced.valuation(mode)?.nav;
+        Ok(math::price_per_share(nav, fund.total_shares)?)
+    };
     Ok((
-        math::price_per_share(upper, fund.total_shares)?,
-        math::price_per_share(ema, fund.total_shares)?,
+        pps(ValuationMode::DepositUpperBound)?,
+        pps(ValuationMode::Ema)?,
+        pps(ValuationMode::Spot)?,
     ))
 }

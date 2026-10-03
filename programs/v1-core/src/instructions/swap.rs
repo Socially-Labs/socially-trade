@@ -10,20 +10,33 @@
 //! 2. Only when the output mint is not a holding yet (and is not USDC): the
 //!    output mint's two price accounts `[price_a, price_b]`, the same pair as
 //!    in the NAV layout for its price source.
-//! 3. The venue's accounts, passed through as they are. The fund PDA is one of
+//! 3. Only for a T3 trade (the output is a T3 token, or the input has a T3
+//!    cost basis): `[captain_member (w), captain_shares (w), share_mint (w),
+//!    Token-2022 program]`. The captain's Member PDA and share ATA.
+//! 4. The venue's accounts, passed through as they are. The fund PDA is one of
 //!    them (the venue's swap authority); the program marks it as a signer.
+//!
+//! T3 first-loss rules (Open Seas funds only). A T3 buy adds its spot USD cost
+//! to the cost basis. The total basis, and the T3 buys in the rolling 30-day
+//! window, must each stay at most the captain's stake value (captain shares x
+//! pre-trade spot price per share). A sale of a holding with a basis takes out
+//! `basis * amount_in / position`. If the spot value received is less, the fund
+//! PDA (permanent delegate of the share mint) burns captain shares worth the
+//! loss at the pre-trade spot price per share, at most the captain's balance.
+//! A T3 to T3 trade is a T3 sale, then a T3 buy.
 
 use {
     crate::{
         constants::*,
         errors::ErrorCode,
-        events::TradeExecuted,
+        events::{FirstLossApplied, TradeExecuted},
         instructions::delegate::charge_delegate,
         math,
         nav::{self, NavResult, ValuationMode, ACCOUNTS_PER_HOLDING, PRICE_ACCOUNTS},
-        state::{Config, Delegate, Fund, Policy, Tier, TokenEntry, VenueEntry},
+        state::{Config, Delegate, Fund, Member, Policy, Tier, TokenEntry, VenueEntry},
     },
     anchor_lang::{
+        error::ErrorCode as AnchorError,
         prelude::*,
         solana_program::{
             instruction::{AccountMeta, Instruction},
@@ -31,10 +44,11 @@ use {
         },
     },
     anchor_spl::{
+        associated_token::get_associated_token_address_with_program_id,
         associated_token::{self, AssociatedToken},
         token::ID as TOKEN_PROGRAM,
         token_2022::ID as TOKEN_2022_PROGRAM,
-        token_interface::{Mint, TokenInterface},
+        token_interface::{self, Mint, TokenInterface},
     },
 };
 
@@ -144,6 +158,9 @@ pub fn swap<'info>(
     Ok(())
 }
 
+/// The T3 accounts of a trade (remaining accounts, see the module doc).
+pub const T3_ACCOUNTS: usize = 4;
+
 /// What `prepare` found: holding indexes and where the venue accounts start.
 struct Plan {
     in_idx: usize,
@@ -152,6 +169,15 @@ struct Plan {
     venue_start: usize,
     /// The new `(window_start, window_volume_usd)`; None for a voted trade.
     window: Option<(i64, u64)>,
+    /// Pre-trade spot NAV and the spot USD value of `amount_in`.
+    pre_nav: u128,
+    trade_usd: u128,
+    /// The input has a T3 cost basis (T3 sale rules apply).
+    t3_sell: bool,
+    /// The output is a T3 token (T3 buy rules apply).
+    t3_buy: bool,
+    /// Index of the T3 accounts in the remaining accounts.
+    t3_start: usize,
 }
 
 /// The shared trade core: checks, venue CPI, balance checks, tier caps,
@@ -192,7 +218,7 @@ pub fn execute_swap<'info>(
 
     call_venue(t, &remaining[plan.venue_start..], p.venue_data)?;
 
-    let amount_out = settle(t, remaining, p, &plan, &before, &lens, &mut priced)?;
+    let amount_out = settle(t, remaining, p, &plan, &before, &lens, &mut priced, now)?;
     emit!(TradeExecuted {
         fund: t.fund.key(),
         signer: p.signer,
@@ -231,14 +257,12 @@ fn prepare(
         require!(!fund.frozen, ErrorCode::FundFrozen);
     }
 
-    // 3. Listed and active; input held; room for a new output.
+    // 3. Listed and active; input held; room for a new output. Only an
+    // Open Seas fund buys T3 tokens.
     listed(&t.input_entry, &input, config)?;
     let out_entry = listed(&t.output_entry, &output, config)?;
-    // No T3 buys until the open-seas rules (caps at cost, 30-day window)
-    // exist. Those rules replace this check.
-    if out_entry.as_ref().is_some_and(|e| e.tier == Tier::T3) {
-        return err!(ErrorCode::TierCapExceeded);
-    }
+    let t3_buy = out_entry.as_ref().is_some_and(|e| e.tier == Tier::T3);
+    require!(!t3_buy || fund.open_seas, ErrorCode::NotOpenSeas);
     let len = fund.holdings_len as usize;
     let held = &fund.holdings[..len];
     let in_idx = held
@@ -259,7 +283,7 @@ fn prepare(
         remaining[in_idx * ACCOUNTS_PER_HOLDING].key(),
         ErrorCode::HoldingNotFound
     );
-    let (out_idx, venue_start) = match out_held {
+    let (out_idx, mut venue_start) = match out_held {
         Some(i) => {
             require_keys_eq!(
                 t.fund_output_vault.key(),
@@ -282,6 +306,13 @@ fn prepare(
             }
         }
     };
+    // The sale rules follow the basis, not the tier: a token listed T3 that the
+    // fund holds without a basis sells like any other token.
+    let t3_sell = fund.t3_basis_usd[in_idx] > 0;
+    let t3_start = venue_start;
+    if t3_buy || t3_sell {
+        venue_start += T3_ACCOUNTS;
+    }
     require!(
         remaining.len() >= venue_start,
         ErrorCode::PriceAccountMissing
@@ -344,6 +375,11 @@ fn prepare(
         out_is_new: out_held.is_none(),
         venue_start,
         window,
+        pre_nav,
+        trade_usd,
+        t3_sell,
+        t3_buy,
+        t3_start,
     })
 }
 
@@ -459,7 +495,8 @@ fn call_venue<'info>(
     Ok(())
 }
 
-/// Checks 9-11 after the CPI: balances, tier caps, breaker, new holding.
+/// Checks 9-11 after the CPI: balances, T3 rules, tier caps, breaker, new holding.
+#[allow(clippy::too_many_arguments)]
 fn settle<'info>(
     t: &mut Trade<'info>,
     remaining: &[AccountInfo<'info>],
@@ -468,6 +505,7 @@ fn settle<'info>(
     before: &[u64; MAX_HOLDINGS],
     lens: &[usize; MAX_HOLDINGS],
     priced: &mut NavResult,
+    now: i64,
 ) -> Result<u64> {
     let fund_key = t.fund.key();
     let len = t.fund.holdings_len as usize;
@@ -492,6 +530,12 @@ fn settle<'info>(
         .checked_sub(before[plan.out_idx])
         .ok_or(ErrorCode::OutputNotReceived)?;
     require!(amount_out >= p.min_out, ErrorCode::OutputNotReceived);
+
+    // T3 sale (basis out, first loss), then T3 buy (basis in, caps).
+    if plan.t3_sell || plan.t3_buy {
+        let accs = &remaining[plan.t3_start..plan.t3_start + T3_ACCOUNTS];
+        apply_t3(t, accs, p, plan, before, amount_out, priced, now)?;
+    }
 
     // 10. Tier caps on the post-trade spot NAV, when the trade buys a T2 token.
     priced.amounts = after;
@@ -523,12 +567,168 @@ fn settle<'info>(
         let last = fund.holdings_len as usize - 1;
         fund.holdings[plan.in_idx] = fund.holdings[last];
         fund.holdings[last] = Pubkey::default();
+        fund.t3_basis_usd[plan.in_idx] = fund.t3_basis_usd[last];
+        fund.t3_basis_usd[last] = 0;
         fund.holdings_len -= 1;
     }
     let ema_nav = priced.valuation(ValuationMode::Ema)?.nav;
     let pps = math::price_per_share(ema_nav, fund.total_shares)?;
     nav::update_breaker(fund, &fund_key, &t.policy, pps)?;
     Ok(amount_out)
+}
+
+/// The T3 rules of the module doc, after the balance checks. `accs` are the
+/// T3 accounts. Only a loss changes the captain's shares and Member record.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn apply_t3<'info>(
+    t: &mut Trade<'info>,
+    accs: &[AccountInfo<'info>],
+    p: &SwapParams,
+    plan: &Plan,
+    before: &[u64; MAX_HOLDINGS],
+    amount_out: u64,
+    priced: &NavResult,
+    now: i64,
+) -> Result<()> {
+    let fund_key = t.fund.key();
+    let captain = t.fund.captain;
+    let share_mint = t.fund.share_mint;
+    let (member_info, shares_info, mint_info, program_info) =
+        (&accs[0], &accs[1], &accs[2], &accs[3]);
+    require_keys_eq!(
+        *member_info.owner,
+        crate::ID,
+        AnchorError::AccountOwnedByWrongProgram
+    );
+    let mut member = Member::try_deserialize(&mut &member_info.try_borrow_data()?[..])?;
+    let member_pda = Pubkey::create_program_address(
+        &[
+            MEMBER_SEED,
+            fund_key.as_ref(),
+            captain.as_ref(),
+            &[member.bump],
+        ],
+        &crate::ID,
+    )
+    .map_err(|_| AnchorError::ConstraintSeeds)?;
+    require_keys_eq!(member_info.key(), member_pda, AnchorError::ConstraintSeeds);
+    // The captain's own share ATA: any other account (empty) would dodge the burn.
+    require_keys_eq!(
+        shares_info.key(),
+        get_associated_token_address_with_program_id(&captain, &share_mint, &TOKEN_2022_PROGRAM),
+        AnchorError::ConstraintAddress
+    );
+    require_keys_eq!(mint_info.key(), share_mint, AnchorError::ConstraintAddress);
+    require_keys_eq!(
+        program_info.key(),
+        TOKEN_2022_PROGRAM,
+        AnchorError::InvalidProgramId
+    );
+    // The ATA address pins mint and owner; the owner check pins the layout.
+    require_keys_eq!(
+        *shares_info.owner,
+        TOKEN_2022_PROGRAM,
+        AnchorError::AccountOwnedByWrongProgram
+    );
+    let mut balance = {
+        let data = shares_info.try_borrow_data()?;
+        require!(data.len() >= 72, AnchorError::AccountDidNotDeserialize);
+        u64::from_le_bytes(data[64..72].try_into().unwrap())
+    };
+    let total = t.fund.total_shares;
+    let mut basis = t.fund.t3_cost_basis_usd;
+
+    // T3 sale: the pro-rata basis leaves; a loss against it burns captain shares.
+    if plan.t3_sell {
+        let held = t.fund.t3_basis_usd[plan.in_idx];
+        let out = math::pro_rata(held, p.amount_in, before[plan.in_idx])?;
+        t.fund.t3_basis_usd[plan.in_idx] = held - out;
+        basis = basis.checked_sub(out).ok_or(ErrorCode::MathOverflow)?;
+        let proceeds = priced.value_at(plan.out_idx, amount_out, ValuationMode::Spot)?;
+        let loss = (out as u128).saturating_sub(proceeds);
+        if loss > 0 {
+            // Shares worth the loss at the pre-trade spot pps, rounded up.
+            require!(plan.pre_nav > 0, ErrorCode::NavZero);
+            let burn = loss
+                .checked_mul(total as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .div_ceil(plan.pre_nav);
+            let burn = math::to_u64(burn.min(balance as u128))?;
+            if burn > 0 {
+                burn_captain_shares(t, shares_info, mint_info, program_info, burn)?;
+                // Same as a partial exit: keep the same share of the high-water mark.
+                member.hwm = math::to_u64(math::mul_div_floor(
+                    member.hwm as u128,
+                    (balance - burn) as u128,
+                    balance as u128,
+                )?)?;
+                member.try_serialize(&mut &mut member_info.try_borrow_mut_data()?[..])?;
+                balance -= burn;
+                t.fund.total_shares = total - burn;
+            }
+            emit!(FirstLossApplied {
+                fund: fund_key,
+                loss_usd: math::to_u64(loss)?,
+                captain_shares_burned: burn,
+            });
+        }
+    }
+
+    // T3 buy: the cost joins the basis; the basis and the 30-day buys must
+    // each fit the captain's stake (after any burn, at the pre-trade spot pps).
+    if plan.t3_buy {
+        let cost = math::to_u64(plan.trade_usd)?;
+        let i = plan.out_idx;
+        t.fund.t3_basis_usd[i] = t.fund.t3_basis_usd[i]
+            .checked_add(cost)
+            .ok_or(ErrorCode::MathOverflow)?;
+        basis = basis.checked_add(cost).ok_or(ErrorCode::MathOverflow)?;
+        let stake = math::mul_div_floor(balance as u128, plan.pre_nav, total as u128)?;
+        require!(basis as u128 <= stake, ErrorCode::T3CapExceeded);
+        let fund = &mut t.fund;
+        let (start, used) = if now.saturating_sub(fund.t3_window_start) >= T3_WINDOW_SECS {
+            (now, 0)
+        } else {
+            (fund.t3_window_start, fund.t3_window_buys_usd)
+        };
+        let buys = used.checked_add(cost).ok_or(ErrorCode::MathOverflow)?;
+        require!(buys as u128 <= stake, ErrorCode::T3CapExceeded);
+        fund.t3_window_start = start;
+        fund.t3_window_buys_usd = buys;
+    }
+    t.fund.t3_cost_basis_usd = basis;
+    Ok(())
+}
+
+/// Burn `amount` captain shares, signed by the fund PDA as the share mint's
+/// permanent delegate. The captain does not sign.
+fn burn_captain_shares<'info>(
+    t: &Trade<'info>,
+    from: &AccountInfo<'info>,
+    mint: &AccountInfo<'info>,
+    program: &AccountInfo<'info>,
+    amount: u64,
+) -> Result<()> {
+    let fund_id_le = t.fund.fund_id.to_le_bytes();
+    let seeds: &[&[u8]] = &[
+        FUND_SEED,
+        t.fund.captain.as_ref(),
+        &fund_id_le,
+        &[t.fund.bump],
+    ];
+    token_interface::burn(
+        CpiContext::new_with_signer(
+            program.key(),
+            token_interface::Burn {
+                mint: mint.clone(),
+                from: from.clone(),
+                authority: t.fund.to_account_info(),
+            },
+            &[seeds],
+        ),
+        amount,
+    )
 }
 
 /// The vault of holding `i`: its NAV account, or the new output vault (`i == holdings_len`).
