@@ -74,7 +74,7 @@ impl KaminoRate {
     }
 
     /// kTokens for `underlying` base units, floor. For the swap price guard only.
-    // ponytail: total liquidity is floored to whole base units, so the result
+    // Note: total liquidity is floored to whole base units, so the result
     // is high by at most 1 / total_liquidity (relative); go exact (u256) if a
     // reserve with tiny liquidity is ever listed.
     pub fn to_ktokens(&self, underlying: u128) -> Result<u128, ErrorCode> {

@@ -263,6 +263,36 @@ fn exit_with_invalid_nav_account_uses_last_pps() {
     assert_paid_at_last_pps(&env, &cap, &m, &f, &sol);
 }
 
+#[test]
+fn exit_with_stale_kamino_reserve_uses_last_pps_and_pays_ktokens() {
+    let (mut env, _cap, m, f) = fund_300_100();
+    let k = listed_kusdc(&mut env);
+    // 400 kUSDC = 420 USDC: a fresh NAV would be 820 for 400 shares (pps 2.05,
+    // above the member's HWM, so a fee would be due).
+    inject_holding(&mut env, &f, k.mint, 400_000_000);
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    let stale = ReserveFields {
+        slot,
+        stale: true,
+        ..k.fields
+    };
+    write_reserve(&mut env.svm, k.reserve, &stale);
+    let pps_before = read_fund(&env, &f).last_price_per_share;
+    let create = ix_create_ata(&m.pubkey(), &m.pubkey(), &k.mint, &spl_token_interface::ID);
+    send(&mut env.svm, &[create], &[&m]).unwrap();
+    // The NAV accounts include the stale reserve: NAV fails, exit uses last pps.
+    let ix = ix_exit(&env, &f, &m.pubkey(), 100_000_000);
+    assert!(ix.accounts.iter().any(|a| a.pubkey == k.reserve));
+    let res = send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(events(&res), 1, "Exited only, no fee at the last pps");
+    assert_eq!(read_fund(&env, &f).last_price_per_share, pps_before);
+    // 100 of 400 shares: a quarter of each vault.
+    let m_k = ata(&m.pubkey(), &k.mint, &spl_token_interface::ID);
+    assert_eq!(token_balance(&env.svm, &m_k), 100_000_000);
+    assert_eq!(usdc_of(&env, &m.pubkey()), 1_000_000_000);
+    assert_eq!(shares_of(&env, &f, &m.pubkey()), 0);
+}
+
 // ---------------------------------------------------------------------------
 // Exit accounts
 // ---------------------------------------------------------------------------
