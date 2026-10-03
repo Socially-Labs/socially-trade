@@ -169,6 +169,7 @@ pub fn create_fund(
         t3_window_start: now,
         t3_window_buys_usd: 0,
         t3_basis_usd: [0; MAX_HOLDINGS],
+        t3_prev_window_buys_usd: 0,
     });
     let params = PolicyParams {
         autonomous_bps: DEFAULT_AUTONOMOUS_BPS,

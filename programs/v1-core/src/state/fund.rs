@@ -29,10 +29,13 @@ pub struct Fund {
     pub open_seas: bool,
     /// Cost of the T3 positions still held, USD (6 dp). Sum of `t3_basis_usd`.
     pub t3_cost_basis_usd: u64,
-    /// Start of the rolling 30-day T3 buy window.
+    /// Start of the current 30-day T3 buy window. Windows follow each other
+    /// with no gap, from the fund's creation.
     pub t3_window_start: i64,
-    /// USD (6 dp) of T3 buys since `t3_window_start`.
+    /// USD (6 dp) of T3 buys in the current window.
     pub t3_window_buys_usd: u64,
     /// Cost basis of each holding bought as T3, USD (6 dp), in `holdings` order.
     pub t3_basis_usd: [u64; MAX_HOLDINGS],
+    /// USD (6 dp) of T3 buys in the window before the current one.
+    pub t3_prev_window_buys_usd: u64,
 }

@@ -120,4 +120,6 @@ pub enum ErrorCode {
     NotOpenSeas,
     #[msg("T3 buys exceed the captain's stake")]
     T3CapExceeded,
+    #[msg("T3 buy into a holding that has units without a cost basis")]
+    T3UnbasedHolding,
 }

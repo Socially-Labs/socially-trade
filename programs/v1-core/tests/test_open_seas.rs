@@ -44,14 +44,13 @@ fn open_seas(cap_usd: u64, crew_usd: u64) -> Seas {
 impl Seas {
     /// Buy MEME with `usd` USDC at the oracle price.
     fn buy(&self, usd: u64) -> SwapArgs {
-        SwapArgs::new(
-            self.t.env.usdc,
-            self.meme.mint,
-            usd * USDC,
-            usd * 20 * MEME,
-            20_000,
-            1,
-        )
+        buy_of(&self.t, &self.meme.mint, usd)
+    }
+    /// Warp to `at` (unix seconds) and re-publish every price.
+    fn warp_to(&mut self, at: i64) {
+        let secs = at - now(&self.t.env);
+        warp(&mut self.t.env.svm, secs);
+        self.refresh();
     }
     /// Sell `meme` base units for `meme * num / den` USDC base units (min_out = that).
     fn sell(&self, meme: u64, num: u64, den: u64) -> SwapArgs {
@@ -89,6 +88,33 @@ impl Seas {
     }
 }
 
+/// Buy a $0.05 9-dp token with `usd` USDC at the oracle price.
+fn buy_of(t: &Trading, mint: &Pubkey, usd: u64) -> SwapArgs {
+    SwapArgs::new(t.env.usdc, *mint, usd * USDC, usd * 20 * MEME, 20_000, 1)
+}
+
+/// A second $0.05 Switchboard token listed `tier`, with a deep pool.
+fn second_token(s: &mut Seas, tier: Tier) -> SbToken {
+    let coin = listed_meme(&mut s.t.env, tier);
+    let usdc = s.t.env.usdc;
+    setup_venue_pool(&mut s.t.env, &usdc, &coin.mint, 0, 100_000_000 * MEME);
+    s.refresh();
+    refresh_meme(&mut s.t.env, &coin);
+    coin
+}
+
+/// Re-list `token` as `tier` (7-day timelock), then re-publish every price.
+fn retier(s: &mut Seas, token: &SbToken, tier: Tier) {
+    register_token_with(
+        &mut s.t.env,
+        token.mint,
+        PriceSource::Switchboard { feed: token.feed },
+        tier,
+    );
+    s.refresh();
+    refresh_meme(&mut s.t.env, token);
+}
+
 #[test]
 fn t3_cap_at_cost_rejects_one_big_buy() {
     // NAV 20,000; per-trade limit 2,000; captain stake 1,000.
@@ -118,7 +144,7 @@ fn t3_cap_at_cost_adds_up_split_buys() {
 }
 
 #[test]
-fn t3_window_counts_buys_for_30_days_then_resets() {
+fn t3_window_counts_the_previous_window_in_full() {
     let mut s = open_seas(1_000, 19_000);
     let start = s.fund().t3_window_start;
     let a = s.buy(600);
@@ -132,19 +158,58 @@ fn t3_window_counts_buys_for_30_days_then_resets() {
     let a = s.buy(401);
     expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
 
-    // One second before the window ends: still full.
-    let wait = start + T3_WINDOW_SECS - 1 - now(&s.t.env);
-    warp(&mut s.t.env.svm, wait);
-    s.refresh();
+    // One second before the window ends, and when the next window starts:
+    // the 600 still counts in full.
+    s.warp_to(start + T3_WINDOW_SECS - 1);
     expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
-    // At start + 30 days the window resets.
-    warp(&mut s.t.env.svm, 1);
-    s.refresh();
+    s.warp_to(start + T3_WINDOW_SECS);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    // Half way into the next window the 600 still counts in full (a decay
+    // would count 300 and let 401 through).
+    s.warp_to(start + T3_WINDOW_SECS * 3 / 2);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    // 400 fits: 600 + 400 = 1,000.
+    let a = s.buy(400);
     s.t.swap_fresh(&a).unwrap();
     let f = s.fund();
-    assert_eq!(f.t3_window_start, now(&s.t.env));
-    assert_eq!(f.t3_window_buys_usd, 401 * USDC);
-    assert_eq!(f.t3_cost_basis_usd, 401 * USDC);
+    assert_eq!(f.t3_window_start, start + T3_WINDOW_SECS);
+    assert_eq!(f.t3_prev_window_buys_usd, 600 * USDC);
+    assert_eq!(f.t3_window_buys_usd, 400 * USDC);
+    // At start + 60 d the 600 is out; the 400 is the previous window now.
+    let a = s.sell(8_000 * MEME, 1, 20_000);
+    s.t.swap_fresh(&a).unwrap();
+    s.warp_to(start + 2 * T3_WINDOW_SECS);
+    let a = s.buy(601);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    let a = s.buy(600);
+    s.t.swap_fresh(&a).unwrap();
+    let f = s.fund();
+    assert_eq!(f.t3_prev_window_buys_usd, 400 * USDC);
+    assert_eq!(f.t3_window_buys_usd, 600 * USDC);
+}
+
+#[test]
+fn t3_window_blocks_a_second_cap_across_the_boundary() {
+    let mut s = open_seas(1_000, 19_000);
+    let start = s.fund().t3_window_start;
+    // A full-cap buy 60 s before the window ends, sold at once.
+    s.warp_to(start + T3_WINDOW_SECS - 60);
+    let a = s.buy(1_000);
+    s.t.swap_fresh(&a).unwrap();
+    let a = s.sell(20_000 * MEME, 1, 20_000);
+    s.t.swap_fresh(&a).unwrap();
+    // 60 s later a new window starts, but the last 30 days already hold the cap.
+    s.warp_to(start + T3_WINDOW_SECS);
+    let a = s.buy(1);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    // 60 days after the start, that buy is out of both windows.
+    s.warp_to(start + 2 * T3_WINDOW_SECS);
+    let a = s.buy(1_000);
+    s.t.swap_fresh(&a).unwrap();
+    let f = s.fund();
+    assert_eq!(f.t3_window_start, start + 2 * T3_WINDOW_SECS);
+    assert_eq!(f.t3_prev_window_buys_usd, 0);
+    assert_eq!(f.t3_window_buys_usd, 1_000 * USDC);
 }
 
 #[test]
@@ -369,4 +434,122 @@ fn t3_trade_rejects_a_member_account_that_is_not_the_captain() {
         send(&mut s.t.env.svm, &[ix], &[&cap]),
         anchor_lang::error::ErrorCode::ConstraintSeeds,
     );
+}
+
+#[test]
+fn buy_into_a_based_holding_takes_basis_and_caps_after_a_retier() {
+    let mut s = open_seas(1_000, 19_000);
+    let a = s.buy(500);
+    s.t.swap_fresh(&a).unwrap();
+    let meme = s.meme;
+    retier(&mut s, &meme, Tier::T2);
+    // MEME is T2 now, but the holding has a basis: the buy joins it.
+    let a = s.buy(300);
+    s.t.swap_fresh(&a).unwrap();
+    let f = s.fund();
+    assert_eq!(f.t3_basis_usd[1], 800 * USDC);
+    assert_eq!(f.t3_cost_basis_usd, 800 * USDC);
+    assert_eq!(f.t3_window_buys_usd, 800 * USDC);
+    let a = s.buy(201);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+}
+
+#[test]
+fn t3_buy_into_units_without_basis_is_rejected() {
+    let mut s = open_seas(1_000, 19_000);
+    let coin = second_token(&mut s, Tier::T2);
+    let a = buy_of(&s.t, &coin.mint, 500);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 0);
+    retier(&mut s, &coin, Tier::T3);
+    let a = buy_of(&s.t, &coin.mint, 100);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3UnbasedHolding);
+    // Sold out (no basis, so no T3 accounts), the next T3 buy starts a basis.
+    let usdc = s.t.env.usdc;
+    let sell = SwapArgs::new(coin.mint, usdc, 10_000 * MEME, 500 * USDC, 1, 20_000);
+    s.t.swap_fresh(&sell).unwrap();
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 100 * USDC);
+}
+
+#[test]
+fn t3_to_t3_swap_is_a_sale_then_a_buy() {
+    let mut s = open_seas(1_000, 19_000);
+    let coin = second_token(&mut s, Tier::T3);
+    let a = s.buy(400); // 8,000 MEME, basis 400
+    s.t.swap_fresh(&a).unwrap();
+    // All MEME for 1% less COIN: proceeds 396, loss 4 on the MEME basis.
+    let a = SwapArgs::new(s.meme.mint, coin.mint, 8_000 * MEME, 7_920 * MEME, 99, 100);
+    let res = s.t.swap_fresh(&a).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    assert_eq!(
+        (ev[0].loss_usd, ev[0].captain_shares_burned),
+        (4 * USDC, 4 * USDC)
+    );
+    assert_eq!(s.captain_shares(), 996 * USDC);
+    s.assert_supply();
+    // MEME left the holdings; COIN took its slot with the buy's basis (input spot value).
+    let f = s.fund();
+    assert_eq!(f.holdings[..2], [s.t.env.usdc, coin.mint]);
+    assert_eq!(f.t3_basis_usd[..3], [0, 400 * USDC, 0]);
+    assert_eq!(f.t3_cost_basis_usd, 400 * USDC);
+    assert_eq!(f.t3_window_buys_usd, 800 * USDC);
+    // Back to MEME: the buy side counts in the window, 800 + 396 > 996.
+    let a = SwapArgs::new(coin.mint, s.meme.mint, 7_920 * MEME, 7_920 * MEME, 1, 1);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    assert_eq!(s.captain_shares(), 996 * USDC);
+}
+
+#[test]
+fn delegate_t3_buy_obeys_the_cap() {
+    let mut s = open_seas(1_000, 19_000);
+    let key = funded(&mut s.t.env.svm);
+    let cap = s.t.cap.insecure_clone();
+    let ix = ix_add_delegate(
+        &cap.pubkey(),
+        &s.t.f,
+        &key.pubkey(),
+        10_000 * USDC,
+        10_000 * USDC,
+    );
+    send(&mut s.t.env.svm, &[ix], &[&cap]).unwrap();
+    let d = Some(delegate_pda(&s.t.f.fund, &key.pubkey()));
+    for (usd, ok) in [(1_001, false), (1_000, true)] {
+        let a = s.buy(usd);
+        let ix = ix_swap(&s.t.env, &s.t.f, &key.pubkey(), d, &a);
+        let res = send(&mut s.t.env.svm, &[ix], &[&key]);
+        if ok {
+            res.unwrap();
+        } else {
+            expect_err(res, ErrorCode::T3CapExceeded);
+        }
+    }
+    assert_eq!(s.fund().t3_cost_basis_usd, 1_000 * USDC);
+}
+
+#[test]
+fn exit_rounds_a_tiny_basis_up_while_units_remain() {
+    let mut s = open_seas(1_000, 19_000);
+    // 1 USDC base unit buys 20,000 MEME base units: basis 1.
+    let usdc = s.t.env.usdc;
+    let a = SwapArgs::new(usdc, s.meme.mint, 1, 20_000, 20_000, 1);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 1);
+    let crew = s.crew.insecure_clone();
+    let ix = ix_create_ata(
+        &crew.pubkey(),
+        &crew.pubkey(),
+        &s.meme.mint,
+        &spl_token_interface::ID,
+    );
+    send(&mut s.t.env.svm, &[ix], &[&crew]).unwrap();
+    // 95% of the shares leave: 1 x 5% floors to 0, but 1,000 MEME units remain.
+    exit(&mut s.t.env, &s.t.f, &crew, 19_000 * USDC).unwrap();
+    assert_eq!(s.meme_vault(), 1_000);
+    let f = s.fund();
+    assert_eq!((f.t3_basis_usd[1], f.t3_cost_basis_usd), (1, 1));
+    // So the holding is still based, and a T3 buy into it passes.
+    let a = s.buy(10);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 10 * USDC + 1);
 }

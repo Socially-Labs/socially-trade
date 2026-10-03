@@ -1473,14 +1473,16 @@ pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountM
         metas.push(AccountMeta::new_readonly(pa, false));
         metas.push(AccountMeta::new_readonly(pb, false));
     }
-    let t3_buy = env
-        .svm
-        .get_account(&token_pda(&a.output))
-        .is_some_and(|e| TokenEntry::try_deserialize(&mut &e.data[..]).unwrap().tier == Tier::T3);
-    let t3_sell = held
-        .iter()
-        .position(|m| *m == a.input)
-        .is_some_and(|i| fund.t3_basis_usd[i] > 0);
+    let based = |mint: &Pubkey| {
+        held.iter()
+            .position(|m| m == mint)
+            .is_some_and(|i| fund.t3_basis_usd[i] > 0)
+    };
+    let t3_buy = based(&a.output)
+        || env.svm.get_account(&token_pda(&a.output)).is_some_and(|e| {
+            TokenEntry::try_deserialize(&mut &e.data[..]).unwrap().tier == Tier::T3
+        });
+    let t3_sell = based(&a.input);
     if t3_buy || t3_sell {
         metas.extend(t3_accounts(f, &fund.captain));
     }

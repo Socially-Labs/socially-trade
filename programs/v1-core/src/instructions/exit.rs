@@ -160,6 +160,7 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     // can reorder holdings after the client built the list). `len` triples,
     // each a holding and none twice, cover every holding exactly once.
     let mut seen = [false; MAX_HOLDINGS];
+    let mut left = [0u64; MAX_HOLDINGS];
     for accs in exit_accs.chunks_exact(EXIT_ACCOUNTS_PER_HOLDING) {
         let (vault, to, mint) = (&accs[0], &accs[1], &accs[2]);
         let mint_key = mint.key;
@@ -171,6 +172,7 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
         seen[i] = true;
         let held = nav::vault_amount(vault, &fund_key, mint_key)?;
         let out = math::pro_rata(held, shares, total)?;
+        left[i] = held - out;
         if out == 0 {
             continue;
         }
@@ -213,10 +215,17 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     let fund = &mut ctx.accounts.fund;
     fund.total_shares = total.checked_sub(shares).ok_or(ErrorCode::MathOverflow)?;
     // Every holding fell by shares/total, so the T3 cost basis does too.
+    // Rounded up while the holding keeps units, so a basis never reaches 0
+    // with units left (they would be unbased).
     if fund.t3_cost_basis_usd > 0 {
         let mut sum: u64 = 0;
-        for b in fund.t3_basis_usd.iter_mut() {
-            *b = math::pro_rata(*b, total - shares, total)?;
+        for (b, &units) in fund.t3_basis_usd.iter_mut().zip(left.iter()) {
+            let scaled = *b as u128 * (total - shares) as u128;
+            *b = math::to_u64(if units > 0 {
+                scaled.div_ceil(total as u128)
+            } else {
+                scaled / total as u128
+            })?;
             sum = sum.checked_add(*b).ok_or(ErrorCode::MathOverflow)?;
         }
         fund.t3_cost_basis_usd = sum;

@@ -10,16 +10,20 @@
 //! 2. Only when the output mint is not a holding yet (and is not USDC): the
 //!    output mint's two price accounts `[price_a, price_b]`, the same pair as
 //!    in the NAV layout for its price source.
-//! 3. Only for a T3 trade (the output is a T3 token, or the input has a T3
-//!    cost basis): `[captain_member (w), captain_shares (w), share_mint (w),
+//! 3. Only for a T3 trade (the output is a T3 token, or the input or the
+//!    output holding has a T3 cost basis): `[captain_member (w), captain_shares (w), share_mint (w),
 //!    Token-2022 program]`. The captain's Member PDA and share ATA.
 //! 4. The venue's accounts, passed through as they are. The fund PDA is one of
 //!    them (the venue's swap authority); the program marks it as a signer.
 //!
-//! T3 first-loss rules (Open Seas funds only). A T3 buy adds its spot USD cost
-//! to the cost basis. The total basis, and the T3 buys in the rolling 30-day
-//! window, must each stay at most the captain's stake value (captain shares x
-//! pre-trade spot price per share). A sale of a holding with a basis takes out
+//! T3 first-loss rules (Open Seas funds only). A T3 buy (a buy of a T3 token,
+//! or any buy into a holding that has a basis, whatever its tier) adds its spot
+//! USD cost to the cost basis. A T3 buy into a holding that has units but no
+//! basis is rejected (`T3UnbasedHolding`): those units would dilute the basis.
+//! The total basis, and the T3 buys of the current and the previous 30-day
+//! window together, must each stay at most the captain's stake value (captain
+//! shares x pre-trade spot price per share). Any 30-day span lies inside two
+//! adjacent windows, so this bounds the buys of every 30-day span. A sale of a holding with a basis takes out
 //! `basis * amount_in / position`. If the spot value received is less, the fund
 //! PDA (permanent delegate of the share mint) burns captain shares worth the
 //! loss at the pre-trade spot price per share, at most the captain's balance.
@@ -261,8 +265,8 @@ fn prepare(
     // Open Seas fund buys T3 tokens.
     listed(&t.input_entry, &input, config)?;
     let out_entry = listed(&t.output_entry, &output, config)?;
-    let t3_buy = out_entry.as_ref().is_some_and(|e| e.tier == Tier::T3);
-    require!(!t3_buy || fund.open_seas, ErrorCode::NotOpenSeas);
+    let t3_tier = out_entry.as_ref().is_some_and(|e| e.tier == Tier::T3);
+    require!(!t3_tier || fund.open_seas, ErrorCode::NotOpenSeas);
     let len = fund.holdings_len as usize;
     let held = &fund.holdings[..len];
     let in_idx = held
@@ -307,8 +311,18 @@ fn prepare(
         }
     };
     // The sale rules follow the basis, not the tier: a token listed T3 that the
-    // fund holds without a basis sells like any other token.
+    // fund holds without a basis sells like any other token. A buy into a
+    // based holding is a T3 buy whatever the tier. A T3 buy must not mix with
+    // unbased units of a holding.
     let t3_sell = fund.t3_basis_usd[in_idx] > 0;
+    let out_based = out_held.is_some_and(|i| fund.t3_basis_usd[i] > 0);
+    if let Some(i) = out_held {
+        require!(
+            !t3_tier || out_based || priced.amounts[i] == 0,
+            ErrorCode::T3UnbasedHolding
+        );
+    }
+    let t3_buy = t3_tier || out_based;
     let t3_start = venue_start;
     if t3_buy || t3_sell {
         venue_start += T3_ACCOUNTS;
@@ -675,8 +689,9 @@ fn apply_t3<'info>(
         }
     }
 
-    // T3 buy: the cost joins the basis; the basis and the 30-day buys must
-    // each fit the captain's stake (after any burn, at the pre-trade spot pps).
+    // T3 buy: the cost joins the basis; the basis and the buys of the current
+    // and previous windows must each fit the captain's stake (after any burn, at the
+    // pre-trade spot pps).
     if plan.t3_buy {
         let cost = math::to_u64(plan.trade_usd)?;
         let i = plan.out_idx;
@@ -687,18 +702,50 @@ fn apply_t3<'info>(
         let stake = math::mul_div_floor(balance as u128, plan.pre_nav, total as u128)?;
         require!(basis as u128 <= stake, ErrorCode::T3CapExceeded);
         let fund = &mut t.fund;
-        let (start, used) = if now.saturating_sub(fund.t3_window_start) >= T3_WINDOW_SECS {
-            (now, 0)
-        } else {
-            (fund.t3_window_start, fund.t3_window_buys_usd)
-        };
-        let buys = used.checked_add(cost).ok_or(ErrorCode::MathOverflow)?;
-        require!(buys as u128 <= stake, ErrorCode::T3CapExceeded);
-        fund.t3_window_start = start;
-        fund.t3_window_buys_usd = buys;
+        let w = t3_window(
+            fund.t3_window_start,
+            fund.t3_prev_window_buys_usd,
+            fund.t3_window_buys_usd,
+            now,
+        )?;
+        // Any 30-day span lies inside two adjacent windows, so both count in full.
+        let recent = w.prev as u128 + w.current as u128 + cost as u128;
+        require!(recent <= stake, ErrorCode::T3CapExceeded);
+        fund.t3_window_start = w.start;
+        fund.t3_prev_window_buys_usd = w.prev;
+        fund.t3_window_buys_usd = w.current.checked_add(cost).ok_or(ErrorCode::MathOverflow)?;
     }
     t.fund.t3_cost_basis_usd = basis;
     Ok(())
+}
+
+/// The T3 buy buckets at `now`.
+struct T3Window {
+    /// Start of the current window.
+    start: i64,
+    /// Buys of the previous window and of the current window.
+    prev: u64,
+    current: u64,
+}
+
+/// Move the windows forward to `now`: one window passed makes the current
+/// bucket the previous one; two or more empty both. Windows follow each other
+/// with no gap.
+fn t3_window(start: i64, prev: u64, current: u64, now: i64) -> Result<T3Window> {
+    let passed = now.saturating_sub(start) / T3_WINDOW_SECS;
+    let (prev, current) = match passed {
+        0 => (prev, current),
+        1 => (current, 0),
+        _ => (0, 0),
+    };
+    let start = start
+        .checked_add(passed * T3_WINDOW_SECS)
+        .ok_or(ErrorCode::MathOverflow)?;
+    Ok(T3Window {
+        start,
+        prev,
+        current,
+    })
 }
 
 /// Burn `amount` captain shares, signed by the fund PDA as the share mint's
