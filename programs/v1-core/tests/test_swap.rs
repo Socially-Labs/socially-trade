@@ -70,3 +70,42 @@ fn revoke_closes_account() {
     let after = env.svm.get_balance(&cap.pubkey()).unwrap();
     assert_eq!(after, before + rent - 5000, "{:?}", res.logs);
 }
+
+#[test]
+fn mock_venue_honest_swap_with_keypair_authority() {
+    let mut env = setup();
+    let user = funded_user(&mut env, 1_000_000_000);
+    let sol = create_mint(&mut env, 9);
+    let usdc = env.usdc;
+    let pool = setup_venue_pool(&mut env, &usdc, &sol, 0, 50_000_000_000);
+    let user_sol = ata(&user.pubkey(), &sol, &spl_token_interface::ID);
+    let create = ix_create_ata(
+        &user.pubkey(),
+        &user.pubkey(),
+        &sol,
+        &spl_token_interface::ID,
+    );
+    // 100 USDC (1e8 base units) at 5 out per 1 in = 0.5 SOL (5e8 base units).
+    let swap = ix_venue_swap(
+        &env.svm,
+        &user.pubkey(),
+        &usdc_ata(&env, &user.pubkey()),
+        &user_sol,
+        &pool,
+        &env.usdc,
+        &sol,
+        100_000_000,
+        5,
+        1,
+        0,
+    );
+    send(&mut env.svm, &[create, swap], &[&user]).unwrap();
+    assert_eq!(usdc_of_user(&env, &user), 900_000_000);
+    assert_eq!(token_balance(&env.svm, &pool.pool_in), 100_000_000);
+    assert_eq!(token_balance(&env.svm, &user_sol), 500_000_000);
+    assert_eq!(token_balance(&env.svm, &pool.pool_out), 49_500_000_000);
+}
+
+fn usdc_of_user(env: &Env, user: &Keypair) -> u64 {
+    token_balance(&env.svm, &usdc_ata(env, &user.pubkey()))
+}

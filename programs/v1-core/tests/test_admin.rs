@@ -64,11 +64,11 @@ fn initialize_config_rejects_foreign_program_data() {
     // An attacker owns another program and passes its ProgramData.
     let mut env = setup_bare();
     let other = funded(&mut env.svm);
-    set_upgrade_authority(&mut env.svm, &mock_venue_id(), Some(other.pubkey()));
+    set_upgrade_authority(&mut env.svm, &mock_venue::ID, Some(other.pubkey()));
     let ix = ix_initialize_config_with(
         &other.pubkey(),
         env.usdc,
-        program_data_address(&mock_venue_id()),
+        program_data_address(&mock_venue::ID),
     );
     expect_anchor_err(
         send(&mut env.svm, &[ix], &[&other]),
@@ -194,7 +194,7 @@ fn token_queue_rejects_wrong_decimals() {
 #[test]
 fn venue_apply_waits_7_days_and_fills_slot() {
     let mut env = setup();
-    let id = mock_venue_id();
+    let id = mock_venue::ID;
     send(
         &mut env.svm,
         &[ix_queue_venue(&env.admin.pubkey(), 0, id)],
@@ -253,7 +253,7 @@ fn venue_requeue_overwrites_and_restarts_clock() {
 #[test]
 fn venue_remove_and_slot_rules() {
     let mut env = setup();
-    let id = mock_venue_id();
+    let id = mock_venue::ID;
     register_venue(&mut env, 3, id);
     // A taken slot needs a removal first.
     expect_err(

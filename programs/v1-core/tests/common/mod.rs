@@ -75,7 +75,7 @@ pub fn setup_bare() -> Env {
     )
     .unwrap();
     svm.add_program(
-        mock_venue_id(),
+        mock_venue::ID,
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../target/deploy/mock_venue.so"
@@ -117,12 +117,6 @@ pub fn set_upgrade_authority(svm: &mut LiteSVM, program_id: &Pubkey, authority: 
         None => account.data[12..45].fill(0),
     }
     svm.set_account(address, account).unwrap();
-}
-
-/// The mock venue id. Not a dev-dependency, so the id lives here; it must
-/// match `declare_id!` in programs/mock-venue/src/lib.rs.
-pub fn mock_venue_id() -> Pubkey {
-    Pubkey::from_str_const("7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng")
 }
 
 // ---------------------------------------------------------------------------
@@ -980,4 +974,106 @@ pub fn ix_revoke_delegate(captain: &Pubkey, f: &FundHandles, key: &Pubkey) -> In
         },
         v1_core::instruction::RevokeDelegate {},
     )
+}
+
+// ---------------------------------------------------------------------------
+// Mock venue
+// ---------------------------------------------------------------------------
+
+/// The addresses of a funded mock-venue pool for one mint pair.
+#[derive(Debug, Clone, Copy)]
+pub struct VenuePool {
+    pub authority: Pubkey,
+    pub pool_in: Pubkey,
+    pub pool_out: Pubkey,
+}
+
+/// The venue pool authority PDA `[b"pool"]`.
+pub fn venue_pool_authority() -> Pubkey {
+    Pubkey::find_program_address(&[b"pool"], &mock_venue::ID).0
+}
+
+/// Create the pool ATAs (owner = venue pool PDA, on each mint's own token
+/// program) for `mint_in` and `mint_out`, and mint `liquidity_in` /
+/// `liquidity_out` base units into them. The admin must be mint authority of both
+/// mints (true for `create_mint`, `write_mint(admin)` and `env.usdc`).
+/// Safe to call again for a mint that already has a pool ATA.
+pub fn setup_venue_pool(
+    env: &mut Env,
+    mint_in: &Pubkey,
+    mint_out: &Pubkey,
+    liquidity_in: u64,
+    liquidity_out: u64,
+) -> VenuePool {
+    let authority = venue_pool_authority();
+    let mut ixs = vec![];
+    let mut accounts = vec![];
+    for (mint, amount) in [(mint_in, liquidity_in), (mint_out, liquidity_out)] {
+        let token = env.svm.get_account(mint).expect("pool mint").owner;
+        let pool_ata = ata(&authority, mint, &token);
+        ixs.push(
+            anchor_spl::associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                &env.admin.pubkey(), &authority, mint, &token,
+            ),
+        );
+        ixs.push(
+            spl_token_2022::instruction::mint_to(
+                &token,
+                mint,
+                &pool_ata,
+                &env.admin.pubkey(),
+                &[],
+                amount,
+            )
+            .unwrap(),
+        );
+        accounts.push(pool_ata);
+    }
+    send(&mut env.svm, &ixs, &[&env.admin]).expect("setup_venue_pool");
+    VenuePool {
+        authority,
+        pool_in: accounts[0],
+        pool_out: accounts[1],
+    }
+}
+
+/// A direct `mock_venue::swap` instruction. `authority` owns `user_in`.
+/// Token programs are taken from the mint accounts in `svm`.
+#[allow(clippy::too_many_arguments)]
+pub fn ix_venue_swap(
+    svm: &LiteSVM,
+    authority: &Pubkey,
+    user_in: &Pubkey,
+    user_out: &Pubkey,
+    pool: &VenuePool,
+    mint_in: &Pubkey,
+    mint_out: &Pubkey,
+    amount_in: u64,
+    out_num: u64,
+    out_den: u64,
+    mode: u8,
+) -> Instruction {
+    Instruction {
+        program_id: mock_venue::ID,
+        accounts: mock_venue::accounts::Swap {
+            authority: *authority,
+            pool_authority: pool.authority,
+            user_in: *user_in,
+            user_out: *user_out,
+            pool_in: pool.pool_in,
+            pool_out: pool.pool_out,
+            mint_in: *mint_in,
+            mint_out: *mint_out,
+            token_program_in: svm.get_account(mint_in).unwrap().owner,
+            token_program_out: svm.get_account(mint_out).unwrap().owner,
+        }
+        .to_account_metas(None),
+        data: mock_venue::instruction::Swap {
+            amount_in,
+            out_num,
+            out_den,
+            mode,
+        }
+        .data(),
+    }
 }

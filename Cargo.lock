@@ -1791,6 +1791,7 @@ name = "mock-venue"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "anchor-spl",
 ]
 
 [[package]]
@@ -4480,6 +4481,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "litesvm",
+ "mock-venue",
  "solana-account",
  "solana-clock",
  "solana-instruction",
