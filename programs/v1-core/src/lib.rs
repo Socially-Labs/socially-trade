@@ -9,7 +9,11 @@ pub mod nav;
 pub mod pyth;
 pub mod state;
 
-use {anchor_lang::prelude::*, instructions::*, state::Tier};
+use {
+    anchor_lang::prelude::*,
+    instructions::*,
+    state::{PolicyParams, Tier},
+};
 
 declare_id!("HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi");
 
@@ -132,5 +136,22 @@ pub mod v1_core {
     /// Captain: remove a delegate and take back the rent.
     pub fn revoke_delegate(ctx: Context<RevokeDelegate>) -> Result<()> {
         instructions::delegate::revoke_delegate(ctx)
+    }
+
+    /// Captain: change the fund policy. Stricter-or-equal in every field applies
+    /// now; anything looser queues for 48 h (a new queue restarts the clock).
+    pub fn update_policy(ctx: Context<UpdatePolicy>, new: PolicyParams) -> Result<()> {
+        instructions::policy::update_policy(ctx, new)
+    }
+
+    /// Anyone: apply the queued policy after its delay.
+    pub fn apply_policy(ctx: Context<ApplyPolicy>) -> Result<()> {
+        instructions::policy::apply_policy(ctx)
+    }
+
+    /// Anyone: recompute NAV (EMA) and move the drawdown breaker.
+    /// Remaining accounts: NAV layout (see `nav`).
+    pub fn poke_nav(ctx: Context<PokeNav>) -> Result<()> {
+        instructions::policy::poke_nav(ctx)
     }
 }

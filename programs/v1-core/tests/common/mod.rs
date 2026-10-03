@@ -1383,18 +1383,20 @@ pub fn read_proposal(env: &Env, f: &FundHandles, id: u64) -> v1_core::state::Pro
 
 /// The `TradeExecuted` events of a transaction, decoded from `Program data:` logs.
 pub fn trade_events(res: &TransactionMetadata) -> Vec<v1_core::events::TradeExecuted> {
-    use anchor_lang::{
-        AnchorDeserialize, Discriminator,
-        __private::base64::{engine::general_purpose::STANDARD, Engine},
-    };
-    use v1_core::events::TradeExecuted;
-    let disc = TradeExecuted::DISCRIMINATOR;
+    decode_events(res)
+}
+
+/// The events of type `E` of a transaction, decoded from `Program data:` logs.
+pub fn decode_events<E: anchor_lang::Discriminator + anchor_lang::AnchorDeserialize>(
+    res: &TransactionMetadata,
+) -> Vec<E> {
+    use anchor_lang::__private::base64::{engine::general_purpose::STANDARD, Engine};
     res.logs
         .iter()
         .filter_map(|l| l.strip_prefix("Program data: "))
         .filter_map(|b| STANDARD.decode(b).ok())
-        .filter(|d| d.starts_with(disc))
-        .map(|d| TradeExecuted::try_from_slice(&d[disc.len()..]).expect("TradeExecuted"))
+        .filter(|d| d.starts_with(E::DISCRIMINATOR))
+        .map(|d| E::try_from_slice(&d[E::DISCRIMINATOR.len()..]).expect("event"))
         .collect()
 }
 
@@ -1407,4 +1409,59 @@ pub fn ix_compute_limit(units: u32) -> Instruction {
         accounts: vec![],
         data,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Policy + breaker
+// ---------------------------------------------------------------------------
+
+pub use v1_core::state::{Policy, PolicyParams};
+
+pub fn read_policy(env: &Env, f: &FundHandles) -> Policy {
+    read_account(&env.svm, &f.policy)
+}
+
+/// Overwrite the Policy account with `policy`.
+pub fn write_policy(env: &mut Env, f: &FundHandles, policy: &Policy) {
+    use anchor_lang::AccountSerialize;
+    let mut account = env.svm.get_account(&f.policy).unwrap();
+    let mut data = Vec::new();
+    policy.try_serialize(&mut data).unwrap();
+    account.data[..data.len()].copy_from_slice(&data);
+    env.svm.set_account(f.policy, account).unwrap();
+}
+
+pub fn ix_update_policy(captain: &Pubkey, f: &FundHandles, new: PolicyParams) -> Instruction {
+    v1_ix(
+        v1_core::accounts::UpdatePolicy {
+            captain: *captain,
+            fund: f.fund,
+            policy: f.policy,
+        },
+        v1_core::instruction::UpdatePolicy { new },
+    )
+}
+
+pub fn ix_apply_policy(f: &FundHandles) -> Instruction {
+    v1_ix(
+        v1_core::accounts::ApplyPolicy {
+            fund: f.fund,
+            policy: f.policy,
+        },
+        v1_core::instruction::ApplyPolicy {},
+    )
+}
+
+/// `poke_nav` with the NAV remaining accounts of the fund's current holdings.
+pub fn ix_poke_nav(env: &Env, f: &FundHandles) -> Instruction {
+    let mut ix = v1_ix(
+        v1_core::accounts::PokeNav {
+            config: config_pda(),
+            fund: f.fund,
+            policy: f.policy,
+        },
+        v1_core::instruction::PokeNav {},
+    );
+    ix.accounts.extend(nav_accounts(env, f));
+    ix
 }
