@@ -659,6 +659,45 @@ fn exit_returns_pro_rata_sol_and_usdc() {
     assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 6 * SOL);
 }
 
+#[test]
+fn ktoken_buy_sell_nav_and_exit_pro_rata() {
+    let mut t = trading_fund();
+    let m = funded_user(&mut t.env, 10_000 * USDC);
+    let k = listed_kusdc(&mut t.env);
+    let (usdc, kusdc) = (t.env.usdc, k.mint);
+    setup_venue_pool(&mut t.env, &usdc, &kusdc, 0, 1_000_000 * USDC);
+    t.refresh_prices();
+    refresh_kusdc(&mut t.env, &k);
+    deposit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap(); // NAV 20,000
+                                                           // "Deposit" 1,050 USDC into the reserve: 1,000 kUSDC at rate 1.05.
+                                                           // The guard prices the output through the rate: oracle 1,000 kUSDC.
+    let buy = |min_out| SwapArgs::new(usdc, kusdc, 1_050 * USDC, min_out, 20, 21);
+    expect_err(t.swap(&buy(979 * USDC)), ErrorCode::SlippageTooHigh);
+    t.swap(&buy(990 * USDC)).unwrap();
+    let k_vault = ata(&t.f.fund, &kusdc, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &k_vault), 1_000 * USDC);
+    assert_eq!(fund(&t).holdings[1], kusdc);
+    let ix = ix_poke_nav(&t.env, &t.f);
+    send(&mut t.env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Sell 100 kUSDC for 105 USDC: the input is valued through the rate.
+    t.swap(&SwapArgs::new(kusdc, usdc, 100 * USDC, 102 * USDC, 21, 20))
+        .unwrap();
+    assert_eq!(token_balance(&t.env.svm, &k_vault), 900 * USDC);
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Exit half the shares: half of each vault.
+    let create = ix_create_ata(&m.pubkey(), &m.pubkey(), &kusdc, &spl_token_interface::ID);
+    send(&mut t.env.svm, &[create], &[&m]).unwrap();
+    exit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap();
+    let m_k = ata(&m.pubkey(), &kusdc, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &m_k), 450 * USDC);
+    assert_eq!(token_balance(&t.env.svm, &k_vault), 450 * USDC);
+    assert_eq!(
+        token_balance(&t.env.svm, &usdc_ata(&t.env, &m.pubkey())),
+        9_527_500_000
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Compute budget
 // ---------------------------------------------------------------------------

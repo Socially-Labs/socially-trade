@@ -729,20 +729,42 @@ pub fn price_account(mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[b"price", mint.as_ref()], &v1_core::pyth::PYTH_RECEIVER).0
 }
 
+/// `[price_a, price_b]` of `mint`, from its registry entry (test conventions):
+/// - Pyth, or not listed (USDC): `[price_account(mint), UNUSED_PRICE_ACCOUNT]`.
+/// - KaminoReserve: `[reserve, price_account(reserve)]` (the underlying's Pyth account).
+/// - Switchboard: `[feed, UNUSED_PRICE_ACCOUNT]`.
+pub fn price_accounts(env: &Env, mint: &Pubkey) -> [Pubkey; 2] {
+    let source = env
+        .svm
+        .get_account(&token_pda(mint))
+        .filter(|a| a.owner == v1_core::ID)
+        .map(|a| {
+            TokenEntry::try_deserialize(&mut &a.data[..])
+                .unwrap()
+                .price_source
+        });
+    match source {
+        Some(PriceSource::KaminoReserve { reserve, .. }) => [reserve, price_account(&reserve)],
+        Some(PriceSource::Switchboard { feed }) => [feed, UNUSED_PRICE_ACCOUNT],
+        _ => [price_account(mint), UNUSED_PRICE_ACCOUNT],
+    }
+}
+
 /// NAV remaining accounts for the fund's current holdings:
-/// `[vault_i, token_entry_i, price_a_i, price_b_i]` per holding, in order.
-/// Every test token is Pyth: `price_a` = its price account, `price_b` unused.
+/// `[vault_i, token_entry_i, price_a_i, price_b_i]` per holding, in order
+/// (price accounts from `price_accounts`).
 pub fn nav_accounts(env: &Env, f: &FundHandles) -> Vec<AccountMeta> {
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     fund.holdings[..fund.holdings_len as usize]
         .iter()
         .flat_map(|mint| {
             let token_program = env.svm.get_account(mint).expect("holding mint").owner;
+            let [a, b] = price_accounts(env, mint);
             [
                 AccountMeta::new_readonly(ata(&f.fund, mint, &token_program), false),
                 AccountMeta::new_readonly(token_pda(mint), false),
-                AccountMeta::new_readonly(price_account(mint), false),
-                AccountMeta::new_readonly(UNUSED_PRICE_ACCOUNT, false),
+                AccountMeta::new_readonly(a, false),
+                AccountMeta::new_readonly(b, false),
             ]
         })
         .collect()
@@ -861,6 +883,86 @@ pub fn listed_sol(env: &mut Env, usd: i64) -> Pubkey {
         t,
     );
     sol
+}
+
+// ---------------------------------------------------------------------------
+// Kamino kTokens
+// ---------------------------------------------------------------------------
+
+pub use v1_core::kamino::{ReserveFields, KAMINO_LEND, MAX_RESERVE_AGE_SLOTS};
+
+/// A kUSDC test token: the kToken mint, its klend reserve and the reserve fields.
+#[derive(Debug, Clone, Copy)]
+pub struct KToken {
+    pub mint: Pubkey,
+    pub reserve: Pubkey,
+    pub fields: ReserveFields,
+}
+
+/// Write a klend `Reserve` account (real layout, owner = Kamino Lend) at `address`.
+pub fn write_reserve(svm: &mut LiteSVM, address: Pubkey, fields: &ReserveFields) {
+    let data = v1_core::kamino::encode_reserve(fields);
+    svm.set_account(
+        address,
+        Account {
+            lamports: svm.minimum_balance_for_rent_exemption(data.len()),
+            data,
+            owner: KAMINO_LEND,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+/// A 6-dp kUSDC mint listed T1 with a `KaminoReserve` source. Its reserve has
+/// rate 1.05 (1,050,000 USDC over 1,000,000 kUSDC), and USDC is $1.00
+/// (`USDC_FEED` at `price_account(reserve)`); both fresh now.
+pub fn listed_kusdc(env: &mut Env) -> KToken {
+    let mint = create_mint(env, 6);
+    let reserve = Pubkey::new_unique();
+    let source = PriceSource::KaminoReserve {
+        reserve,
+        underlying_feed_id: USDC_FEED,
+        underlying_decimals: 6,
+    };
+    register_token_with(env, mint, source, Tier::T1);
+    let k = KToken {
+        mint,
+        reserve,
+        fields: ReserveFields {
+            liquidity_mint: env.usdc,
+            decimals: 6,
+            available: 600_000_000_000,
+            borrowed_sf: 460_000_000_000u128 << 60,
+            protocol_fees_sf: 10_000_000_000u128 << 60,
+            collateral_mint: mint,
+            collateral_supply: 1_000_000_000_000,
+            ..Default::default()
+        },
+    };
+    refresh_kusdc(env, &k);
+    k
+}
+
+/// Re-write `k`'s reserve (refreshed at the current slot, not stale) and the
+/// USDC price ($1.00, conf 0) at the current clock.
+pub fn refresh_kusdc(env: &mut Env, k: &KToken) {
+    let fields = ReserveFields {
+        slot: env.svm.get_sysvar::<Clock>().slot,
+        ..k.fields
+    };
+    write_reserve(&mut env.svm, k.reserve, &fields);
+    let t = now(env);
+    set_price(
+        &mut env.svm,
+        price_account(&k.reserve),
+        &USDC_FEED,
+        100_000_000,
+        0,
+        -8,
+        t,
+    );
 }
 
 /// Write SOL's price account: spot and ema in whole dollars, conf in cents.
@@ -1285,8 +1387,9 @@ pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountM
     let mut metas = nav_accounts(env, f);
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     if !fund.holdings[..fund.holdings_len as usize].contains(&a.output) {
-        metas.push(AccountMeta::new_readonly(price_account(&a.output), false));
-        metas.push(AccountMeta::new_readonly(UNUSED_PRICE_ACCOUNT, false));
+        let [pa, pb] = price_accounts(env, &a.output);
+        metas.push(AccountMeta::new_readonly(pa, false));
+        metas.push(AccountMeta::new_readonly(pb, false));
     }
     metas.extend(venue_accounts(env, f, a));
     metas

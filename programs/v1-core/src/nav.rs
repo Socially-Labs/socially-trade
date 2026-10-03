@@ -4,10 +4,13 @@
 //! `[vault_i, token_entry_i, price_a_i, price_b_i]`. The two price accounts
 //! depend on the token's `PriceSource`:
 //! - Pyth: `price_a` = PriceUpdateV2; `price_b` is not read (pass any key).
-//! - KaminoReserve: `price_a` = reserve; `price_b` = the underlying's PriceUpdateV2.
+//! - KaminoReserve: `price_a` = the reserve in the entry (owner Kamino Lend,
+//!   refreshed: see `kamino`); `price_b` = the underlying's PriceUpdateV2.
+//!   A kToken amount is converted to underlying base units at the reserve
+//!   rate, then valued like a Pyth token (all modes, underlying EMA and conf).
 //! - Switchboard: `price_a` = the feed; `price_b` is not read.
 //!
-//! Only the Pyth arm prices today; the others fail with `PriceSourceUnsupported`.
+//! Switchboard is not priced yet: it fails with `PriceSourceUnsupported`.
 //! USDC is valued 1:1; its entry and price accounts are not read, but they
 //! must be present (uniform layout). This module is the only place that
 //! knows the layout: other code uses the constants and `price`.
@@ -17,6 +20,7 @@ use {
         constants::{MAX_HOLDINGS, TOKEN_SEED},
         errors::ErrorCode,
         events::BreakerChanged,
+        kamino::{self, KaminoRate},
         math, pyth,
         state::{Config, Fund, Policy, PriceSource, Tier, TokenEntry},
     },
@@ -52,13 +56,62 @@ pub struct Valuation {
     pub values: [u128; MAX_HOLDINGS],
 }
 
+/// The validated price of a listed token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TokenPrice {
+    /// Pyth price of the token, or of the underlying for a kToken.
+    pub pyth: pyth::PythPrice,
+    /// Decimals `pyth` prices: the token's, or the underlying's for a kToken.
+    pub decimals: u8,
+    /// kToken -> underlying rate; None for a plain Pyth token.
+    pub rate: Option<KaminoRate>,
+}
+
+impl TokenPrice {
+    /// USDC value of `amount` base units, priced in `mode`, floor.
+    pub fn value(&self, amount: u64, mode: ValuationMode) -> Result<u128> {
+        let p = &self.pyth;
+        let amount = match self.rate {
+            Some(r) => r.to_underlying(amount)?,
+            None => amount,
+        };
+        let price = match mode {
+            ValuationMode::Spot => p.price,
+            ValuationMode::DepositUpperBound => {
+                let hi = p.price.max(p.ema_price) as i128 + p.conf as i128;
+                i64::try_from(hi).map_err(|_| ErrorCode::MathOverflow)?
+            }
+            ValuationMode::Ema => {
+                require!(p.ema_price > 0, ErrorCode::PriceNonPositive);
+                p.ema_price
+            }
+        };
+        Ok(math::token_value_usdc(
+            amount,
+            price,
+            p.expo,
+            self.decimals,
+        )?)
+    }
+
+    /// Token base units worth `usd` USDC base units at the spot price, floor.
+    pub fn amount_for(&self, usd: u128) -> Result<u128> {
+        let p = &self.pyth;
+        let amount = math::usdc_to_token(usd, p.price, p.expo, self.decimals)?;
+        Ok(match self.rate {
+            Some(r) => r.to_ktokens(amount)?,
+            None => amount,
+        })
+    }
+}
+
 /// Validated vault amounts and prices. Read once, value in any mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NavResult {
     pub len: usize,
     pub amounts: [u64; MAX_HOLDINGS],
-    /// `None` = USDC (1:1). Otherwise the price and the token's decimals.
-    pub prices: [Option<(pyth::PythPrice, u8)>; MAX_HOLDINGS],
+    /// `None` = USDC (1:1).
+    pub prices: [Option<TokenPrice>; MAX_HOLDINGS],
     /// True for a T2 holding (tier caps).
     pub t2: [bool; MAX_HOLDINGS],
 }
@@ -79,21 +132,10 @@ impl NavResult {
 
     /// USDC value of `amount` base units of holding `i`, priced in `mode`.
     pub fn value_at(&self, i: usize, amount: u64, mode: ValuationMode) -> Result<u128> {
-        let Some((p, decimals)) = self.prices[i] else {
-            return Ok(amount as u128);
-        };
-        let price = match mode {
-            ValuationMode::Spot => p.price,
-            ValuationMode::DepositUpperBound => {
-                let hi = p.price.max(p.ema_price) as i128 + p.conf as i128;
-                i64::try_from(hi).map_err(|_| ErrorCode::MathOverflow)?
-            }
-            ValuationMode::Ema => {
-                require!(p.ema_price > 0, ErrorCode::PriceNonPositive);
-                p.ema_price
-            }
-        };
-        Ok(math::token_value_usdc(amount, price, p.expo, decimals)?)
+        match self.prices[i] {
+            Some(p) => p.value(amount, mode),
+            None => Ok(amount as u128),
+        }
     }
 }
 
@@ -125,8 +167,7 @@ pub fn compute(
         out.amounts[i] = vault_amount(&accs[0], fund_key, mint)?;
         if *mint != config.usdc_mint {
             let entry = token_entry(&accs[1], mint, program_id)?;
-            let p = price(&entry, &accs[2..], now)?;
-            out.prices[i] = Some((p, entry.decimals));
+            out.prices[i] = Some(price(&entry, &accs[2..], now)?);
             out.t2[i] = entry.tier == Tier::T2;
         }
     }
@@ -134,21 +175,43 @@ pub fn compute(
 }
 
 /// The price of a listed token from its `[price_a, price_b]` accounts.
-pub(crate) fn price(entry: &TokenEntry, accs: &[AccountInfo], now: i64) -> Result<pyth::PythPrice> {
+pub(crate) fn price(entry: &TokenEntry, accs: &[AccountInfo], now: i64) -> Result<TokenPrice> {
     require!(accs.len() >= PRICE_ACCOUNTS, ErrorCode::PriceAccountMissing);
+    let pyth_at = |a: &AccountInfo, feed: &[u8; 32]| -> Result<pyth::PythPrice> {
+        Ok(pyth::parse_price_update(
+            a.owner,
+            &a.try_borrow_data()?,
+            feed,
+            now,
+        )?)
+    };
     match entry.price_source {
-        PriceSource::Pyth { feed_id } => {
-            let a = &accs[0];
-            Ok(pyth::parse_price_update(
-                a.owner,
-                &a.try_borrow_data()?,
-                &feed_id,
-                now,
-            )?)
+        PriceSource::Pyth { feed_id } => Ok(TokenPrice {
+            pyth: pyth_at(&accs[0], &feed_id)?,
+            decimals: entry.decimals,
+            rate: None,
+        }),
+        PriceSource::KaminoReserve {
+            reserve,
+            underlying_feed_id,
+            underlying_decimals,
+        } => {
+            let r = &accs[0];
+            require_keys_eq!(r.key(), reserve, ErrorCode::ReserveMismatch);
+            let rate = kamino::parse_reserve(
+                r.owner,
+                &r.try_borrow_data()?,
+                &entry.mint,
+                underlying_decimals,
+                Clock::get()?.slot,
+            )?;
+            Ok(TokenPrice {
+                pyth: pyth_at(&accs[1], &underlying_feed_id)?,
+                decimals: underlying_decimals,
+                rate: Some(rate),
+            })
         }
-        PriceSource::KaminoReserve { .. } | PriceSource::Switchboard { .. } => {
-            err!(ErrorCode::PriceSourceUnsupported)
-        }
+        PriceSource::Switchboard { .. } => err!(ErrorCode::PriceSourceUnsupported),
     }
 }
 

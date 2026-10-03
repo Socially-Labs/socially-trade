@@ -105,4 +105,8 @@ pub enum ErrorCode {
     DuplicateHolding,
     #[msg("Price source not supported yet")]
     PriceSourceUnsupported,
+    #[msg("Kamino reserve is not a klend Reserve account")]
+    ReserveInvalid,
+    #[msg("Kamino reserve does not match the token entry")]
+    ReserveMismatch,
 }

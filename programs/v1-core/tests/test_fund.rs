@@ -538,27 +538,163 @@ fn deposit_rejects_zero_nav_with_shares() {
 }
 
 #[test]
-fn nav_rejects_kamino_and_switchboard_until_supported() {
-    let sources = [
-        PriceSource::KaminoReserve {
-            reserve: Pubkey::new_unique(),
-            underlying_feed_id: SOL_FEED,
-            underlying_decimals: 9,
-        },
-        PriceSource::Switchboard {
-            feed: Pubkey::new_unique(),
-        },
-    ];
-    for source in sources {
-        let (mut env, _cap, m, f) = fund_with_member();
-        let mint = create_mint(&mut env, 9);
-        register_token_with(&mut env, mint, source, Tier::T1);
-        inject_holding(&mut env, &f, mint, 2_000_000_000);
-        expect_err(
-            deposit(&mut env, &f, &m, 100_000_000),
-            ErrorCode::PriceSourceUnsupported,
-        );
-    }
+fn nav_rejects_switchboard_until_supported() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let mint = create_mint(&mut env, 9);
+    let source = PriceSource::Switchboard {
+        feed: Pubkey::new_unique(),
+    };
+    register_token_with(&mut env, mint, source, Tier::T1);
+    inject_holding(&mut env, &f, mint, 2_000_000_000);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceSourceUnsupported,
+    );
+}
+
+/// Fund with 300 USDC (300 shares) + 300 kUSDC at rate 1.05 (= 315 USDC).
+fn fund_with_kusdc() -> (Env, Keypair, FundHandles, KToken) {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let k = listed_kusdc(&mut env);
+    inject_holding(&mut env, &f, k.mint, 300_000_000);
+    (env, m, f, k)
+}
+
+#[test]
+fn nav_values_ktoken_at_reserve_rate() {
+    let (mut env, m, f, k) = fund_with_kusdc();
+    let ix = ix_deposit(&env, &f, &m.pubkey(), 205_000_000);
+    // Last holding (kUSDC): [vault, entry, reserve, underlying Pyth].
+    let n = ix.accounts.len();
+    assert_eq!(ix.accounts[n - 2].pubkey, k.reserve);
+    assert_eq!(ix.accounts[n - 1].pubkey, price_account(&k.reserve));
+    // NAV = 300 + 300 * 1.05 = 615 -> pps 2.05; 205 USDC buys 100 shares.
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        100_000_000
+    );
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_050_000);
+}
+
+#[test]
+fn nav_values_ktoken_with_underlying_ema_and_conf() {
+    let (mut env, m, f, k) = fund_with_kusdc();
+    // USDC spot 1.00, conf 0.01, ema 0.98.
+    let t = now(&env);
+    set_price_ema(
+        &mut env.svm,
+        price_account(&k.reserve),
+        &USDC_FEED,
+        100_000_000,
+        1_000_000,
+        -8,
+        t,
+        98_000_000,
+        1_000_000,
+    );
+    // Ema: 300 + 315 * 0.98 = 608.7 -> pps 2.029.
+    let ix = ix_poke_nav(&env, &f);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_029_000);
+    // Upper bound: 315 * (max(1.00, 0.98) + 0.01) = 318.15 -> NAV 618.15;
+    // 206.05 USDC buys exactly 100 shares.
+    deposit(&mut env, &f, &m, 206_050_000).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        100_000_000
+    );
+}
+
+#[test]
+fn nav_rejects_reserve_not_in_registry() {
+    let (mut env, m, f, k) = fund_with_kusdc();
+    // A valid, fresh reserve for the same kToken, but not the listed one.
+    let other = Pubkey::new_unique();
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    write_reserve(&mut env.svm, other, &ReserveFields { slot, ..k.fields });
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    let n = ix.accounts.len();
+    ix.accounts[n - 2].pubkey = other;
+    expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::ReserveMismatch);
+}
+
+#[test]
+fn nav_rejects_reserve_of_other_collateral_mint() {
+    let (mut env, m, f, k) = fund_with_kusdc();
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    let fields = ReserveFields {
+        slot,
+        collateral_mint: Pubkey::new_unique(),
+        ..k.fields
+    };
+    write_reserve(&mut env.svm, k.reserve, &fields);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::ReserveMismatch,
+    );
+}
+
+#[test]
+fn nav_rejects_reserve_not_owned_by_kamino() {
+    let (mut env, m, f, k) = fund_with_kusdc();
+    let mut acc = env.svm.get_account(&k.reserve).unwrap();
+    acc.owner = Pubkey::new_unique();
+    env.svm.set_account(k.reserve, acc).unwrap();
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::ReserveInvalid,
+    );
+}
+
+#[test]
+fn nav_rejects_stale_reserve() {
+    let (mut env, m, f, k) = fund_with_kusdc();
+    // Marked stale by klend (any deposit/withdraw since the last refresh).
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    let fields = ReserveFields {
+        slot,
+        stale: true,
+        ..k.fields
+    };
+    write_reserve(&mut env.svm, k.reserve, &fields);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceStale,
+    );
+    // Not refreshed for more than 60 s of slots (klend: 2 slots/s), USDC price fresh.
+    refresh_kusdc(&mut env, &k);
+    let mut clock: Clock = env.svm.get_sysvar();
+    clock.slot += MAX_RESERVE_AGE_SLOTS + 1;
+    env.svm.set_sysvar(&clock);
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceStale,
+    );
+    // At exactly the limit it is still fresh.
+    clock.slot -= 1;
+    env.svm.set_sysvar(&clock);
+    env.svm.expire_blockhash();
+    deposit(&mut env, &f, &m, 100_000_000).unwrap();
+}
+
+#[test]
+fn nav_rejects_wrong_underlying_feed() {
+    let (mut env, m, f, k) = fund_with_kusdc();
+    let t = now(&env);
+    set_price(
+        &mut env.svm,
+        price_account(&k.reserve),
+        &SOL_FEED,
+        100_000_000,
+        0,
+        -8,
+        t,
+    );
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::PriceFeedMismatch,
+    );
 }
 
 #[test]

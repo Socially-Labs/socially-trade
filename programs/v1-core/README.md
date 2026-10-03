@@ -15,9 +15,10 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 
 ## Pricing
 
-- Each `TokenEntry` stores a `PriceSource`: `Pyth { feed_id }`, `KaminoReserve { reserve, underlying_feed_id, underlying_decimals }` or `Switchboard { feed }`. `nav::price` dispatches on it. Only `Pyth` prices today; the other two fail with `PriceSourceUnsupported`.
+- Each `TokenEntry` stores a `PriceSource`: `Pyth { feed_id }`, `KaminoReserve { reserve, underlying_feed_id, underlying_decimals }` or `Switchboard { feed }`. `nav::price` dispatches on it. `Pyth` and `KaminoReserve` price today; `Switchboard` fails with `PriceSourceUnsupported`.
 - Pyth: `PriceUpdateV2` accounts, parsed by hand in `src/pyth.rs`. No Pyth SDK.
 - Pyth checks: owner is the Pyth receiver, account discriminator, `Full` verification level, feed id equals the registered feed, price age at most 60 s, confidence at most 200 bps of price, price greater than 0.
+- Kamino kTokens (`KaminoReserve`): the klend `Reserve` account, parsed by hand in `src/kamino.rs` (layout of klend `release/v1.25.0`). Checks: the reserve key equals the one in the entry, owner is Kamino Lend (`KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD`), discriminator and length, collateral mint equals the held kToken mint, liquidity decimals equal `underlying_decimals`, not marked stale and refreshed at most 120 slots ago (60 s at klend's own 2 slots/s). klend marks a reserve stale after each deposit or withdraw, so a client sends klend `refresh_reserve` before the v1-core instruction. Value = `floor(kTokens * total_supply / collateral_supply)` underlying base units (klend `total_supply()`: available + borrowed - protocol fees - referrer fees - pending referrer fees; 1:1 while either side is 0), then priced with the underlying's Pyth account (`price_b`) in the same mode as a Pyth token: the underlying EMA for `Ema`, and its conf for `DepositUpperBound`.
 - Valuation modes (`nav::ValuationMode`). A caller can pick any price inside the 60 s window, so each use takes the side that cannot help the caller:
 
 | Mode | Value of a non-USDC holding | Used for |
@@ -109,6 +110,6 @@ Mainnet keypairs are not in the repo.
 
 ## Out of scope (Phase 2)
 
-- Position adapters in NAV, breaker and exit: Kamino kTokens, perps, prediction markets.
+- Position adapters in NAV, breaker and exit: perps, prediction markets.
 - Memecoin T3 tier: pool TWAP price, capped by a captain first-loss stake.
 - Discover fee split. Multisig admin and admin rotation.

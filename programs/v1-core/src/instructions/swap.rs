@@ -275,7 +275,7 @@ fn prepare(
                 None => (len, nav_end),
                 Some(entry) => {
                     let price = nav::price(&entry, remaining.get(nav_end..).unwrap_or(&[]), now)?;
-                    priced.prices[len] = Some((price, entry.decimals));
+                    priced.prices[len] = Some(price);
                     priced.t2[len] = entry.tier == Tier::T2;
                     (len, nav_end + PRICE_ACCOUNTS)
                 }
@@ -328,9 +328,7 @@ fn prepare(
     };
     let oracle_out = match priced.prices[out_idx] {
         None => trade_usd,
-        Some((price, decimals)) => {
-            math::usdc_to_token(trade_usd, price.price, price.expo, decimals)?
-        }
+        Some(price) => price.amount_for(trade_usd)?,
     };
     let keep = 10_000u16
         .checked_sub(slippage_bps)
