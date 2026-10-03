@@ -7,7 +7,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 | Promise | Enforced by |
 |---|---|
 | Only you withdraw | Funds sit in PDA-owned vaults. `exit` pays a member only their pro-rata slice. `swap` reads every vault after the venue CPI: input vault falls by exactly `amount_in`, output vault rises by at least `min_out`, all other vaults are unchanged, and vault data length is unchanged. |
-| Rules on every trade | `swap` checks: venue registry (an active `VenueEntry`; v1-core, system, token and ATA programs are always denied), token tier caps (T2 buys), T3 first-loss rules (T3 buys only in Open Seas funds, see below), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps). Policy loosening waits 48 h. |
+| Rules on every trade | `swap` checks: venue registry (an active `VenueEntry`; v1-core, system, token and ATA programs are always denied), token tier caps (T2 buys: at most 25% of NAV per token and 50% in total), T3 first-loss rules (T3 buys only in Open Seas funds, see below), delegate per-trade and daily USD limits, drawdown breaker, Pyth price guard. The guard applies to every trade, including sales into USDC (3x slippage band, capped at 1500 bps). Policy loosening waits 48 h. |
 | Exits never wait | `exit` has no pause, freeze or price dependency. Fresh NAV accounts are optional. Without them the fee uses `last_price_per_share`. One exception: a captain exit while the fund holds T3 cost basis and others hold shares needs valid fresh prices (the T3 floor below). |
 | Paid only on new profit | Per-member high-water mark (HWM). The 10% fee is charged on profit above the HWM, in shares, at `exit` and at `charge_annual_fee`. At `exit` the fee price per share is `max(last_price_per_share, fresh upper-bound price)`, so the choice of stale or fresh prices cannot lower the fee much: the residual difference is bounded by the Pyth confidence plus the spot/EMA gap. `charge_annual_fee` uses the fresh upper-bound price only, and moves the breaker before it computes the fee. The HWM rises only when at least one fee share is taken. |
 | Slow admin | Token and venue changes queue for 7 days (`ADMIN_TIMELOCK_SECS`), then anyone applies them. `set_paused` is immediate. It blocks `deposit`, `create_fund` and any swap whose output is not USDC. Exits and sales to USDC are never blocked. |
@@ -33,7 +33,7 @@ v1-core is the real-money protocol for socially.trade (whitepaper v1.1), written
 A fund created with `open_seas = true` may buy T3 tokens. Any other fund gets `NotOpenSeas`. The rules sit in the shared swap core, so captain swaps, delegate swaps and executed proposals all obey them. A T3 trade passes 4 more remaining accounts (see `swap.rs`): the captain's Member PDA, the captain's share ATA, the share mint and the Token-2022 program.
 
 - **Cost basis.** A T3 buy adds the spot USD value of the input to `t3_basis_usd[i]` of the output holding and to `t3_cost_basis_usd` (the sum). A T3 buy is a buy of a T3 token, or any buy into a holding that has a basis, whatever its tier (so a later re-tier cannot move units in or out of the basis). A T3 buy into a holding that has units but no basis is rejected with `T3UnbasedHolding`; sell those units first. An exit scales every basis by the same fraction as the holdings, rounded up while the holding keeps units, so a basis never reaches 0 with units left.
-- **Caps at cost.** After a T3 buy, `t3_cost_basis_usd` must be at most the captain's stake value (captain share balance x pre-trade spot price per share), and so must the T3 buys of the current and the previous 30-day window together (`t3_window_buys_usd` + `t3_prev_window_buys_usd` + the buy). Else `T3CapExceeded`. Windows run back to back from fund creation; when one ends the buckets move on, and after two or more both are empty. Any 30-day span lies inside two adjacent windows, so every 30-day span holds at most the stake value in T3 buys. The cost: a full-cap buy can block new T3 buys for up to 60 days.
+- **Caps at cost.** After a T3 buy, `t3_cost_basis_usd` must be at most the captain's stake value (captain share balance x pre-trade spot price per share), and so must the T3 buys of the current and the previous 30-day window together (`t3_window_buys_usd` + `t3_prev_window_buys_usd` + the buy). Else `T3CapExceeded`. Windows run back to back from fund creation; when one ends the buckets move on, and after two or more both are empty. Any 30-day span lies inside two adjacent windows, so the buys of a span are bounded by the captain stake value at the time of each buy. The program reads the stake at every buy, so a stake that grows or shrinks moves the bound. The bound equals one stake value only while the stake stays constant. The cost: a full-cap buy can block new T3 buys for up to 60 days.
 - **First loss.** A sale of a holding with a basis takes out `basis * amount_in / position`. If the spot value of the output received is less, the loss burns captain shares worth the loss at the pre-trade spot price per share (rounded up, at most the captain's balance), with the captain's high-water mark scaled like a partial exit. Event `FirstLossApplied`. A T3 to T3 trade is a sale, then a buy.
 - **Captain floor.** While `t3_cost_basis_usd > 0` and others hold shares, a captain exit must leave a stake (at the fresh spot price per share) at least the basis left after the exit, in addition to the 5% rule.
 - **Tokens sent directly to a fund vault** join the position with no cost basis. They can only reduce a later recorded loss, by their own value.
@@ -88,7 +88,7 @@ Remaining-accounts layouts (the order is `fund.holdings`; re-read it after a swa
 |---|---|
 | NAV users (`deposit`, `poke_nav`, `charge_annual_fee`) | 4 per holding: `[vault, token_entry, price_a, price_b]`. Pyth: `price_a` = PriceUpdateV2, `price_b` not read (pass any key, for example the v1-core program id). KaminoReserve: `price_a` = reserve, `price_b` = underlying PriceUpdateV2. Switchboard: `price_a` = feed, `price_b` not read. USDC: entry and both price accounts not read, but present. |
 | `exit` | 3 per holding: `[vault (w), user_token (w), mint]`, matched by mint in any order, each holding once (`DuplicateHolding`); then the optional NAV layout (in `fund.holdings` order) |
-| `swap`, `execute_proposal` | NAV layout (4 per holding), then the output mint's `[price_a, price_b]` (same pair as in the NAV layout) if the output is a new non-USDC holding, then the venue accounts |
+| `swap`, `execute_proposal` | NAV layout (4 per holding), then the output mint's `[price_a, price_b]` (same pair as in the NAV layout) if the output is a new non-USDC holding, then 4 T3 accounts (captain Member, captain share ATA, share mint, Token-2022 program) if the trade is a T3 trade, then the venue accounts |
 | `propose_trade` | The venue accounts only |
 
 `swap`, `propose_trade` and `execute_proposal` take `venue_entry` (the `VenueEntry` PDA of `venue_program`) right after `venue_program`. A missing, inactive or wrong entry gives `VenueNotAllowed`.
@@ -121,9 +121,12 @@ To regenerate a program id (these steps were not executed as part of this build)
 
 Mainnet keypairs are not in the repo.
 
-## Out of scope (Phase 2)
+## Out of scope
 
-- Position adapters in NAV, breaker and exit: perps, prediction markets.
+Phase 2a (this program) covers the venue registry, the three price sources and Open Seas funds. Phase 2b comes later. It adds position adapters in NAV, breaker and exit for perps and prediction markets. Until then, a fund holds only tokens that use one of the three price sources.
+
+Also not built:
+
 - Memecoin T3 tier: pool TWAP price.
 - The linked-wallet block for T3 tokens (needs off-chain wallet-graph data).
 - Discover fee split. Multisig admin and admin rotation.

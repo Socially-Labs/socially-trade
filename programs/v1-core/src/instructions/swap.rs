@@ -23,7 +23,8 @@
 //! The total basis, and the T3 buys of the current and the previous 30-day
 //! window together, must each stay at most the captain's stake value (captain
 //! shares x pre-trade spot price per share). Any 30-day span lies inside two
-//! adjacent windows, so this bounds the buys of every 30-day span. A sale of a holding with a basis takes out
+//! adjacent windows. The stake is read at each buy, so a span holds at most the
+//! captain stake value at the time of each buy. A sale of a holding with a basis takes out
 //! `basis * amount_in / position`. If the spot value received is less, the fund
 //! PDA (permanent delegate of the share mint) burns captain shares worth the
 //! loss at the pre-trade spot price per share, at most the captain's balance.
