@@ -711,3 +711,171 @@ pub fn deposit(
     let ix = ix_deposit(env, f, &user.pubkey(), amount);
     send(&mut env.svm, &[ix], &[user])
 }
+
+// ---------------------------------------------------------------------------
+// Shared fund fixtures
+// ---------------------------------------------------------------------------
+
+pub fn now(env: &Env) -> i64 {
+    env.svm.get_sysvar::<Clock>().unix_timestamp
+}
+
+/// Number of emitted Anchor events (`Program data:` log lines).
+pub fn events(res: &TransactionMetadata) -> usize {
+    res.logs
+        .iter()
+        .filter(|l| l.starts_with("Program data: "))
+        .count()
+}
+
+pub fn read_fund(env: &Env, f: &FundHandles) -> v1_core::state::Fund {
+    read_account(&env.svm, &f.fund)
+}
+
+/// Captain (300 USDC stake) + one funded member.
+pub fn fund_with_member() -> (Env, Keypair, Keypair, FundHandles) {
+    let mut env = setup();
+    let cap = funded_user(&mut env, 1_000_000_000);
+    let m = funded_user(&mut env, 1_000_000_000);
+    let f = create_fund(&mut env, &cap, 1, 300_000_000).unwrap();
+    (env, cap, m, f)
+}
+
+/// Add `mint` as a holding by writing the Fund account directly (the swap
+/// path that adds holdings comes in a later task), create the fund's vault
+/// for it on the mint's token program, and mint `amount` into the vault.
+pub fn inject_holding(env: &mut Env, f: &FundHandles, mint: Pubkey, amount: u64) -> Pubkey {
+    let mut fund = read_fund(env, f);
+    let i = fund.holdings_len as usize;
+    fund.holdings[i] = mint;
+    fund.holdings_len += 1;
+    write_fund(env, f, &fund);
+
+    let token = env.svm.get_account(&mint).expect("holding mint").owner;
+    let vault = ata(&f.fund, &mint, &token);
+    let create = ix_create_ata(&env.admin.pubkey(), &f.fund, &mint, &token);
+    // The Token-2022 builder accepts either token program id.
+    let mint_ix = spl_token_2022::instruction::mint_to(
+        &token,
+        &mint,
+        &vault,
+        &env.admin.pubkey(),
+        &[],
+        amount,
+    )
+    .unwrap();
+    send(&mut env.svm, &[create, mint_ix], &[&env.admin]).expect("inject_holding");
+    vault
+}
+
+/// A 9-dp "SOL" mint, listed T1, priced at `usd` dollars (expo -8), fresh now.
+pub fn listed_sol(env: &mut Env, usd: i64) -> Pubkey {
+    let sol = create_mint(env, 9);
+    register_token(env, sol, SOL_FEED, Tier::T1);
+    let t = now(env);
+    set_price(
+        &mut env.svm,
+        price_account(&sol),
+        &SOL_FEED,
+        usd * 100_000_000,
+        0,
+        -8,
+        t,
+    );
+    sol
+}
+
+/// Write SOL's price account: spot and ema in whole dollars, conf in cents.
+pub fn sol_price(env: &mut Env, sol: &Pubkey, spot: i64, conf_cents: u64, ema: i64) {
+    let t = now(env);
+    let conf = conf_cents * 1_000_000;
+    set_price_ema(
+        &mut env.svm,
+        price_account(sol),
+        &SOL_FEED,
+        spot * 100_000_000,
+        conf,
+        -8,
+        t,
+        ema * 100_000_000,
+        conf,
+    );
+}
+
+/// Overwrite the Fund account with `fund`.
+pub fn write_fund(env: &mut Env, f: &FundHandles, fund: &v1_core::state::Fund) {
+    use anchor_lang::AccountSerialize;
+    let mut account = env.svm.get_account(&f.fund).unwrap();
+    let mut data = Vec::new();
+    fund.try_serialize(&mut data).unwrap();
+    account.data[..data.len()].copy_from_slice(&data);
+    env.svm.set_account(f.fund, account).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// exit
+// ---------------------------------------------------------------------------
+
+/// Exit remaining accounts for the fund's current holdings:
+/// `[vault_i (w), user_token_account_i (w), mint_i]` per holding, in order.
+/// The user accounts are the user's ATAs on each mint's token program.
+pub fn exit_accounts(env: &Env, f: &FundHandles, user: &Pubkey) -> Vec<AccountMeta> {
+    let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
+    fund.holdings[..fund.holdings_len as usize]
+        .iter()
+        .flat_map(|mint| {
+            let token_program = env.svm.get_account(mint).expect("holding mint").owner;
+            [
+                AccountMeta::new(ata(&f.fund, mint, &token_program), false),
+                AccountMeta::new(ata(user, mint, &token_program), false),
+                AccountMeta::new_readonly(*mint, false),
+            ]
+        })
+        .collect()
+}
+
+/// `exit` with NO remaining accounts (append your own).
+pub fn ix_exit_bare(env: &Env, f: &FundHandles, user: &Pubkey, shares: u64) -> Instruction {
+    let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
+    v1_ix(
+        v1_core::accounts::Exit {
+            user: *user,
+            config: config_pda(),
+            fund: f.fund,
+            policy: f.policy,
+            member: member_pda(&f.fund, user),
+            share_mint: f.share_mint,
+            user_shares: share_ata(f, user),
+            captain_shares: share_ata(f, &fund.captain),
+            token_program: spl_token_interface::ID,
+            share_token_program: TOKEN_2022,
+        },
+        v1_core::instruction::Exit { shares },
+    )
+}
+
+/// `exit` with the exit accounts but no NAV accounts (the fee uses the last pps).
+pub fn ix_exit_unpriced(env: &Env, f: &FundHandles, user: &Pubkey, shares: u64) -> Instruction {
+    let mut ix = ix_exit_bare(env, f, user, shares);
+    ix.accounts.extend(exit_accounts(env, f, user));
+    ix
+}
+
+/// `exit` with the exit accounts, then the NAV accounts (fresh fee price).
+pub fn ix_exit(env: &Env, f: &FundHandles, user: &Pubkey, shares: u64) -> Instruction {
+    let mut ix = ix_exit_unpriced(env, f, user, shares);
+    ix.accounts.extend(nav_accounts(env, f));
+    ix
+}
+
+/// Send `exit` of `shares` (with NAV accounts) signed by `user`.
+#[allow(clippy::result_large_err)] // LiteSVM's own error type.
+pub fn exit(
+    env: &mut Env,
+    f: &FundHandles,
+    user: &Keypair,
+    shares: u64,
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let ix = ix_exit(env, f, &user.pubkey(), shares);
+    send(&mut env.svm, &[ix], &[user])
+}

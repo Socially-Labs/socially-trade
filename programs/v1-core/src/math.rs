@@ -6,7 +6,7 @@ use crate::{constants::PERF_FEE_BPS, errors::ErrorCode};
 const ONE: u128 = 1_000_000;
 const BPS_DENOM: u128 = 10_000;
 
-fn to_u64(v: u128) -> Result<u64, ErrorCode> {
+pub fn to_u64(v: u128) -> Result<u64, ErrorCode> {
     u64::try_from(v).map_err(|_| ErrorCode::MathOverflow)
 }
 

@@ -189,74 +189,6 @@ fn create_fund_survives_prefunded_share_mint_pda() {
 // deposit + NAV
 // ---------------------------------------------------------------------------
 
-fn now(env: &Env) -> i64 {
-    env.svm.get_sysvar::<Clock>().unix_timestamp
-}
-
-/// Number of emitted Anchor events (`Program data:` log lines).
-fn events(res: &TransactionMetadata) -> usize {
-    res.logs
-        .iter()
-        .filter(|l| l.starts_with("Program data: "))
-        .count()
-}
-
-fn read_fund(env: &Env, f: &FundHandles) -> Fund {
-    read_account(&env.svm, &f.fund)
-}
-
-/// Captain (300 USDC stake) + one funded member.
-fn fund_with_member() -> (Env, Keypair, Keypair, FundHandles) {
-    let mut env = setup();
-    let cap = funded_user(&mut env, 1_000_000_000);
-    let m = funded_user(&mut env, 1_000_000_000);
-    let f = create_fund(&mut env, &cap, 1, 300_000_000).unwrap();
-    (env, cap, m, f)
-}
-
-/// Add `mint` as a holding by writing the Fund account directly (the swap
-/// path that adds holdings comes in a later task), create the fund's vault
-/// for it, and mint `amount` into the vault.
-fn inject_holding(env: &mut Env, f: &FundHandles, mint: Pubkey, amount: u64) -> Pubkey {
-    let mut fund = read_fund(env, f);
-    let i = fund.holdings_len as usize;
-    fund.holdings[i] = mint;
-    fund.holdings_len += 1;
-    write_fund(env, f, &fund);
-
-    let token = spl_token_interface::ID;
-    let vault = ata(&f.fund, &mint, &token);
-    let create = ix_create_ata(&env.admin.pubkey(), &f.fund, &mint, &token);
-    let mint_ix = spl_token_interface::instruction::mint_to(
-        &token,
-        &mint,
-        &vault,
-        &env.admin.pubkey(),
-        &[],
-        amount,
-    )
-    .unwrap();
-    send(&mut env.svm, &[create, mint_ix], &[&env.admin]).expect("inject_holding");
-    vault
-}
-
-/// A 9-dp "SOL" mint, listed T1, priced at `usd` dollars (expo -8), fresh now.
-fn listed_sol(env: &mut Env, usd: i64) -> Pubkey {
-    let sol = create_mint(env, 9);
-    register_token(env, sol, SOL_FEED, Tier::T1);
-    let t = now(env);
-    set_price(
-        &mut env.svm,
-        price_account(&sol),
-        &SOL_FEED,
-        usd * 100_000_000,
-        0,
-        -8,
-        t,
-    );
-    sol
-}
-
 #[test]
 fn second_member_gets_shares_at_nav() {
     let (mut env, _cap, m, f) = fund_with_member();
@@ -476,23 +408,6 @@ fn nav_rejects_wrong_token_entry() {
     expect_err(send(&mut env.svm, &[ix], &[&m]), ErrorCode::TokenNotListed);
 }
 
-/// Write SOL's price account: spot and ema in whole dollars, conf in cents.
-fn sol_price(env: &mut Env, sol: &Pubkey, spot: i64, conf_cents: u64, ema: i64) {
-    let t = now(env);
-    let conf = conf_cents * 1_000_000;
-    set_price_ema(
-        &mut env.svm,
-        price_account(sol),
-        &SOL_FEED,
-        spot * 100_000_000,
-        conf,
-        -8,
-        t,
-        ema * 100_000_000,
-        conf,
-    );
-}
-
 /// Fund at pps 2.0 = peak: 600 USDC + 2 SOL @ $150 over 450 shares.
 fn fund_at_peak_with_sol() -> (Env, Keypair, FundHandles, Pubkey) {
     let (mut env, _cap, m, f) = fund_with_member();
@@ -597,16 +512,6 @@ fn nav_rejects_wrong_price_account_type() {
         deposit(&mut env, &f, &m, 100_000_000),
         ErrorCode::PriceWrongAccountType,
     );
-}
-
-/// Overwrite the Fund account with `fund`.
-fn write_fund(env: &mut Env, f: &FundHandles, fund: &Fund) {
-    use anchor_lang::AccountSerialize;
-    let mut account = env.svm.get_account(&f.fund).unwrap();
-    let mut data = Vec::new();
-    fund.try_serialize(&mut data).unwrap();
-    account.data[..data.len()].copy_from_slice(&data);
-    env.svm.set_account(f.fund, account).unwrap();
 }
 
 #[test]

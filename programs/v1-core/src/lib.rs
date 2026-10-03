@@ -61,4 +61,10 @@ pub mod v1_core {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         instructions::deposit::deposit(ctx, amount)
     }
+
+    /// Member: leave with a pro-rata slice of every holding, in kind. Never
+    /// blocked by pause, freeze or prices. Remaining accounts: see `exit`.
+    pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> {
+        instructions::exit::exit(ctx, shares)
+    }
 }

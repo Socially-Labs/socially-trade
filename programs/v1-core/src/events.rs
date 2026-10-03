@@ -22,6 +22,8 @@ pub struct Exited {
     pub member: Pubkey,
     pub shares_burned: u64,
     pub fee_shares: u64,
+    /// The pps the fee was priced at (fresh upper bound, or the last recorded pps).
+    pub price_per_share: u64,
 }
 
 #[event]
@@ -30,6 +32,7 @@ pub struct FeeCharged {
     pub member: Pubkey,
     pub fee_usdc: u64,
     pub fee_shares: u64,
+    pub price_per_share: u64,
 }
 
 #[event]

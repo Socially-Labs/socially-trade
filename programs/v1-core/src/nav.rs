@@ -118,7 +118,7 @@ pub fn compute(
 }
 
 /// The amount in `vault`, which must be ATA(fund, mint) on the token program that owns it.
-fn vault_amount(vault: &AccountInfo, fund: &Pubkey, mint: &Pubkey) -> Result<u64> {
+pub(crate) fn vault_amount(vault: &AccountInfo, fund: &Pubkey, mint: &Pubkey) -> Result<u64> {
     let program = vault.owner;
     require!(
         *program == TOKEN_PROGRAM || *program == TOKEN_2022_PROGRAM,
