@@ -191,10 +191,13 @@ pub fn create_fund(ctx: Context<CreateFund>, fund_id: u64, deposit: u64) -> Resu
 }
 
 /// Create the share-mint PDA as a Token-2022 mint: NonTransferable, 6 dp,
-/// mint authority = fund, no freeze authority. Tolerates lamports that someone
+/// mint authority = fund, permanent delegate = fund, no freeze authority. Tolerates lamports that someone
 /// sent to the PDA in advance (create_account would fail on them).
 fn create_share_mint(a: &CreateFund, mint_seeds: &[&[u8]], fund: &Pubkey) -> Result<()> {
-    let space = find_mint_account_size(Some(&vec![ExtensionType::NonTransferable]))?;
+    let space = find_mint_account_size(Some(&vec![
+        ExtensionType::NonTransferable,
+        ExtensionType::PermanentDelegate,
+    ]))?;
     let rent = Rent::get()?.minimum_balance(space);
     let token_2022 = a.share_token_program.key();
     let system = a.system_program.key();
@@ -254,6 +257,18 @@ fn create_share_mint(a: &CreateFund, mint_seeds: &[&[u8]], fund: &Pubkey) -> Res
     }
 
     // The extension must be initialized before the mint itself.
+    // Permanent delegate = fund PDA: only program code can burn fee shares
+    // from a member (annual fee), without the member signing.
+    token_interface::permanent_delegate_initialize(
+        CpiContext::new(
+            token_2022,
+            token_interface::PermanentDelegateInitialize {
+                token_program_id: a.share_token_program.to_account_info(),
+                mint: mint.clone(),
+            },
+        ),
+        fund,
+    )?;
     token_interface::non_transferable_mint_initialize(CpiContext::new(
         token_2022,
         token_interface::NonTransferableMintInitialize {

@@ -107,30 +107,19 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     let mut hwm = a.member.hwm;
     let mut fee_shares = 0;
     if user != captain {
-        let fee = math::performance_fee(balance, pps, hwm)?;
-        if fee.fee_shares > 0 {
-            fee_shares = fee.fee_shares;
-            hwm = fee.new_hwm;
-            token_interface::mint_to(
-                CpiContext::new_with_signer(
-                    a.share_token_program.key(),
-                    token_interface::MintTo {
-                        mint: a.share_mint.to_account_info(),
-                        to: a.captain_shares.to_account_info(),
-                        authority: a.fund.to_account_info(),
-                    },
-                    signer,
-                ),
-                fee_shares,
-            )?;
-            emit!(FeeCharged {
-                fund: fund_key,
-                member: user,
-                fee_usdc: fee.fee_usdc,
-                fee_shares,
-                price_per_share: pps,
-            });
-        }
+        let fee = charge_fee(
+            &a.share_token_program,
+            &a.share_mint,
+            &a.captain_shares,
+            &a.fund,
+            signer,
+            user,
+            balance,
+            pps,
+            hwm,
+        )?;
+        fee_shares = fee.fee_shares;
+        hwm = fee.new_hwm;
     }
     // The fee is at most 10% of the value, so some balance is left.
     let balance = balance
@@ -217,8 +206,48 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     Ok(())
 }
 
+/// Performance fee on `balance` shares at `pps`: mint the fee shares to the
+/// captain and emit `FeeCharged`. Does nothing when the fee is 0. The caller
+/// burns the same shares from the member and stores `new_hwm`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn charge_fee<'info>(
+    token_program: &Program<'info, Token2022>,
+    share_mint: &InterfaceAccount<'info, Mint>,
+    captain_shares: &InterfaceAccount<'info, TokenAccount>,
+    fund: &Account<'info, Fund>,
+    signer: &[&[&[u8]]],
+    member: Pubkey,
+    balance: u64,
+    pps: u64,
+    hwm: u64,
+) -> Result<math::FeeOutcome> {
+    let fee = math::performance_fee(balance, pps, hwm)?;
+    if fee.fee_shares > 0 {
+        token_interface::mint_to(
+            CpiContext::new_with_signer(
+                token_program.key(),
+                token_interface::MintTo {
+                    mint: share_mint.to_account_info(),
+                    to: captain_shares.to_account_info(),
+                    authority: fund.to_account_info(),
+                },
+                signer,
+            ),
+            fee.fee_shares,
+        )?;
+        emit!(FeeCharged {
+            fund: fund.key(),
+            member,
+            fee_usdc: fee.fee_usdc,
+            fee_shares: fee.fee_shares,
+            price_per_share: pps,
+        });
+    }
+    Ok(fee)
+}
+
 /// `(fee pps from the upper-bound NAV, breaker pps from the EMA NAV)`.
-fn fresh_pps(
+pub(crate) fn fresh_pps(
     fund: &Fund,
     fund_key: &Pubkey,
     config: &Config,

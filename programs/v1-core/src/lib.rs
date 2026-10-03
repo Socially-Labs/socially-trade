@@ -154,4 +154,15 @@ pub mod v1_core {
     pub fn poke_nav(ctx: Context<PokeNav>) -> Result<()> {
         instructions::policy::poke_nav(ctx)
     }
+
+    /// Anyone: charge a member's yearly performance fee (not the captain).
+    /// Needs fresh prices. Remaining accounts: NAV layout (see `nav`).
+    pub fn charge_annual_fee<'info>(ctx: Context<'info, ChargeAnnualFee<'info>>) -> Result<()> {
+        instructions::fees::charge_annual_fee(ctx)
+    }
+
+    /// Captain or delegate: log a reason hash on chain (event only, no state).
+    pub fn captain_log(ctx: Context<WriteLog>, reason_hash: [u8; 32]) -> Result<()> {
+        instructions::captain_log::captain_log(ctx, reason_hash)
+    }
 }
