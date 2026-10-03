@@ -1,0 +1,5 @@
+# Host toolchain (tests). The SBF build uses the platform-tools toolchain of cargo build-sbf.
+[toolchain]
+channel = "1.93.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

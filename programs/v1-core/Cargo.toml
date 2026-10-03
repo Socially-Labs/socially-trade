@@ -1,0 +1,55 @@
+[package]
+name = "v1-core"
+version = "0.1.0"
+description = "socially.trade v1 core: social-trading funds on Solana"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "v1_core"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+# Host-only helpers for the integration tests. Never enable for the SBF build.
+test-helpers = []
+
+[dependencies]
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
+anchor-spl = { version = "1.2.0", default-features = false, features = ["token", "token_2022", "associated_token", "token_2022_extensions"] }
+# `#[account(zero_copy)]` expands to `::bytemuck` paths, so it must be a direct dependency.
+bytemuck = { version = "1.25.2", features = ["derive", "min_const_generics"] }
+# Anchor 1.2 does not re-export a hash module.
+solana-sha256-hasher = "3.1.0"
+
+[dev-dependencies]
+# The tests link this crate with the entrypoint off and the test helpers on.
+v1-core = { path = ".", features = ["no-entrypoint", "test-helpers"] }
+mock-venue = { path = "../mock-venue", features = ["no-entrypoint"] }
+# These solana-* versions are the ones litesvm 0.16.0 resolves to. Keep them equal,
+# or cargo builds two copies of each type and the tests do not compile.
+bincode = "1.3.3"
+litesvm = "0.16.0"
+solana-account = "4.3.2"
+solana-clock = "3.1.1"
+solana-instruction = "3.4.1"
+solana-instruction-error = "2.4.0"
+solana-keypair = "3.1.2"
+solana-message = { version = "4.4.1", features = ["serde"] }
+solana-program-pack = "3.1.0"
+solana-pubkey = "4.2.1"
+solana-signer = "3.0.1"
+solana-transaction = { version = "4.1.6", features = ["serde"] }
+solana-transaction-error = "3.3.2"
+spl-token-interface = "2.0.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -1,0 +1,189 @@
+//! Test-only swap venue for the v1-core tests. Never deploy.
+//!
+//! One instruction, `swap`, at a fixed rate `out_num / out_den`. The `mode`
+//! argument makes the venue honest or make one specific mistake, so the
+//! v1-core guards can be tested.
+//!
+//! - `0` honest: take `amount_in` from `user_in`, pay `amount_in * num / den`.
+//! - `1` short-pay: pay half of the honest output.
+//! - `2` overdraw: take `amount_in + 1` from `user_in`, pay the honest output.
+//! - `3` divert: take `amount_in`, pay nothing. The output never reaches `user_out`.
+//!   (Simplest variant: the mints can differ, so there is no valid other account to pay.)
+//! - `4` steal: honest swap, and also move 1 unit from a second account of the
+//!   authority. Remaining accounts: `[from (w), to (w), mint, token_program]`.
+//! - `5` approve: honest swap, and also approve `pool_authority` as delegate
+//!   of `user_in` for 1 unit.
+//! - `6` close authority: honest swap, and also SetAuthority(CloseAccount) on
+//!   `user_in` to `pool_authority`.
+//! - `7` reallocate: honest swap, and also a Token-2022 Reallocate of `user_in`
+//!   (room for MemoTransfer), paid by `pool_authority` (must be writable and
+//!   hold lamports). Remaining accounts: `[system_program]`.
+use anchor_lang::prelude::*;
+use anchor_lang::solana_program::program::invoke_signed;
+use anchor_spl::token_interface::{
+    approve, set_authority,
+    spl_token_2022::{extension::ExtensionType, instruction::AuthorityType},
+    transfer_checked, Approve, Mint, SetAuthority, TokenAccount, TokenInterface, TransferChecked,
+};
+
+declare_id!("7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng");
+
+pub const POOL_SEED: &[u8] = b"pool";
+
+#[error_code]
+pub enum VenueError {
+    BadMode,
+    Overflow,
+}
+
+#[program]
+pub mod mock_venue {
+    use super::*;
+
+    pub fn swap<'info>(
+        ctx: Context<'info, Swap<'info>>,
+        amount_in: u64,
+        out_num: u64,
+        out_den: u64,
+        mode: u8,
+    ) -> Result<()> {
+        require!(mode <= 7, VenueError::BadMode);
+        require!(out_den > 0, VenueError::Overflow);
+        let honest = u64::try_from(
+            (amount_in as u128)
+                .checked_mul(out_num as u128)
+                .ok_or(VenueError::Overflow)?
+                / out_den as u128,
+        )
+        .map_err(|_| VenueError::Overflow)?;
+        let take = if mode == 2 {
+            amount_in.checked_add(1).ok_or(VenueError::Overflow)?
+        } else {
+            amount_in
+        };
+        let pay = match mode {
+            1 => honest / 2,
+            3 => 0,
+            _ => honest,
+        };
+        let a = &ctx.accounts;
+        transfer_checked(
+            CpiContext::new(
+                a.token_program_in.key(),
+                TransferChecked {
+                    from: a.user_in.to_account_info(),
+                    mint: a.mint_in.to_account_info(),
+                    to: a.pool_in.to_account_info(),
+                    authority: a.authority.to_account_info(),
+                },
+            ),
+            take,
+            a.mint_in.decimals,
+        )?;
+        if pay > 0 {
+            let seeds: &[&[u8]] = &[POOL_SEED, &[ctx.bumps.pool_authority]];
+            transfer_checked(
+                CpiContext::new_with_signer(
+                    a.token_program_out.key(),
+                    TransferChecked {
+                        from: a.pool_out.to_account_info(),
+                        mint: a.mint_out.to_account_info(),
+                        to: a.user_out.to_account_info(),
+                        authority: a.pool_authority.to_account_info(),
+                    },
+                    &[seeds],
+                ),
+                pay,
+                a.mint_out.decimals,
+            )?;
+        }
+        if mode == 4 {
+            let r = ctx.remaining_accounts;
+            require!(r.len() >= 4, VenueError::BadMode);
+            let decimals = InterfaceAccount::<Mint>::try_from(&r[2])?.decimals;
+            transfer_checked(
+                CpiContext::new(
+                    r[3].key(),
+                    TransferChecked {
+                        from: r[0].clone(),
+                        mint: r[2].clone(),
+                        to: r[1].clone(),
+                        authority: a.authority.to_account_info(),
+                    },
+                ),
+                1,
+                decimals,
+            )?;
+        }
+        if mode == 5 {
+            approve(
+                CpiContext::new(
+                    a.token_program_in.key(),
+                    Approve {
+                        to: a.user_in.to_account_info(),
+                        delegate: a.pool_authority.to_account_info(),
+                        authority: a.authority.to_account_info(),
+                    },
+                ),
+                1,
+            )?;
+        }
+        if mode == 6 {
+            set_authority(
+                CpiContext::new(
+                    a.token_program_in.key(),
+                    SetAuthority {
+                        current_authority: a.authority.to_account_info(),
+                        account_or_mint: a.user_in.to_account_info(),
+                    },
+                ),
+                AuthorityType::CloseAccount,
+                Some(a.pool_authority.key()),
+            )?;
+        }
+        if mode == 7 {
+            let system = ctx.remaining_accounts.first().ok_or(VenueError::BadMode)?;
+            let ix = anchor_spl::token_interface::spl_token_2022::instruction::reallocate(
+                &a.token_program_in.key(),
+                &a.user_in.key(),
+                &a.pool_authority.key(),
+                &a.authority.key(),
+                &[],
+                &[ExtensionType::MemoTransfer],
+            )?;
+            let seeds: &[&[u8]] = &[POOL_SEED, &[ctx.bumps.pool_authority]];
+            invoke_signed(
+                &ix,
+                &[
+                    a.user_in.to_account_info(),
+                    a.pool_authority.to_account_info(),
+                    system.clone(),
+                    a.authority.to_account_info(),
+                ],
+                &[seeds],
+            )?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Swap<'info> {
+    /// Owner of `user_in`. The fund PDA when v1-core calls in.
+    pub authority: Signer<'info>,
+    /// CHECK: PDA `[b"pool"]`, signs the pool-side transfer.
+    #[account(seeds = [POOL_SEED], bump)]
+    pub pool_authority: UncheckedAccount<'info>,
+    #[account(mut, token::mint = mint_in, token::authority = authority)]
+    pub user_in: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut, token::mint = mint_out)]
+    pub user_out: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut, token::mint = mint_in, token::authority = pool_authority)]
+    pub pool_in: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut, token::mint = mint_out, token::authority = pool_authority)]
+    pub pool_out: InterfaceAccount<'info, TokenAccount>,
+    pub mint_in: InterfaceAccount<'info, Mint>,
+    pub mint_out: InterfaceAccount<'info, Mint>,
+    pub token_program_in: Interface<'info, TokenInterface>,
+    pub token_program_out: Interface<'info, TokenInterface>,
+}
