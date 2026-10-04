@@ -581,6 +581,114 @@ fn nav_values_switchboard_token_with_std_dev_upper_bound() {
 }
 
 #[test]
+fn deposit_rejects_fewer_shares_than_min_shares() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    // pps 1.0: 100 USDC buys 100 shares.
+    let mut ix = ix_deposit_min(&env, &f, &m.pubkey(), 100_000_000, 100_000_001);
+    ix.accounts.extend(nav_accounts(&env, &f));
+    expect_err(
+        send(&mut env.svm, &[ix], &[&m]),
+        ErrorCode::SlippageExceeded,
+    );
+    let mut ix = ix_deposit_min(&env, &f, &m.pubkey(), 100_000_000, 100_000_000);
+    ix.accounts.extend(nav_accounts(&env, &f));
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        100_000_000
+    );
+}
+
+#[test]
+fn switchboard_mark_is_stored_and_moves_one_step_per_interval() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    let mark = |env: &Env| {
+        let e = read_entry(env, &t.mint);
+        (e.mark_price, e.mark_slot)
+    };
+    assert_eq!(mark(&env), (0, 0));
+    // The first read sets the mark to the feed value.
+    poke(&mut env, &f, &m).unwrap();
+    let s0 = env.svm.get_sysvar::<Clock>().slot;
+    assert_eq!(mark(&env), (SB_ONE / 20, s0));
+    // MEME doubles. One slot before the interval ends: no move.
+    t.fields.value = SB_ONE / 10;
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64 - 1);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(mark(&env), (SB_ONE / 20, s0));
+    // At the interval: one 10% step, $0.055.
+    warp(&mut env.svm, 1);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(mark(&env), (SB_ONE * 55 / 1_000, s0 + MARK_INTERVAL_SLOTS));
+}
+
+#[test]
+fn nav_rejects_a_read_only_switchboard_entry() {
+    let (mut env, m, f, t) = fund_with_meme();
+    let mut ix = ix_deposit(&env, &f, &m.pubkey(), 100_000_000);
+    let entry = token_pda(&t.mint);
+    let meta = ix.accounts.iter_mut().find(|a| a.pubkey == entry).unwrap();
+    assert!(meta.is_writable);
+    meta.is_writable = false;
+    expect_anchor_err(
+        send(&mut env.svm, &[ix], &[&m]),
+        anchor_lang::error::ErrorCode::ConstraintMut,
+    );
+}
+
+/// A dumped thin pool (every oracle agrees) does not dilute the crew: the
+/// deposit pays max(spot, mark), and the mark falls one step per interval.
+#[test]
+fn deposit_after_a_dump_pays_the_mark() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // The first NAV read sets the mark to the spot, $0.05.
+    poke(&mut env, &f, &m).unwrap();
+    // MEME is dumped 50% to $0.025.
+    t.fields.value = SB_ONE / 40;
+    refresh_meme(&mut env, &t);
+    // At the dump: NAV 300 + 150 = 450, pps 1.5, 200 USDC would buy 133.33 shares.
+    // At the mark: NAV 600, pps 2.0, 100 shares.
+    deposit(&mut env, &f, &m, 200_000_000).unwrap();
+    let shares = share_ata(&f, &m.pubkey());
+    assert_eq!(token_balance(&env.svm, &shares), 100_000_000);
+    // One interval later the mark is 10% lower, $0.045: NAV 500 + 270 = 770
+    // for 400 shares, pps 1.925.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    refresh_meme(&mut env, &t);
+    deposit(&mut env, &f, &m, 192_500_000).unwrap();
+    assert_eq!(token_balance(&env.svm, &shares), 200_000_000);
+}
+
+/// A 10x pump and pokes move the peak by at most one mark step per interval.
+#[test]
+fn poke_after_a_pump_moves_the_peak_one_mark_step() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).peak_price_per_share, 2_000_000);
+    // MEME pumps 10x to $0.50: at spot the pps would be (300 + 3,000) / 300 = 11.
+    t.fields.value = SB_ONE / 2;
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    poke(&mut env, &f, &m).unwrap();
+    let fund = read_fund(&env, &f);
+    assert_eq!(
+        (fund.peak_price_per_share, fund.last_price_per_share),
+        (2_000_000, 2_000_000)
+    );
+    // One interval later: one step, $0.055, NAV 300 + 330 = 630, pps 2.1.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).peak_price_per_share, 2_100_000);
+    // A second poke in the same interval does not move it again.
+    env.svm.expire_blockhash();
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).peak_price_per_share, 2_100_000);
+}
+
+#[test]
 fn nav_rejects_switchboard_feed_not_in_registry() {
     let (mut env, m, f, t) = fund_with_meme();
     // A valid, fresh feed, but not the one listed for this token.

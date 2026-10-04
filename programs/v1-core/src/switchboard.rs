@@ -19,9 +19,17 @@
 //! result slot must be within `max_staleness` slots, and a slot of 0 means no
 //! result. We also cap the age at 60 s, require a positive value, and require
 //! `std_dev <= 200 bps` of the value.
+//!
+//! The feed has no EMA, and a thin pool can be pumped or dumped while every
+//! oracle agrees (std_dev near 0). So the registry entry keeps a slow mark
+//! price (`next_mark`) that NAV uses in place of an EMA.
 
 use {
-    crate::{errors::ErrorCode, pyth::PythPrice},
+    crate::{
+        constants::{BPS_DENOMINATOR, MARK_INTERVAL_SLOTS, MARK_MAX_STEP_BPS},
+        errors::ErrorCode,
+        pyth::PythPrice,
+    },
     anchor_lang::{
         prelude::{pubkey, Pubkey},
         solana_program::clock::DEFAULT_MS_PER_SLOT,
@@ -69,30 +77,53 @@ pub struct SbPrice {
 
 impl SbPrice {
     /// The same price in the Pyth shape NAV uses: `price * 10^expo`, with
-    /// ema = spot (no EMA) and conf = std_dev. The 18-decimal value is cut
-    /// until `value + std_dev` fits `i64` (the deposit upper bound; floor,
-    /// std_dev rounds up), so it keeps 18+ digits.
-    pub fn to_pyth(&self) -> Result<PythPrice, ErrorCode> {
-        let (mut value, mut std_dev, mut expo) = (self.value, self.std_dev, -PRECISION);
+    /// ema = `mark` (the slow price, 18 decimals) and conf = std_dev. The
+    /// 18-decimal values are cut until `max(value, mark) + std_dev` fits `i64`
+    /// (the deposit upper bound; floor, std_dev rounds up), so they keep 18+
+    /// digits.
+    pub fn to_pyth(&self, mark: i128) -> Result<PythPrice, ErrorCode> {
+        let (mut value, mut mark, mut std_dev, mut expo) =
+            (self.value, mark, self.std_dev, -PRECISION);
         while value
+            .max(mark)
             .checked_add(std_dev)
             .is_none_or(|hi| hi > i64::MAX as i128)
         {
             value /= 10;
+            mark /= 10;
             std_dev = (std_dev + 9) / 10;
             expo += 1;
         }
-        let price = value as i64;
         let conf = u64::try_from(std_dev).map_err(|_| ErrorCode::MathOverflow)?;
         Ok(PythPrice {
-            price,
+            price: value as i64,
             conf,
             expo,
             publish_time: 0, // not read for a Switchboard price
-            ema_price: price,
+            ema_price: mark as i64,
             ema_conf: conf,
         })
     }
+}
+
+/// The mark after a read of `value` at `now_slot`, as `(mark, mark_slot)`.
+/// The first read (mark 0) sets mark = value. After that the mark moves at
+/// most once per `MARK_INTERVAL_SLOTS`, toward the value by at most
+/// `MARK_MAX_STEP_BPS` of the mark. So a pump or dump moves it 10% per
+/// interval at most, whatever the caller does.
+pub fn next_mark(mark: i128, mark_slot: u64, value: i128, now_slot: u64) -> (i128, u64) {
+    if mark <= 0 {
+        return (value, now_slot);
+    }
+    if now_slot < mark_slot.saturating_add(MARK_INTERVAL_SLOTS) {
+        return (mark, mark_slot);
+    }
+    // mark / 10_000 * bps cannot overflow; the remainder adds the rest, floor.
+    let d = BPS_DENOMINATOR as i128;
+    let bps = MARK_MAX_STEP_BPS as i128;
+    let step = mark / d * bps + mark % d * bps / d;
+    let mark = value.clamp(mark - step, mark.saturating_add(step));
+    (mark, now_slot)
 }
 
 fn i128_at(data: &[u8], at: usize) -> i128 {
@@ -280,7 +311,7 @@ mod tests {
                 slot: SLOT
             }
         );
-        let py = p.to_pyth().unwrap();
+        let py = p.to_pyth(p.value).unwrap();
         assert_eq!(
             (py.price, py.conf, py.expo),
             (E18 as i64 / 20, E18 as u64 / 2_000, -18)
@@ -301,7 +332,7 @@ mod tests {
             std_dev: 1,
             slot: SLOT,
         };
-        let py = p.to_pyth().unwrap();
+        let py = p.to_pyth(p.value).unwrap();
         assert_eq!((py.price, py.expo), (7_000_012_345_678_901_234, -14));
         // std_dev rounds up, never to 0.
         assert_eq!(py.conf, 1);
@@ -439,7 +470,7 @@ mod tests {
             std_dev: 150_000_000_000_000_000,
             slot: SLOT,
         };
-        let py = p.to_pyth().unwrap();
+        let py = p.to_pyth(p.value).unwrap();
         assert_eq!(
             (py.price, py.conf, py.expo),
             (910_000_000_000_000_000, 15_000_000_000_000_000, -17)
@@ -451,7 +482,70 @@ mod tests {
             std_dev: 0,
             slot: SLOT,
         };
-        assert_eq!(p.to_pyth().unwrap().expo, -18);
+        assert_eq!(p.to_pyth(p.value).unwrap().expo, -18);
+    }
+
+    #[test]
+    fn mark_is_the_ema_and_the_cut_fits_the_higher_of_value_and_mark() {
+        // Value $0.05, mark $0.10: ema_price is the mark, same expo.
+        let p = parse(&fields(), SLOT).unwrap();
+        let py = p.to_pyth(E18 / 10).unwrap();
+        assert_eq!(
+            (py.price, py.ema_price, py.expo),
+            (E18 as i64 / 20, E18 as i64 / 10, -18)
+        );
+        // Value $1, mark $9.30: 9.30e18 + std_dev does not fit i64, so both are cut.
+        let p = SbPrice {
+            value: E18,
+            std_dev: 1,
+            slot: SLOT,
+        };
+        let py = p.to_pyth(E18 * 93 / 10).unwrap();
+        assert_eq!(
+            (py.price, py.ema_price, py.conf, py.expo),
+            (E18 as i64 / 10, 930_000_000_000_000_000, 1, -17)
+        );
+    }
+
+    #[test]
+    fn first_read_sets_the_mark_to_the_value() {
+        assert_eq!(next_mark(0, 0, E18 / 20, SLOT), (E18 / 20, SLOT));
+    }
+
+    #[test]
+    fn mark_moves_once_per_interval() {
+        let mark = E18 / 20;
+        // A 10x pump inside the interval: no move.
+        let last = SLOT + MARK_INTERVAL_SLOTS - 1;
+        assert_eq!(next_mark(mark, SLOT, E18 / 2, last), (mark, SLOT));
+        // At the interval: one 10% step, and the interval restarts.
+        let at = SLOT + MARK_INTERVAL_SLOTS;
+        assert_eq!(next_mark(mark, SLOT, E18 / 2, at), (mark * 11 / 10, at));
+        // A slot before the mark slot (no clock goes back, but no panic either).
+        assert_eq!(next_mark(mark, SLOT, E18, SLOT - 1), (mark, SLOT));
+    }
+
+    #[test]
+    fn mark_step_is_at_most_ten_percent_of_the_mark() {
+        let (mark, at) = (E18 / 20, SLOT + MARK_INTERVAL_SLOTS);
+        // Up and down by more than a step: exactly one step.
+        assert_eq!(next_mark(mark, SLOT, E18, at).0, E18 * 55 / 1_000);
+        assert_eq!(next_mark(mark, SLOT, 1, at).0, E18 * 45 / 1_000);
+        // Inside one step: the mark becomes the value.
+        assert_eq!(
+            next_mark(mark, SLOT, E18 * 54 / 1_000, at).0,
+            E18 * 54 / 1_000
+        );
+        assert_eq!(
+            next_mark(mark, SLOT, E18 * 46 / 1_000, at).0,
+            E18 * 46 / 1_000
+        );
+        // The step floors: 10% of 19 base units is 1.
+        assert_eq!(next_mark(19, SLOT, 100, at).0, 20);
+        // A mark near i128::MAX does not overflow.
+        assert_eq!(next_mark(i128::MAX, SLOT, i128::MAX, at).0, i128::MAX);
+        let big = i128::MAX - 7;
+        assert_eq!(next_mark(big, SLOT, 1, at).0, big - big / 10);
     }
 
     /// The live mainnet POPCAT/USD pull feed (RPC context slot 453046410).
@@ -485,7 +579,7 @@ mod tests {
             Err(ErrorCode::PriceStale)
         );
         // 1,000 POPCAT (9 dp) = 51.508418 USDC.
-        let py = p.to_pyth().unwrap();
+        let py = p.to_pyth(p.value).unwrap();
         assert_eq!(
             crate::math::token_value_usdc(1_000_000_000_000, py.price, py.expo, 9),
             Ok(51_508_418)

@@ -37,6 +37,11 @@ pub const T2_TOTAL_CAP_BPS: u16 = 5000;
 /// Length of one T3 buy window (30 days). The cap uses two windows, see `swap`.
 pub const T3_WINDOW_SECS: i64 = 2_592_000;
 
+// Slow mark price of a Switchboard token (see `nav`): it moves toward the
+// feed value at most once per interval, by at most the step.
+pub const MARK_INTERVAL_SLOTS: u64 = 150;
+pub const MARK_MAX_STEP_BPS: u16 = 1000;
+
 // Pyth.
 pub const PYTH_RECEIVER_ID: anchor_lang::prelude::Pubkey =
     anchor_lang::prelude::pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");

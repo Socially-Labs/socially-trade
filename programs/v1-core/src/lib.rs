@@ -69,9 +69,10 @@ pub mod v1_core {
         instructions::create_fund::create_fund(ctx, fund_id, deposit, open_seas)
     }
 
-    /// Anyone: buy shares at NAV with USDC. Remaining accounts: NAV layout (see `nav`).
-    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
-        instructions::deposit::deposit(ctx, amount)
+    /// Anyone: buy shares at NAV with USDC; fewer than `min_shares` fails.
+    /// Remaining accounts: NAV layout (see `nav`).
+    pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()> {
+        instructions::deposit::deposit(ctx, amount, min_shares)
     }
 
     /// Member: leave with a pro-rata slice of every holding, in kind. Never

@@ -47,4 +47,10 @@ pub struct TokenEntry {
     /// 0 = nothing pending.
     pub pending_eta: i64,
     pub bump: u8,
+    /// Switchboard only: the slow mark price, USD per whole token with 18
+    /// decimals (the feed's scale), shared by every fund. 0 = not set yet.
+    /// NAV reads move it (see `switchboard::next_mark`).
+    pub mark_price: i128,
+    /// Slot of the last mark update.
+    pub mark_slot: u64,
 }

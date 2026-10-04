@@ -1,8 +1,10 @@
 //! Yearly performance fee. Anyone can call it for a member, once per year.
 //! Prices must be fresh and valid (unlike `exit`): the fee pps is the fresh
-//! upper-bound pps only. A keeper cannot pick a low price (invalid prices fail
-//! the call), and a stale high `last_price_per_share` cannot inflate the fee.
-//! The breaker moves on the fresh EMA pps before the fee is computed.
+//! EMA pps only (the slow price: Pyth EMA, or the mark of a Switchboard
+//! token). A keeper cannot pick an in-window spot price to raise the fee or
+//! to lower it (invalid prices fail the call), and a stale high
+//! `last_price_per_share` cannot inflate it. The breaker moves on the same
+//! pps before the fee is computed.
 //! The fee shares are minted to the captain and burned from the member by
 //! the fund PDA, the permanent delegate of the share mint.
 
@@ -77,7 +79,7 @@ pub fn charge_annual_fee<'info>(ctx: Context<'info, ChargeAnnualFee<'info>>) -> 
 
     let fund_key = a.fund.key();
     // Invalid or missing prices fail the call.
-    let (pps, ema_pps, _) = fresh_pps(
+    let (_, pps, _) = fresh_pps(
         &a.fund,
         &fund_key,
         &a.config,
@@ -86,12 +88,7 @@ pub fn charge_annual_fee<'info>(ctx: Context<'info, ChargeAnnualFee<'info>>) -> 
         ctx.program_id,
     )?;
     // The breaker moves first, so the fee sees the same fund state as the next caller.
-    nav::update_breaker(
-        &mut ctx.accounts.fund,
-        &fund_key,
-        &ctx.accounts.policy,
-        ema_pps,
-    )?;
+    nav::update_breaker(&mut ctx.accounts.fund, &fund_key, &ctx.accounts.policy, pps)?;
 
     let a = &ctx.accounts;
     let balance = a.member_shares.amount;

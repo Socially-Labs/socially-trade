@@ -1,4 +1,5 @@
 //! Anyone buys shares at NAV with USDC. Remaining accounts: the NAV layout (see `nav`).
+//! `min_shares` is the depositor's slippage limit: fewer shares fail the call.
 
 use {
     crate::{
@@ -71,7 +72,7 @@ pub struct Deposit<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()> {
     require!(amount > 0, ErrorCode::ZeroAmount);
     let now = Clock::get()?.unix_timestamp;
     let a = &ctx.accounts;
@@ -96,6 +97,7 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     let pps_paid = math::price_per_share(nav_upper, total_before)?;
     let pps_ema = math::price_per_share(nav_ema, total_before)?;
     let shares = math::shares_for_deposit(amount, total_before, nav_upper)?;
+    require!(shares >= min_shares, ErrorCode::SlippageExceeded);
 
     token_interface::transfer_checked(
         CpiContext::new(

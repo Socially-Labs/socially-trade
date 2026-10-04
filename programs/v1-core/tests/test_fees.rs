@@ -159,6 +159,33 @@ fn annual_fee_ignores_stale_higher_last_pps() {
     assert_eq!(read_fund(&env, &f).last_price_per_share, 1_150_000);
 }
 
+/// The annual fee uses the slow (EMA) pps, so the keeper's choice of an
+/// in-window spot price cannot raise it.
+#[test]
+fn annual_fee_uses_the_ema_price() {
+    let (mut env, cap, m, f) = whitepaper();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 1_000_000_000);
+    let keeper = funded_user(&mut env, 0);
+    warp(&mut env.svm, YEAR_SECS);
+    // SOL spot $160 +- $1, EMA $150. EMA NAV 1,495 + 150 = 1,645 for 1,300
+    // shares: pps 1.265384, fee 10% of 265.384 = 26.5384. The upper bound
+    // (NAV 1,656, pps 1.273846) would charge 27.3846.
+    sol_price(&mut env, &sol, 160, 100, 150);
+    let res = charge(&mut env, &f, &m.pubkey(), &keeper).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (26_538_400, 1_265_384)
+    );
+    // 26.5384 USDC at 1.265384 = 20.972605 shares.
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &cap.pubkey())),
+        300_000_000 + 20_972_605
+    );
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 1_265_384);
+}
+
 #[test]
 fn annual_fee_rejects_captain() {
     let (mut env, cap, _m, f) = whitepaper();

@@ -140,15 +140,16 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
         require!(keep >= floor, ErrorCode::CaptainStakeFloor);
 
         // While T3 is held, the stake left must cover the T3 basis left, at
-        // the fresh spot pps. A stale pps must not let the captain leave
-        // early, so this needs valid prices (the call below returns the error).
+        // the fresh pps of the lower of spot and the slow price, so a pump
+        // cannot let the captain out. A stale pps must not let the captain
+        // leave early, so this needs valid prices (the call below returns the error).
         let basis = a.fund.t3_cost_basis_usd;
         if basis > 0 {
-            let spot = match fresh {
-                Some((_, _, spot)) => spot,
+            let low = match fresh {
+                Some((_, _, low)) => low,
                 None => fresh_pps(&a.fund, &fund_key, &a.config, nav_accs, now, ctx.program_id)?.2,
             };
-            let stake = math::value_of_shares(balance - shares, spot)?;
+            let stake = math::value_of_shares(balance - shares, low)?;
             let basis_left = math::pro_rata(basis, total - shares, total)?;
             require!(stake >= basis_left, ErrorCode::CaptainStakeFloor);
         }
@@ -291,7 +292,8 @@ pub(crate) fn charge_fee<'info>(
     Ok(fee)
 }
 
-/// `(fee pps from the upper-bound NAV, breaker pps from the EMA NAV, spot pps)`.
+/// `(fee pps from the upper-bound NAV, breaker pps from the EMA NAV, captain
+/// stake pps from the StakeLowerBound NAV)`.
 pub(crate) fn fresh_pps(
     fund: &Fund,
     fund_key: &Pubkey,
@@ -308,6 +310,6 @@ pub(crate) fn fresh_pps(
     Ok((
         pps(ValuationMode::DepositUpperBound)?,
         pps(ValuationMode::Ema)?,
-        pps(ValuationMode::Spot)?,
+        pps(ValuationMode::StakeLowerBound)?,
     ))
 }

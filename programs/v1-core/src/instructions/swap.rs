@@ -22,7 +22,8 @@
 //! basis is rejected (`T3UnbasedHolding`): those units would dilute the basis.
 //! The total basis, and the T3 buys of the current and the previous 30-day
 //! window together, must each stay at most the captain's stake value (captain
-//! shares x pre-trade spot price per share). Any 30-day span lies inside two
+//! shares x pre-trade price per share, each holding at the lower of its spot
+//! and slow price: `ValuationMode::StakeLowerBound`). Any 30-day span lies inside two
 //! adjacent windows. The stake is read at each buy, so a span holds at most the
 //! captain stake value at the time of each buy. A sale of a holding with a basis takes out
 //! `basis * amount_in / position`. If the spot value received is less, the fund
@@ -81,6 +82,8 @@ pub struct Trade<'info> {
     /// CHECK: the active TokenEntry PDA `[b"token", input_mint]`. Not read for USDC.
     pub input_entry: UncheckedAccount<'info>,
     /// CHECK: the active TokenEntry PDA `[b"token", output_mint]`. Not read for USDC.
+    /// Writable when the output is a Switchboard token that is not a holding
+    /// yet: the read stores its mark (see `nav`).
     pub output_entry: UncheckedAccount<'info>,
     /// CHECK: ATA(fund, input_mint); must be the input holding's NAV vault.
     #[account(mut)]
@@ -303,9 +306,11 @@ fn prepare(
                 // USDC is always holding 0, so this is only for safety.
                 None => (len, nav_end),
                 Some(entry) => {
-                    let price = nav::price(&entry, remaining.get(nav_end..).unwrap_or(&[]), now)?;
-                    priced.prices[len] = Some(price);
                     priced.t2[len] = entry.tier == Tier::T2;
+                    // A Switchboard output's entry takes its mark now (writable).
+                    let accs = remaining.get(nav_end..).unwrap_or(&[]);
+                    let price = nav::price_and_store_mark(&t.output_entry, entry, accs, now)?;
+                    priced.prices[len] = Some(price);
                     (len, nav_end + PRICE_ACCOUNTS)
                 }
             }
@@ -691,8 +696,9 @@ fn apply_t3<'info>(
     }
 
     // T3 buy: the cost joins the basis; the basis and the buys of the current
-    // and previous windows must each fit the captain's stake (after any burn, at the
-    // pre-trade spot pps).
+    // and previous windows must each fit the captain's stake (after any burn,
+    // at the pre-trade pps of the lower of spot and the slow price, so a pump
+    // cannot raise it).
     if plan.t3_buy {
         let cost = math::to_u64(plan.trade_usd)?;
         let i = plan.out_idx;
@@ -700,7 +706,8 @@ fn apply_t3<'info>(
             .checked_add(cost)
             .ok_or(ErrorCode::MathOverflow)?;
         basis = basis.checked_add(cost).ok_or(ErrorCode::MathOverflow)?;
-        let stake = math::mul_div_floor(balance as u128, plan.pre_nav, total as u128)?;
+        let stake_nav = priced.valuation(ValuationMode::StakeLowerBound)?.nav;
+        let stake = math::mul_div_floor(balance as u128, stake_nav, total as u128)?;
         require!(basis as u128 <= stake, ErrorCode::T3CapExceeded);
         let fund = &mut t.fund;
         let w = t3_window(

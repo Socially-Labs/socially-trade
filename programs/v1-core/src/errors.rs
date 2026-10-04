@@ -124,4 +124,6 @@ pub enum ErrorCode {
     T3UnbasedHolding,
     #[msg("Switchboard feed job hash or queue differs from the token entry")]
     FeedConfigChanged,
+    #[msg("Deposit mints fewer shares than min_shares")]
+    SlippageExceeded,
 }

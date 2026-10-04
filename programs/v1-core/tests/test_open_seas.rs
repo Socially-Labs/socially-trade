@@ -338,6 +338,86 @@ fn captain_exit_floor_covers_t3_basis_while_t3_is_held() {
 }
 
 #[test]
+fn a_new_switchboard_output_stores_its_mark() {
+    let mut s = open_seas(1_000, 19_000);
+    assert_eq!(read_entry(&s.t.env, &s.meme.mint).mark_price, 0);
+    let a = s.buy(100);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(read_entry(&s.t.env, &s.meme.mint).mark_price, SB_ONE / 20);
+    // A new Switchboard output needs a writable output entry.
+    let coin = second_token(&mut s, Tier::T3);
+    let a = buy_of(&s.t, &coin.mint, 100);
+    let mut ix = ix_swap(&s.t.env, &s.t.f, &s.t.cap.pubkey(), None, &a);
+    let entry = token_pda(&coin.mint);
+    for m in ix.accounts.iter_mut().filter(|m| m.pubkey == entry) {
+        m.is_writable = false;
+    }
+    s.t.reset_budget();
+    let cap = s.t.cap.insecure_clone();
+    expect_anchor_err(
+        send(&mut s.t.env.svm, &[ix], &[&cap]),
+        anchor_lang::error::ErrorCode::ConstraintMut,
+    );
+}
+
+/// A 50% pump does not let the captain leave early: the floor values the
+/// stake at min(spot, mark), and the mark follows 10% per interval.
+#[test]
+fn captain_floor_after_a_pump_uses_the_lower_of_spot_and_mark() {
+    let mut s = open_seas(2_000, 18_000);
+    let a = s.buy(1_900);
+    s.t.swap_fresh(&a).unwrap();
+    let cap = s.t.cap.insecure_clone();
+    let ix = ix_create_ata(
+        &cap.pubkey(),
+        &cap.pubkey(),
+        &s.meme.mint,
+        &spl_token_interface::ID,
+    );
+    send(&mut s.t.env.svm, &[ix], &[&cap]).unwrap();
+    // MEME pumps 50% to $0.075. At spot: NAV 18,100 + 38,000 x 0.075 = 20,950,
+    // pps 1.0475, and 1,800 left would be worth 1,885.5 >= basis left 1,881.
+    s.set_meme_price(SB_ONE * 3 / 40);
+    expect_err(
+        exit(&mut s.t.env, &s.t.f, &cap, 200 * USDC),
+        ErrorCode::CaptainStakeFloor,
+    );
+    // Four intervals: mark 0.055, 0.0605, 0.06655, 0.073205. pps 1.044089,
+    // 1,800 x 1.044089 = 1,879.36 < 1,881.
+    for _ in 0..4 {
+        warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+        s.refresh();
+        poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+    }
+    expect_err(
+        exit(&mut s.t.env, &s.t.f, &cap, 200 * USDC),
+        ErrorCode::CaptainStakeFloor,
+    );
+    // The fifth step reaches the spot: 1,885.5 >= 1,881.
+    warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+    s.refresh();
+    exit(&mut s.t.env, &s.t.f, &cap, 200 * USDC).unwrap();
+}
+
+/// A 10x pump does not raise the captain stake that caps T3 buys.
+#[test]
+fn t3_cap_stake_ignores_a_pump() {
+    let mut s = open_seas(1_000, 19_000);
+    let a = s.buy(500);
+    s.t.swap_fresh(&a).unwrap();
+    // MEME pumps 10x to $0.50. At spot: NAV 19,500 + 10,000 x 0.5 = 24,500,
+    // pps 1.225, captain stake 1,225. At the mark ($0.05) the stake is 1,000.
+    s.set_meme_price(SB_ONE / 2);
+    let usdc = s.t.env.usdc;
+    // 700 more (1,400 MEME at $0.50): basis 1,200 fits 1,225, not 1,000.
+    let a = SwapArgs::new(usdc, s.meme.mint, 700 * USDC, 1_400 * MEME, 2_000, 1);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    let a = SwapArgs::new(usdc, s.meme.mint, 500 * USDC, 1_000 * MEME, 2_000, 1);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 1_000 * USDC);
+}
+
+#[test]
 fn member_exit_scales_the_t3_basis() {
     let mut s = open_seas(1_000, 19_000);
     let a = s.buy(1_000);

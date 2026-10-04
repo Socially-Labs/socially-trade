@@ -749,25 +749,42 @@ pub fn price_account(mint: &Pubkey) -> Pubkey {
 /// - KaminoReserve: `[reserve, price_account(reserve)]` (the underlying's Pyth account).
 /// - Switchboard: `[feed, UNUSED_PRICE_ACCOUNT]`.
 pub fn price_accounts(env: &Env, mint: &Pubkey) -> [Pubkey; 2] {
-    let source = env
-        .svm
-        .get_account(&token_pda(mint))
-        .filter(|a| a.owner == v1_core::ID)
-        .map(|a| {
-            TokenEntry::try_deserialize(&mut &a.data[..])
-                .unwrap()
-                .price_source
-        });
-    match source {
+    match listed_source(env, mint) {
         Some(PriceSource::KaminoReserve { reserve, .. }) => [reserve, price_account(&reserve)],
         Some(PriceSource::Switchboard { feed, .. }) => [feed, UNUSED_PRICE_ACCOUNT],
         _ => [price_account(mint), UNUSED_PRICE_ACCOUNT],
     }
 }
 
+/// The price source in `mint`'s registry entry; None when not listed (USDC).
+pub fn listed_source(env: &Env, mint: &Pubkey) -> Option<PriceSource> {
+    env.svm
+        .get_account(&token_pda(mint))
+        .filter(|a| a.owner == v1_core::ID)
+        .map(|a| {
+            TokenEntry::try_deserialize(&mut &a.data[..])
+                .unwrap()
+                .price_source
+        })
+}
+
+/// The registry entry of `mint`, as a NAV or trade account: writable for a
+/// Switchboard token (the entry holds its mark price), else read only.
+pub fn entry_meta(env: &Env, mint: &Pubkey) -> AccountMeta {
+    match listed_source(env, mint) {
+        Some(PriceSource::Switchboard { .. }) => AccountMeta::new(token_pda(mint), false),
+        _ => AccountMeta::new_readonly(token_pda(mint), false),
+    }
+}
+
+/// The token entry of `mint` (mark price included).
+pub fn read_entry(env: &Env, mint: &Pubkey) -> TokenEntry {
+    read_account(&env.svm, &token_pda(mint))
+}
+
 /// NAV remaining accounts for the fund's current holdings:
 /// `[vault_i, token_entry_i, price_a_i, price_b_i]` per holding, in order
-/// (price accounts from `price_accounts`).
+/// (price accounts from `price_accounts`, entry from `entry_meta`).
 pub fn nav_accounts(env: &Env, f: &FundHandles) -> Vec<AccountMeta> {
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     fund.holdings[..fund.holdings_len as usize]
@@ -777,7 +794,7 @@ pub fn nav_accounts(env: &Env, f: &FundHandles) -> Vec<AccountMeta> {
             let [a, b] = price_accounts(env, mint);
             [
                 AccountMeta::new_readonly(ata(&f.fund, mint, &token_program), false),
-                AccountMeta::new_readonly(token_pda(mint), false),
+                entry_meta(env, mint),
                 AccountMeta::new_readonly(a, false),
                 AccountMeta::new_readonly(b, false),
             ]
@@ -792,8 +809,19 @@ pub fn ix_deposit(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -> Ins
     ix
 }
 
-/// `deposit` with NO remaining accounts (append your own).
+/// `deposit` with NO remaining accounts (append your own), no share minimum.
 pub fn ix_deposit_bare(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -> Instruction {
+    ix_deposit_min(env, f, user, amount, 0)
+}
+
+/// `deposit` with NO remaining accounts and a `min_shares` limit.
+pub fn ix_deposit_min(
+    env: &Env,
+    f: &FundHandles,
+    user: &Pubkey,
+    amount: u64,
+    min_shares: u64,
+) -> Instruction {
     v1_ix(
         v1_core::accounts::Deposit {
             user: *user,
@@ -811,7 +839,7 @@ pub fn ix_deposit_bare(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -
             associated_token_program: anchor_spl::associated_token::ID,
             system_program: anchor_lang::system_program::ID,
         },
-        v1_core::instruction::Deposit { amount },
+        v1_core::instruction::Deposit { amount, min_shares },
     )
 }
 
@@ -1561,7 +1589,17 @@ pub fn ix_swap(
         },
     );
     ix.accounts.extend(trade_remaining(env, f, a));
+    writable_output_entry(env, a, &mut ix);
     ix
+}
+
+/// A new Switchboard output stores its first mark in its entry: make the
+/// `output_entry` of the trade writable for a Switchboard token.
+pub fn writable_output_entry(env: &Env, a: &SwapArgs, ix: &mut Instruction) {
+    let want = entry_meta(env, &a.output);
+    for m in ix.accounts.iter_mut().filter(|m| m.pubkey == want.pubkey) {
+        m.is_writable |= want.is_writable;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1641,6 +1679,7 @@ pub fn ix_execute_proposal(
         v1_core::instruction::ExecuteProposal { venue_data: data },
     );
     ix.accounts.extend(trade_remaining(env, f, a));
+    writable_output_entry(env, a, &mut ix);
     ix
 }
 
@@ -1742,4 +1781,15 @@ pub fn ix_poke_nav(env: &Env, f: &FundHandles) -> Instruction {
     );
     ix.accounts.extend(nav_accounts(env, f));
     ix
+}
+
+/// Send `poke_nav` for the fund's current holdings, paid by `payer`.
+#[allow(clippy::result_large_err)] // LiteSVM's own error type.
+pub fn poke(
+    env: &mut Env,
+    f: &FundHandles,
+    payer: &Keypair,
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let ix = ix_poke_nav(env, f);
+    send(&mut env.svm, &[ix], &[payer])
 }
