@@ -75,3 +75,7 @@ Order/trial clocks are accelerated in test fixtures. Failure tests inject databa
 ## History extension — October 4, 2026
 
 The full backend suite passes 80 test results with zero failures, skips or cancellations. Seven new scenario groups plus their enclosing suite check full order and Crew event pagination beyond 100 entries, tied timestamps, stable pages during new submissions, cross-fund Captain history and statistics, partial-fill counts, fill amounts, private settlement fields, Crew exits, authentication and invalid/foreign cursors. Each run uses a disposable local PostgreSQL schema; no Pyth or external market requests are made.
+
+## Authentication provider change — October 4, 2026
+
+Privy is now the sole runtime provider. Generic JWKS and shared development-token paths have been removed. Existing simulations now use locally signed ES256 access tokens and the same verifier as production. The earlier passing counts above describe the earlier runs; this fixture migration was syntax-checked but the database suite has not been rerun. A real Privy app sign-in remains unverified.

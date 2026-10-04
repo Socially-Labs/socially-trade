@@ -4,12 +4,26 @@ The client signs in with Privy and sends its access token as a bearer token.
 The backend verifies that token and maps its `did:privy:...` subject to the local
 PostgreSQL user. Tokens and Privy secrets are not saved in the database.
 
+## Get your Privy configuration
+
+1. Sign in at [Privy Dashboard](https://dashboard.privy.io/) and create or select your app.
+2. Open **Configuration → App settings → Basics** and copy the **App ID**.
+3. Find the app's **verification key**, and copy the full public PEM key, including
+   `BEGIN PUBLIC KEY` and `END PUBLIC KEY`. Do not generate a wallet authorization
+   signing key for this setting; it must verify the app's access tokens.
+4. Enable the login methods your client will use, such as email or Google.
+5. Configure your client domains/redirects for the intended environment.
+
+Dashboard navigation can change. The relevant values are the App ID and app access-token
+verification public key. The app secret shown in the dashboard is not required by
+this backend's local verification flow. Use separate Privy apps/configuration for
+isolated development and production identities if desired.
+
 ## Configure the API
 
 Set server environment variables before starting the API:
 
 ```dotenv
-AUTH_PROVIDER=privy
 PRIVY_APP_ID=your-privy-app-id
 PRIVY_VERIFICATION_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 ```
@@ -53,7 +67,7 @@ development token as a substitute.
 
 ## Use protected endpoints
 
-When `AUTH_PROVIDER=privy`, send the same Privy access token to `/v0/me`, order
+Send the same Privy access token to `/v0/me`, order
 submissions, Crew joins/exits and other authenticated endpoints. The server verifies
 it on each request. The bootstrap endpoint does not issue a second API token,
 create a cookie session or refresh Privy tokens.
@@ -78,10 +92,9 @@ rotates your verification key and restart/reconfigure the service as needed.
 
 ## Existing authentication and migration
 
-With `AUTH_PROVIDER` unset or set to `jwt`, generic `AUTH_JWKS_URL`, `AUTH_ISSUER`
-and `AUTH_AUDIENCE` verification remains available. Development-token authentication
-is still disabled in production. The generic configuration is not a fallback for
-failed Privy token verification.
+Privy is the only provider in every environment. Generic JWKS configuration,
+provider selection and shared development tokens have been removed. Other
+provider tokens are rejected; there is no development identity bypass.
 
 Privy DIDs identify distinct accounts from former development or other-provider
 subjects. Existing trial balances/history are not automatically linked or migrated.
@@ -89,6 +102,8 @@ Do not link accounts based on a client-supplied email or wallet address.
 
 This integration does not create wallets, sign transactions or call the v1 program.
 It requires your actual Privy app configuration for live sign-in validation. The
-existing 80-test report predates this integration and is not evidence of Privy verification.
+previous 80-test report predates this integration. The existing simulation fixtures
+now sign local ES256 tokens through the production verifier; those changes have
+not been run as part of this provider cleanup.
 
 Reference: [Privy access-token documentation](https://docs.privy.io/authentication/user-authentication/access-tokens).
