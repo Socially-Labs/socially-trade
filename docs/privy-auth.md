@@ -26,7 +26,7 @@ Set server environment variables before starting the API:
 PRIVY_APP_ID=your-privy-app-id
 ```
 
-Leave `PRIVY_VERIFICATION_KEY` unset for normal use. The API fetches and caches the
+The manual `PRIVY_VERIFICATION_KEY` setting has been removed. The API fetches and caches the
 app's public keys for up to one hour, with a 30-second cooldown between key refreshes
 and a five-second fetch timeout. It supports key rotation without manually copying
 a PEM key. The first verification and subsequent refreshes require network access
@@ -35,10 +35,8 @@ signature verification. Configure actual environment variables through the exist
 runtime/deployment environment; copying `.env.example` alone does not load it.
 The deployed API must use HTTPS.
 
-An optional `PRIVY_VERIFICATION_KEY` public PEM override is supported for isolated
-simulations or explicitly pinned keys. Both real newlines and escaped `\n` are
-accepted. An override disables automatic fetching and rotation; remove any placeholder
-value from your environment to use the normal JWKS path.
+Simulations mock the app's public JWKS response and use locally signed tokens;
+there is no runtime public-key override or development identity bypass.
 
 ## Bootstrap the backend account
 
@@ -90,12 +88,11 @@ retrying the same financial action.
 - Expiry/not-before are checked; future issued-at timestamps beyond five seconds reject.
 - Subject must be a Privy DID. Development identity headers cannot override it.
 - Missing/invalid/expired token: `401 unauthorized`.
-- Missing configuration or invalid public-key configuration: `503 auth_unconfigured`.
+- Missing app ID configuration: `503 auth_unconfigured`.
 - Public-key fetch failure or malformed key service response: `503 auth_unavailable`.
 
 Keep server clocks synchronized. Verification does not check remote session
-revocation on every request. JWKS keys refresh automatically; if using a PEM
-override, rotate the configured public key manually when needed.
+revocation on every request. JWKS keys refresh automatically.
 
 ## Existing authentication and migration
 
@@ -110,7 +107,7 @@ Do not link accounts based on a client-supplied email or wallet address.
 This integration does not create wallets, sign transactions or call the v1 program.
 It requires your actual Privy app configuration for live sign-in validation. The
 previous 80-test report predates this integration. The existing simulation fixtures
-now sign local ES256 tokens through the production verifier; those changes have
+now sign local ES256 tokens and mock JWKS through the production verifier; those changes have
 not been run as part of this provider cleanup.
 
 Reference: [Privy access-token documentation](https://docs.privy.io/authentication/user-authentication/access-tokens).
