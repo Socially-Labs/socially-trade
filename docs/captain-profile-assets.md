@@ -10,12 +10,14 @@ Local PostgreSQL has been started and migrations through **013** applied. Worksp
 
 | Setting | Deployed value |
 | --- | --- |
-| Stack | `socially-captain-assets` |
-| Region | `us-east-1` |
-| Staging bucket | `socially-captains-420053132650-us-east-1-uploads` |
-| Processed bucket | `socially-captains-420053132650-us-east-1-assets` |
-| Delivery origin | `https://d3t09o1mis44fs.cloudfront.net` |
-| Distribution | `E1UWF4WP98P6XW` |
+| Stack | `socially-captain-assets-osaka` |
+| S3 region | `ap-northeast-3` (Osaka) |
+| Staging bucket | `socially-captains-420053132650-ap-northeast-3-uploads` |
+| Processed bucket | `socially-captains-420053132650-ap-northeast-3-assets` |
+| Delivery origin | `https://djn7n4s9w26n5.cloudfront.net` |
+| Distribution | `EB2HTF0G8KY5U` |
+
+CloudFront is global; only its S3 origin is regional. On October 5, the origin was switched to Osaka after confirming both previous US-region buckets were empty. The previous stack is retained and is no longer the active storage configuration. Monthly pricing and usage examples are in [Captain asset costs](captain-assets-costs.md).
 
 AWS configuration reads confirmed that the processed bucket blocks public access and its policy is not public, staging CORS allows PUT from `http://localhost:3000`, and pending originals expire after one day. These are infrastructure checks, not evidence of a completed user upload.
 
@@ -141,9 +143,9 @@ Local development uses the existing AWS profile through the SDK's default creden
 
 | Variable | Purpose |
 | --- | --- |
-| `AWS_REGION` | Bucket/stack region; current setup default `us-east-1` |
+| `AWS_REGION` | Bucket/stack region; current setup default `ap-northeast-3` |
 | `AWS_PROFILE` | Optional local profile selection; omit for the default profile or production IAM role |
-| `ASSET_STACK_NAME` | Dedicated CloudFormation stack; default `socially-captain-assets` |
+| `ASSET_STACK_NAME` | Dedicated CloudFormation stack; default `socially-captain-assets-osaka` |
 | `ASSET_BUCKET_PREFIX` | Stable bucket name prefix; default `socially-captains`; changing deployed bucket names requires a data migration |
 | `S3_UPLOAD_ORIGINS` | Exact comma-separated app/browser origins; default `http://localhost:3000`, HTTPS required in production |
 | `S3_ASSET_BUCKET` | Processed bucket name, written by setup |
