@@ -39,6 +39,10 @@ cargo test -p v1-core
 
 ## Local development
 
+Privy authentication is available through `POST /v0/auth/privy`. Configure
+`AUTH_PROVIDER=privy`, `PRIVY_APP_ID` and `PRIVY_VERIFICATION_KEY` to use Privy tokens
+across protected endpoints. See [Privy setup and API flow](docs/privy-auth.md).
+
 Requires Node.js 22+ and pnpm 10.
 
 ```sh

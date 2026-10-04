@@ -1,16 +1,16 @@
 # Graph Report - Socially Trade  (2026-10-04)
 
 ## Corpus Check
-- 120 files · ~65,132 words
+- 123 files · ~65,992 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1301 nodes · 3407 edges · 72 communities (51 shown, 10 thin omitted)
+- 1313 nodes · 3432 edges · 72 communities (51 shown, 10 thin omitted)
 - Extraction: 80% EXTRACTED · 20% INFERRED · 0% AMBIGUOUS · INFERRED: 693 edges (avg confidence: 0.85)
-- Token usage: this AST refresh uses no LLM tokens. Prior agent-assisted semantic extraction usage is unknown.
+- Token usage: this AST refresh uses no LLM tokens; prior semantic extraction usage is unknown.
 
 ## Graph Freshness
-- Built from commit: `2b6ec73d`
+- Built from commit: `c679093e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -54,7 +54,7 @@
 - fund_with_member
 - expect_err
 - math.rs
-- ProposeTrade
+- Trade
 - v1-core/src/lib.rs
 - warp
 - test_vote.rs
@@ -63,11 +63,11 @@
 - CreateFund
 - Captain flow — v0 developer handoff
 - Deposit
-- swap.rs
-- Trade
-- WriteLog
+- Config
+- InitializeConfig
+- Privy backend authentication
 - events.rs
-- pyth.rs
+- compute
 - README: implemented backend and local development
 - swap
 - Phased v0 delivery plan and recorded backend checkpoints
@@ -82,7 +82,7 @@
 2. `Env` - 61 edges
 3. `trading_fund()` - 53 edges
 4. `FundHandles` - 51 edges
-5. `ApiFault` - 46 edges
+5. `ApiFault` - 48 edges
 6. `fund_with_member()` - 46 edges
 7. `deposit()` - 43 edges
 8. `warp()` - 37 edges
@@ -112,7 +112,7 @@
 
 ### Community 0 - "ApiFault"
 Cohesion: 0.08
-Nodes (65): registerAccountRoutes(), beginIdempotent(), finishIdempotent(), PositionValue, saveNav(), Valuation, valueFund(), createApp() (+57 more)
+Nodes (68): registerAccountRoutes(), beginIdempotent(), finishIdempotent(), PositionValue, saveNav(), Valuation, valueFund(), createApp() (+60 more)
 
 ### Community 1 - "Whitepaper v1.0: proposed live socially.trade product"
 Cohesion: 0.15
@@ -128,7 +128,7 @@ Nodes (13): Verified per-asset ledger and projection reconciliation, Verified JW
 
 ### Community 4 - "api/package.json"
 Cohesion: 0.06
-Nodes (32): dependencies, decimal.js, fastify, jose, pg, @socially/contracts, @socially/db, @socially/domain (+24 more)
+Nodes (31): dependencies, decimal.js, fastify, jose, pg, @socially/contracts, @socially/db, @socially/domain (+23 more)
 
 ### Community 5 - "worker/package.json"
 Cohesion: 0.07
@@ -227,40 +227,40 @@ Cohesion: 0.67
 Nodes (3): Workspace apps/* packages, pnpm workspace globs, Workspace packages/* packages
 
 ### Community 42 - "common/mod.rs"
-Cohesion: 0.07
-Nodes (110): InstructionData, LiteSVM, config_pda(), custom_code(), Env, exit_accounts(), fund_pda(), funded() (+102 more)
+Cohesion: 0.06
+Nodes (134): InstructionData, LiteSVM, ata(), config_pda(), create_fund(), create_mint(), custom_code(), Env (+126 more)
 
 ### Community 43 - "fund_with_member"
-Cohesion: 0.06
-Nodes (105): create_fund(), delegate_pda(), deposit(), events(), exit(), expect_anchor_err(), expect_code(), expect_log() (+97 more)
+Cohesion: 0.07
+Nodes (80): deposit(), exit(), fund_with_member(), inject_holding(), listed_sol(), mint_usdc(), now(), price_account() (+72 more)
 
 ### Community 44 - "expect_err"
-Cohesion: 0.10
-Nodes (69): ata(), create_mint(), expect_err(), ix_create_ata(), register_token(), set_usd_price(), setup_venue_pool(), Trading (+61 more)
+Cohesion: 0.11
+Nodes (67): delegate_pda(), expect_err(), ix_add_delegate(), ix_swap(), register_token(), set_usd_price(), Trading, trading_fund() (+59 more)
 
 ### Community 45 - "math.rs"
-Cohesion: 0.08
-Nodes (18): ErrorCode, bps_of(), fee_below_one_share_keeps_hwm(), fee_whitepaper_priya(), fee_with_zero_pps_gives_zero_fee_shares(), FeeOutcome, mul_div_floor(), no_fee_at_hwm() (+10 more)
+Cohesion: 0.05
+Nodes (32): ErrorCode, bps_of(), fee_below_one_share_keeps_hwm(), fee_whitepaper_priya(), fee_with_zero_pps_gives_zero_fee_shares(), FeeOutcome, mul_div_floor(), no_fee_at_hwm() (+24 more)
 
-### Community 46 - "ProposeTrade"
-Cohesion: 0.19
-Nodes (22): cancel_proposal(), CancelProposal, CastVote, execute_proposal(), ExecuteProposal, propose_trade(), ProposeTrade, Account (+14 more)
+### Community 46 - "Trade"
+Cohesion: 0.06
+Nodes (75): add_delegate(), AddDelegate, charge_delegate(), code(), d(), daily_limit_and_reset(), day_volume_overflow_is_math_overflow(), per_trade_limit() (+67 more)
 
 ### Community 47 - "v1-core/src/lib.rs"
-Cohesion: 0.06
-Nodes (64): ProgramData, apply_token(), apply_venue(), ApplyToken, ApplyVenue, check_due(), eta(), queue_token() (+56 more)
+Cohesion: 0.07
+Nodes (58): apply_token(), apply_venue(), ApplyToken, ApplyVenue, check_due(), eta(), queue_token(), queue_venue() (+50 more)
 
 ### Community 48 - "warp"
 Cohesion: 0.11
 Nodes (37): E, apply_policy(), ApplyPolicy, poke_nav(), PokeNav, Account, Box, Context (+29 more)
 
 ### Community 49 - "test_vote.rs"
-Cohesion: 0.23
-Nodes (32): venue_data(), big_buy(), big_trade_fails_without_majority(), big_trade_passes_with_majority(), cancelled_proposal_cannot_execute(), crew(), double_vote_rejected(), exactly_half_is_not_a_majority() (+24 more)
+Cohesion: 0.20
+Nodes (34): SwapArgs, venue_data(), big_buy(), big_trade_fails_without_majority(), big_trade_passes_with_majority(), cancelled_proposal_cannot_execute(), crew(), double_vote_rejected() (+26 more)
 
 ### Community 50 - "Fund"
-Cohesion: 0.15
-Nodes (24): add_delegate(), AddDelegate, charge_delegate(), code(), d(), daily_limit_and_reset(), day_volume_overflow_is_math_overflow(), per_trade_limit() (+16 more)
+Cohesion: 0.17
+Nodes (18): charge_fee(), Exit, fresh_pps(), Account, AccountInfo, Box, Context, InterfaceAccount (+10 more)
 
 ### Community 51 - "v0 paper trading architecture: implementation proposal"
 Cohesion: 0.13
@@ -271,32 +271,32 @@ Cohesion: 0.12
 Nodes (19): create_fund(), create_share_mint(), CreateFund, Account, AssociatedToken, Box, Context, Interface (+11 more)
 
 ### Community 53 - "Captain flow — v0 developer handoff"
-Cohesion: 0.12
-Nodes (16): 10. Review the completed record, 1. Sign in and initialize the account, 2. Create a Captain profile, 3. Resume an existing trial or create a new one, 4. Open the fund dashboard, 5. Preview a paper order, 6. Submit and follow the order, 7. Publish decisions and communicate with Crew (+8 more)
+Cohesion: 0.08
+Nodes (23): 10. Review the completed record, 1. Sign in and initialize the account, 2. Create a Captain profile, 3. Resume an existing trial or create a new one, 4. Open the fund dashboard, 5. Preview a paper order, 6. Submit and follow the order, 7. Publish decisions and communicate with Crew (+15 more)
 
 ### Community 54 - "Deposit"
-Cohesion: 0.05
-Nodes (45): Deposit, Account, AssociatedToken, Box, Context, Interface, InterfaceAccount, Mint (+37 more)
+Cohesion: 0.11
+Nodes (17): Deposit, Account, AssociatedToken, Box, Context, Interface, InterfaceAccount, Mint (+9 more)
 
-### Community 55 - "swap.rs"
-Cohesion: 0.38
-Nodes (16): call_venue(), clean_vault_amount(), execute_swap(), listed(), output_vault_before(), Plan, prepare(), route_hash() (+8 more)
+### Community 55 - "Config"
+Cohesion: 0.13
+Nodes (14): charge_annual_fee(), ChargeAnnualFee, Account, Box, Context, InterfaceAccount, Mint, Program (+6 more)
 
-### Community 56 - "Trade"
-Cohesion: 0.15
-Nodes (15): Account, AssociatedToken, Box, Context, Interface, InterfaceAccount, Mint, Program (+7 more)
+### Community 56 - "InitializeConfig"
+Cohesion: 0.17
+Nodes (12): ProgramData, handler(), InitializeConfig, Account, Context, InterfaceAccount, Mint, Program (+4 more)
 
-### Community 57 - "WriteLog"
-Cohesion: 0.25
-Nodes (8): captain_log(), Account, Box, Context, Option, Result, Signer, WriteLog
+### Community 57 - "Privy backend authentication"
+Cohesion: 0.29
+Nodes (6): Bootstrap the backend account, Configure the API, Existing authentication and migration, Privy backend authentication, Use protected endpoints, Verification and errors
 
 ### Community 58 - "events.rs"
-Cohesion: 0.25
-Nodes (13): BreakerChanged, CaptainLog, Deposited, Exited, FeeCharged, FundCreated, PolicyApplied, PolicyQueued (+5 more)
+Cohesion: 0.23
+Nodes (14): BreakerChanged, CaptainLog, Deposited, Exited, FeeCharged, FundCreated, PolicyApplied, PolicyQueued (+6 more)
 
-### Community 59 - "pyth.rs"
-Cohesion: 0.10
-Nodes (25): compute(), NavResult, AccountInfo, Option, Pubkey, Result, token_entry(), update_breaker() (+17 more)
+### Community 59 - "compute"
+Cohesion: 0.33
+Nodes (11): compute(), NavResult, AccountInfo, Option, Pubkey, Result, token_entry(), update_breaker() (+3 more)
 
 ### Community 61 - "README: implemented backend and local development"
 Cohesion: 0.26
@@ -307,35 +307,35 @@ Cohesion: 0.17
 Nodes (11): Context, Interface, InterfaceAccount, Mint, Result, Signer, TokenAccount, TokenInterface (+3 more)
 
 ### Community 63 - "Phased v0 delivery plan and recorded backend checkpoints"
-Cohesion: 0.11
-Nodes (17): Captain history and statistics, Cursor convention, Fund order history, Paper history API, Private Crew transaction timeline, Verification, Recorded implemented accounts, shares, execution and social backend checkpoints, Future Phase 6 mobile Captain and Crew flows (+9 more)
+Cohesion: 0.18
+Nodes (11): Recorded implemented accounts, shares, execution and social backend checkpoints, Future Phase 6 mobile Captain and Crew flows, Phase-scoped reviewable commits on main, Phased v0 delivery plan and recorded backend checkpoints, Completed foundation: Git, pnpm, Turborepo, TypeScript and health API, Future Phase 9 operational hardening, Recorded implemented performance, fees, trial settlement and retained records, Future risk-adjusted rankings; existing ranking is net return only (+3 more)
 
 ### Community 64 - "v1-core"
 Cohesion: 0.22
 Nodes (8): Build and test, Client notes, Disclosures and accepted risks, Instructions, Out of scope (Phase 2), Pricing, The six promises and what enforces them, v1-core
 
 ## Knowledge Gaps
-- **270 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+265 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 467 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **276 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+271 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 472 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Fund` connect `Fund` to `common/mod.rs`, `fund_with_member`, `ProposeTrade`, `warp`, `CreateFund`, `Deposit`, `Trade`, `WriteLog`, `pyth.rs`?**
-  _High betweenness centrality (0.076) - this node is a cross-community bridge._
-- **Why does `Config` connect `v1-core/src/lib.rs` to `common/mod.rs`, `ProposeTrade`, `warp`, `CreateFund`, `Deposit`, `swap.rs`, `Trade`, `pyth.rs`?**
-  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+- **Why does `Fund` connect `Fund` to `fund_with_member`, `Trade`, `v1-core/src/lib.rs`, `warp`, `CreateFund`, `Deposit`, `Config`, `compute`?**
+  _High betweenness centrality (0.080) - this node is a cross-community bridge._
 - **Why does `expect_err()` connect `expect_err` to `common/mod.rs`, `fund_with_member`, `math.rs`, `warp`, `test_vote.rs`?**
-  _High betweenness centrality (0.040) - this node is a cross-community bridge._
+  _High betweenness centrality (0.047) - this node is a cross-community bridge._
+- **Why does `Config` connect `Config` to `common/mod.rs`, `Trade`, `v1-core/src/lib.rs`, `warp`, `Fund`, `CreateFund`, `Deposit`, `InitializeConfig`, `compute`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **Are the 92 inferred relationships involving `expect_err()` (e.g. with `initialize_config_rejects_frozen_program()` and `initialize_config_rejects_non_upgrade_authority()`) actually correct?**
   _`expect_err()` has 92 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 43 inferred relationships involving `trading_fund()` (e.g. with `exit_works_when_paused_frozen_and_stale()` and `half_sol_fund()`) actually correct?**
   _`trading_fund()` has 43 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _270 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _276 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `ApiFault` be split into smaller, more focused modules?**
-  _Cohesion score 0.08235294117647059 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0761904761904762 - nodes in this community are weakly interconnected._
 ## Refresh scope
 
-Code graph refreshed for the v0 history endpoints and pulled v1 Rust programs. Semantic documentation links retain the previous extraction and need an agent-assisted refresh. Root Cargo.toml produced no nodes in the AST extractor; verify its workspace relationships in source. Previously recorded unresolved endpoint and collapsed-edge limitations remain relevant to graph completeness.
+AST refreshed for Privy verification and authentication routes. Semantic documentation links retain the previous extraction. Root Cargo.toml produced no nodes; graph completeness and merged relationships must be checked against source.
