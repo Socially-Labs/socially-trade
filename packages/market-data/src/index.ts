@@ -93,3 +93,6 @@ export function simulateFill(
     cashChangeUsdc: fixed(cashChange, USDC_DECIMALS),
   };
 }
+
+export { fetchJupiterPrices, blockTime, SOL_MINT, USDC_MINT, JupiterHttpError } from "./jupiter.js";
+export type { JupiterPrice } from "./jupiter.js";

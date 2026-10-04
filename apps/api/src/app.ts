@@ -1,4 +1,6 @@
 import Fastify from "fastify";
+import websocket from "@fastify/websocket";
+import { registerMarketRoutes } from "./market-routes.js";
 import type { DbPool } from "@socially/db";
 import { ApiFault } from "./errors.js";
 import { registerAccountRoutes } from "./account-routes.js";
@@ -46,6 +48,9 @@ export function createApp(pool: DbPool | null) {
     app.log.error(error);
     reply.code(500).send({ error: "internal_error", message: "Internal server error" });
   });
+
+  app.register(websocket, { options: { maxPayload: 8192 } });
+  app.register(async scope => { registerMarketRoutes(scope, db); });
 
   app.get("/health", async () => ({ status: "ok", mode: "PAPER" }));
 

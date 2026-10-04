@@ -8,7 +8,9 @@ Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SO
 
 The current delivery is backend only, as requested. Verification uses API calls, PostgreSQL simulations and test cases; no frontend or Android application is included.
 
-UI developers: see the [complete v0 API integration specification](docs/ui-api-spec-v0.md) for all 36 operations, request/response contracts, authentication, pagination, errors and screen flows.
+UI developers: see the [complete v0 API integration specification](docs/ui-api-spec-v0.md) for all 39 operations, request/response contracts, authentication, pagination, errors and screen flows.
+
+Captain username checks use `GET /v0/captains/handle-availability?handle=jassbawa`, with an optional Redis Bloom index and PostgreSQL fallback. See [setup and consistency details](docs/captain-handle-bloom.md).
 
 ### Trade and Crew history
 
@@ -102,7 +104,7 @@ Available endpoints:
 
 `POST /v0/funds` requires a Captain profile and takes `{ "name": "Fund name", "description": "Optional strategy" }`. The server seeds it with 1,000 virtual USDC and a 30-day trial. Financial amounts are JSON decimal strings.
 
-The market-data worker requires a Pyth API key: set `PYTH_API_KEY` and run `pnpm --filter @socially/worker price:once` or `pnpm --filter @socially/worker start` after building. For a local-only observation, set `DEV_PRICE_SEED_ENABLED=true` and run `pnpm --filter @socially/worker price:seed -- 150.00`. The published assumptions are in [the v0 fill model](./docs/v0-fill-model.md).
+The separate Jupiter ingestor polls SOL and USDC every five seconds, records observations in PostgreSQL, and publishes snapshots/replay events through Redis to `GET /v0/ws`. Configure the Jupiter keys, organisation ID, Redis and Solana RPC, migrate through 011, and run the ingestor alongside the API and paper worker. See [setup, architecture and WebSocket contracts](docs/jupiter-market-stream-v0.md). For a local-only observation, set `DEV_PRICE_SEED_ENABLED=true` and run `pnpm --filter @socially/worker price:seed -- 150.00`. The published assumptions are in [the v0 fill model](./docs/v0-fill-model.md).
 
 The worker also delivers fund outbox records to each current Captain and Crew member's in-app inbox. Run `pnpm --filter @socially/worker notifications:once` to deliver one batch. External push delivery is not configured yet.
 

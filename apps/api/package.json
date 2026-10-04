@@ -11,16 +11,20 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@fastify/websocket": "^11.3.3",
     "@socially/contracts": "workspace:*",
     "@socially/db": "workspace:*",
     "@socially/domain": "workspace:*",
     "@socially/market-data": "workspace:*",
+    "@socially/market-stream": "workspace:*",
     "decimal.js": "^10.6.0",
     "fastify": "^5.12.5",
+    "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "pg": "^8.23.0"
   }

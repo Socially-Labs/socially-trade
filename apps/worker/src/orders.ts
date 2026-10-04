@@ -40,7 +40,7 @@ async function latestObservation(client: DbClient, after?: Date): Promise<Observ
   const result = await client.query<Observation>(
     `SELECT id, price_usdc::text, source_at, received_at FROM price_observations
      WHERE instrument_id = 'SOL'
-       AND (source = 'PYTH_HERMES' OR ($1::boolean AND source = 'DEV_SEED'))
+       AND (source = 'JUPITER_PRICE_V3' OR ($1::boolean AND source = 'DEV_SEED'))
        AND ($2::timestamptz IS NULL OR (received_at >= $2 AND source_at >= $2))
      ORDER BY source_at DESC, received_at DESC LIMIT 1`,
     [process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true", after ?? null],
