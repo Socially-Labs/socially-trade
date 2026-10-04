@@ -23,7 +23,8 @@
 //!   seeded at a pump do not raise the exit fee.
 //!
 //! Warmup: for `MARK_WARMUP_SLOTS` after a Switchboard token's marks are
-//! seeded (first read, or a new price source), `NavResult::warming` is true:
+//! seeded (first read, a new price source, or idle marks reseeded: see
+//! `switchboard::next_marks`), `NavResult::warming` is true:
 //! callers do not record the peak or `last_price_per_share` (`update_breaker`
 //! with `record = false`; the breaker can still trip), and the holding counts
 //! 0 toward the captain stake.
@@ -206,17 +207,23 @@ impl NavResult {
     /// The breaker inputs of this read for `total_shares`.
     pub fn breaker(&self, total_shares: u64) -> Result<BreakerPps> {
         let pps = |nav: u128| -> Result<u64> { Ok(math::price_per_share(nav, total_shares)?) };
-        // Marks seeded at a pump stay above the spot for many intervals; the
-        // lower of the two keeps the record and the peak off them. A dump
-        // cannot take a T3 holding under its cost.
-        let record = self
-            .nav_at_least_cost(ValuationMode::Ema)?
-            .min(self.nav_at_least_cost(ValuationMode::Spot)?);
         Ok(BreakerPps {
-            pps: pps(record)?,
+            pps: pps(self.record_nav()?)?,
             check: pps(self.valuation(ValuationMode::BreakerCheck)?.nav)?,
             record: !self.warming(),
         })
+    }
+
+    /// The fresh at-cost NAV: `min(Spot, Ema)`, each at least at cost
+    /// (`nav_at_least_cost`). Marks seeded at a pump stay above the spot for
+    /// many intervals; the lower of the two keeps the record and the peak
+    /// off them. A dump cannot take a T3 holding under its cost. The target
+    /// of the recorded pps, and a cap on the sale burn price
+    /// (`swap::burn_nav`).
+    pub fn record_nav(&self) -> Result<u128> {
+        Ok(self
+            .nav_at_least_cost(ValuationMode::Ema)?
+            .min(self.nav_at_least_cost(ValuationMode::Spot)?))
     }
 
     /// Every holding has a price (no `unpriced` holding).

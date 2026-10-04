@@ -26,7 +26,10 @@
 
 use {
     crate::{
-        constants::{BPS_DENOMINATOR, MARK_INTERVAL_SLOTS, MARK_MAX_STEP_BPS, MARK_WARMUP_SLOTS},
+        constants::{
+            BPS_DENOMINATOR, MARK_INTERVAL_SLOTS, MARK_MAX_IDLE_SLOTS, MARK_MAX_STEP_BPS,
+            MARK_WARMUP_SLOTS,
+        },
         errors::ErrorCode,
         pyth::PythPrice,
         state::Marks,
@@ -125,6 +128,10 @@ fn step(mark: i128) -> i128 {
 
 /// The marks after a read of `value` at `now_slot`.
 /// - Unseeded (deposit mark 0): both marks = value, all slots = now (seed).
+/// - Idle (the deposit mark has not stepped for `MARK_MAX_IDLE_SLOTS`): a
+///   seed, so a new warmup starts. A mark that no read moved for a while is
+///   no slow price of now: stepping it from a stale value would fake a T3
+///   loss (compensation) or price deposits far from the market.
 /// - Deposit mark: at most once per `MARK_INTERVAL_SLOTS`, toward the value
 ///   by at most `MARK_MAX_STEP_BPS` of the mark, both ways.
 /// - Low mark: drops to the value at once when the value is lower; else at
@@ -132,7 +139,7 @@ fn step(mark: i128) -> i128 {
 ///   So it is never above the value after a read, and a pump raises it 10%
 ///   per interval at most, from wherever the price really was.
 pub fn next_marks(m: Marks, value: i128, now_slot: u64) -> Marks {
-    if m.deposit <= 0 {
+    if m.deposit <= 0 || now_slot >= m.deposit_slot.saturating_add(MARK_MAX_IDLE_SLOTS) {
         return Marks {
             deposit: value,
             deposit_slot: now_slot,
@@ -585,6 +592,33 @@ mod tests {
         assert_eq!(m, seeded);
         assert!(m.warming(SLOT + MARK_WARMUP_SLOTS - 1));
         assert!(!m.warming(SLOT + MARK_WARMUP_SLOTS));
+    }
+
+    #[test]
+    fn an_idle_mark_reseeds_at_the_value_and_warms_again() {
+        let v = E18 / 20;
+        // The deposit mark stepped less than 10 intervals ago: one step.
+        let at = SLOT + MARK_MAX_IDLE_SLOTS - 1;
+        let m = next_marks(marks(v), E18 / 2, at);
+        assert_eq!(
+            (m.deposit, m.seed_slot),
+            (v * 11 / 10, SLOT - MARK_WARMUP_SLOTS)
+        );
+        // No step for 10 intervals: both marks reseed at the value, new warmup.
+        let at = SLOT + MARK_MAX_IDLE_SLOTS;
+        for value in [E18 / 2, E18 / 200] {
+            let m = next_marks(marks(v), value, at);
+            assert_eq!(
+                m,
+                Marks {
+                    deposit_slot: at,
+                    low_slot: at,
+                    seed_slot: at,
+                    ..marks(value)
+                }
+            );
+            assert!(m.warming(at));
+        }
     }
 
     #[test]

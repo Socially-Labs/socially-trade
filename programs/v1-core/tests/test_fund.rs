@@ -554,8 +554,12 @@ fn fund_with_meme() -> (Env, Keypair, FundHandles, SbToken) {
     let t = listed_meme(&mut env, Tier::T2);
     inject_holding(&mut env, &f, t.mint, 6_000_000_000_000);
     poke(&mut env, &f, &m).unwrap();
-    warp(&mut env.svm, MARK_WARMUP_SLOTS as i64);
-    refresh_meme(&mut env, &t);
+    // A read halfway keeps the marks active (an idle mark reseeds).
+    for _ in 0..2 {
+        warp(&mut env.svm, MARK_WARMUP_SLOTS as i64 / 2);
+        refresh_meme(&mut env, &t);
+        poke(&mut env, &f, &m).unwrap();
+    }
     settle_pps(&mut env, &f, &m, |env| refresh_meme(env, &t));
     assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
     (env, m, f, t)

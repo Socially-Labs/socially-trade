@@ -28,8 +28,11 @@
 //! captain stake value at the time of each buy. A sale of a holding with a basis takes out
 //! `basis * amount_in / position`. If the spot value received is less, the fund
 //! PDA (permanent delegate of the share mint) burns captain shares worth the
-//! loss at the pre-trade recorded price per share (`burn_nav`), at most the
-//! captain's balance.
+//! loss at the lower of the pre-trade recorded price per share (`burn_nav`)
+//! and the fresh pre-trade at-cost price per share (`NavResult::record_nav`),
+//! at most the captain's balance. The record lags a real crash that no read
+//! saw; the fresh price does not. When a holding does not price, the
+//! recorded price per share alone.
 //!
 //! Routes. A trade values its proceeds, and a T3 buy its cost, at a spot
 //! price, and a Switchboard price follows a pool the captain can move. So a
@@ -46,7 +49,8 @@
 //! price does not read counts 0 for the trade (`nav::compute_for_usdc_sale`).
 //! A 0 value lowers the pre-trade NAV, so the size limits get stricter. Such a
 //! trade writes no breaker state (record, peak, frozen) and no mark. A T3
-//! loss burn reads no fresh price (`burn_nav`), so it passes too.
+//! loss burn then uses the recorded price per share only (`burn_nav`), so it
+//! passes too.
 
 use {
     crate::{
@@ -677,10 +681,14 @@ fn apply_t3<'info>(
         let proceeds = priced.value_at(plan.out_idx, amount_out, ValuationMode::Spot)?;
         let loss = (out as u128).saturating_sub(proceeds);
         if loss > 0 {
-            // Shares worth the loss at the recorded pps (T3 at cost), so
-            // the crew's shares keep their value at cost. No fresh price is
-            // read, so a holding counted 0 does not change the burn.
-            let nav = burn_nav(&t.fund, 0)?;
+            // Shares worth the loss at the lower of the recorded pps and
+            // the fresh at-cost pps (pre-trade), so the crew's shares keep
+            // their value at cost after a real crash the record still lags.
+            // With a holding unpriced (counted 0), the recorded pps only.
+            let mut nav = burn_nav(&t.fund, 0)?;
+            if priced.complete() {
+                nav = nav.min(priced.record_nav()?);
+            }
             require!(nav > 0, ErrorCode::NavZero);
             let burn = stake.shares_worth(loss, nav, total)?;
             if burn > 0 {
@@ -835,7 +843,8 @@ pub(crate) fn captain_stake<'a, 'info>(
 /// The record values T3 at no less than cost and moves one step per
 /// interval at most, so neither a pump nor a dump moves it fast.
 /// - A sale burns shares that no one redeems; the crew's shares must keep
-///   their value at cost: `unrealized` = 0.
+///   their value at cost: `unrealized` = 0. The sale takes the min with the
+///   fresh at-cost NAV when every holding prices (see `apply_t3`).
 /// - An exit pays the burned shares out in kind, at their true value:
 ///   `unrealized` = the whole unrealized T3 loss (`NavResult::t3_loss`).
 pub(crate) fn burn_nav(fund: &Fund, unrealized: u128) -> Result<u128> {

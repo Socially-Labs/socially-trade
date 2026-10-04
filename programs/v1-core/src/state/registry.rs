@@ -59,16 +59,22 @@ pub struct TokenEntry {
     AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, Default, InitSpace,
 )]
 pub struct Marks {
-    /// Moves toward the feed value both ways, at most 10% per interval. Only
-    /// for the deposit upper bound.
+    /// Moves toward the feed value both ways, at most 10% per interval: the
+    /// token's EMA. For the `Ema` mode (the record target with `Spot`, so
+    /// the peak, last pps and annual fee; and the exit compensation),
+    /// `DepositUpperBound` and `High` (`max(spot, mark)`), and the exit fee
+    /// price (`min(spot, mark)` + std_dev).
     pub deposit: i128,
+    /// Slot of the last step of `deposit` (or the seed). After
+    /// `MARK_MAX_IDLE_SLOTS` with no step, the next read reseeds both marks.
     pub deposit_slot: u64,
     /// Drops to the feed value at once when the value is lower; rises at most
-    /// 10% per interval. For everything slow: the EMA mode (breaker, peak,
-    /// last pps, annual fee), the stake lower bound and the exit fee.
+    /// 10% per interval. Only for the captain stake (`StakeLowerBound`: T3
+    /// caps, captain exit floor) and the breaker trip check (`BreakerCheck`).
     pub low: i128,
     /// Slot of the last rise of `low` (or the seed).
     pub low_slot: u64,
-    /// Slot of the first read after a listing or a price source change.
+    /// Slot of the last seed: the first read after a listing or a price
+    /// source change, or the first read after the marks went idle.
     pub seed_slot: u64,
 }

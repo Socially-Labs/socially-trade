@@ -37,14 +37,18 @@ fn open_seas(cap_usd: u64, crew_usd: u64) -> Seas {
         100_000_000 * MEME,
     );
     // MEME already trades: fund 1 holds a little, and a read seeded its
-    // (shared) marks one warmup ago, so fund 2 values it at once.
+    // (shared) marks one warmup ago, so fund 2 values it at once. Reads
+    // since then keep the marks active (an idle mark reseeds).
     inject_holding(&mut t.env, &t.f, meme.mint, MEME);
     refresh_meme(&mut t.env, &meme);
     let cap = t.cap.insecure_clone();
     poke(&mut t.env, &t.f, &cap).unwrap();
-    warp(&mut t.env.svm, MARK_WARMUP_SLOTS as i64);
-    t.refresh_prices();
-    refresh_meme(&mut t.env, &meme);
+    for _ in 0..2 {
+        warp(&mut t.env.svm, MARK_WARMUP_SLOTS as i64 / 2);
+        t.refresh_prices();
+        refresh_meme(&mut t.env, &meme);
+        poke(&mut t.env, &t.f, &cap).unwrap();
+    }
     let ix = ix_create_fund_full(&t.cap.pubkey(), 2, cap_usd * USDC, usdc, true);
     send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
     t.f = FundHandles::new(&t.cap.pubkey(), 2, &usdc);
@@ -91,6 +95,20 @@ impl Seas {
         self.meme.fields.value = value;
         refresh_meme(&mut self.t.env, &self.meme);
     }
+    /// After a long warp (a listing timelock) MEME's marks are idle: fund 1
+    /// reads it now (a reseed), halfway and at the end of a new warmup, so
+    /// fund 2 values MEME as before.
+    fn rewarm_meme(&mut self) {
+        let cap = self.t.cap.insecure_clone();
+        let f1 = FundHandles::new(&cap.pubkey(), 1, &self.t.env.usdc);
+        self.refresh();
+        poke(&mut self.t.env, &f1, &cap).unwrap();
+        for _ in 0..2 {
+            warp(&mut self.t.env.svm, MARK_WARMUP_SLOTS as i64 / 2);
+            self.refresh();
+            poke(&mut self.t.env, &f1, &cap).unwrap();
+        }
+    }
     /// `total_shares` equals the share mint supply.
     fn assert_supply(&self) {
         let supply = share_mint_state(&self.t.env.svm, &self.t.f.share_mint)
@@ -110,7 +128,7 @@ fn second_token(s: &mut Seas, tier: Tier) -> SbToken {
     let coin = listed_meme(&mut s.t.env, tier);
     let usdc = s.t.env.usdc;
     setup_venue_pool(&mut s.t.env, &usdc, &coin.mint, 0, 100_000_000 * MEME);
-    s.refresh();
+    s.rewarm_meme();
     refresh_meme(&mut s.t.env, &coin);
     coin
 }
@@ -118,7 +136,7 @@ fn second_token(s: &mut Seas, tier: Tier) -> SbToken {
 /// Re-list `token` as `tier` (7-day timelock), then re-publish every price.
 fn retier(s: &mut Seas, token: &SbToken, tier: Tier) {
     register_token_with(&mut s.t.env, token.mint, token.source(), tier);
-    s.refresh();
+    s.rewarm_meme();
     refresh_meme(&mut s.t.env, token);
 }
 
@@ -444,10 +462,14 @@ fn t3_buy_during_warmup_counts_the_warming_holding_at_zero() {
     let a = buy_of(&s.t, &coin.mint, 1_000);
     s.t.swap_fresh(&a).unwrap();
     // Warm: NAV 19,000 + 20,000 + 1,000 = 40,000, stake 2,000; 500 more fits.
-    warp(&mut s.t.env.svm, MARK_WARMUP_SLOTS as i64);
-    s.refresh();
-    refresh_meme(&mut s.t.env, &coin);
-    refresh_meme(&mut s.t.env, &fresh);
+    // A read halfway keeps the marks active (an idle mark reseeds).
+    for _ in 0..2 {
+        warp(&mut s.t.env.svm, MARK_WARMUP_SLOTS as i64 / 2);
+        s.refresh();
+        refresh_meme(&mut s.t.env, &coin);
+        refresh_meme(&mut s.t.env, &fresh);
+        poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+    }
     let a = buy_of(&s.t, &coin.mint, 500);
     s.t.swap_fresh(&a).unwrap();
     assert_eq!(s.fund().t3_cost_basis_usd, 1_500 * USDC);
@@ -1281,4 +1303,137 @@ fn dump_after_one_interval_gains_at_most_one_step() {
     // At the true $0.01: one step is $200 on the 200,000 MEME; A's 45% is $90.
     let got = value_at_one_cent(&s, &a.pubkey());
     assert!((45_000 * USDC + 1..=45_100 * USDC).contains(&got), "{got}");
+}
+
+/// USD value of `user`'s USDC and MEME at `micro_usd` per whole MEME.
+fn value_at(s: &Seas, user: &Pubkey, micro_usd: u64) -> u64 {
+    let meme = token_balance(
+        &s.t.env.svm,
+        &ata(user, &s.meme.mint, &spl_token_interface::ID),
+    );
+    let meme_usd = meme as u128 * micro_usd as u128 / MEME as u128;
+    token_balance(&s.t.env.svm, &usdc_ata(&s.t.env, user)) + meme_usd as u64
+}
+
+/// No read for a day while MEME rallies 10x to $0.50. Without a reseed
+/// the captain's $10,000 buy would value at the stale slow price ($0.055)
+/// and fake a loss of 8,900: a 100,000 deposit and exit took 4,450 of
+/// compensation (4,657 captain shares) and left with 104,657. The read of
+/// the buy reseeds both marks at $0.50 and starts a warmup: no compensation.
+#[test]
+fn idle_mark_reseeds_so_a_stale_slow_price_fakes_no_loss() {
+    let mut s = open_seas(10_000, 90_000);
+    warp(&mut s.t.env.svm, 86_400);
+    s.refresh();
+    s.set_meme_price(SB_ONE / 2);
+    let a = SwapArgs::new(
+        s.t.env.usdc,
+        s.meme.mint,
+        10_000 * USDC,
+        20_000 * MEME,
+        2_000,
+        1,
+    );
+    s.t.swap_fresh(&a).unwrap();
+    let marks = read_entry(&s.t.env, &s.meme.mint).marks;
+    let slot = s.t.env.svm.get_sysvar::<Clock>().slot;
+    assert_eq!((marks.deposit, marks.low), (SB_ONE / 2, SB_ONE / 2));
+    assert_eq!(marks.seed_slot, slot);
+    let atk = funded_user(&mut s.t.env, 100_000 * USDC);
+    deposit(&mut s.t.env, &s.t.f, &atk, 100_000 * USDC).unwrap();
+    meme_account(&mut s, &atk);
+    let shares = token_balance(&s.t.env.svm, &share_ata(&s.t.f, &atk.pubkey()));
+    let res = exit(&mut s.t.env, &s.t.f, &atk, shares).unwrap();
+    assert!(decode_events::<FirstLossApplied>(&res).is_empty());
+    assert_eq!(s.captain_shares(), 10_000 * USDC);
+    // 100,000 shares at pps 1.0, redeemed in kind for exactly 100,000.
+    assert_eq!(shares, 100_000 * USDC);
+    assert_eq!(value_at(&s, &atk.pubkey(), 500_000), 100_000 * USDC);
+    s.assert_supply();
+}
+
+/// No read for a day while MEME falls 10x to $0.005. Without a reseed the
+/// stale slow price ($0.045) priced a 45,000 deposit at shares worth
+/// 29,000. The read of the buy reseeds both marks at $0.005.
+#[test]
+fn idle_mark_reseeds_so_a_stale_slow_price_does_not_shrink_a_deposit() {
+    let mut s = open_seas(10_000, 90_000);
+    warp(&mut s.t.env.svm, 86_400);
+    s.refresh();
+    s.set_meme_price(SB_ONE / 200);
+    let a = SwapArgs::new(
+        s.t.env.usdc,
+        s.meme.mint,
+        10_000 * USDC,
+        2_000_000 * MEME,
+        200_000,
+        1,
+    );
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(
+        read_entry(&s.t.env, &s.meme.mint).marks.deposit,
+        SB_ONE / 200
+    );
+    let v = funded_user(&mut s.t.env, 45_000 * USDC);
+    deposit(&mut s.t.env, &s.t.f, &v, 45_000 * USDC).unwrap();
+    let shares = token_balance(&s.t.env.svm, &share_ata(&s.t.f, &v.pubkey()));
+    // True NAV: 135,000 USDC + 2,000,000 MEME at $0.005.
+    let true_nav = token_balance(&s.t.env.svm, &s.t.f.usdc_vault) + 10_000 * USDC;
+    let worth = (shares as u128 * true_nav as u128 / s.fund().total_shares as u128) as u64;
+    assert_eq!((shares, worth), (45_000 * USDC, 45_000 * USDC));
+}
+
+/// A token read once per interval keeps its marks: no reseed, no new
+/// warmup, and a 10x rise still reaches the slow price one step at a time.
+#[test]
+fn an_active_mark_is_not_reseeded() {
+    let mut s = open_seas(1_000, 9_000);
+    let seed = read_entry(&s.t.env, &s.meme.mint).marks.seed_slot;
+    s.set_meme_price(SB_ONE / 2);
+    let cap = s.t.cap.insecure_clone();
+    let f1 = FundHandles::new(&cap.pubkey(), 1, &s.t.env.usdc);
+    for _ in 0..12 {
+        warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+        s.refresh();
+        poke(&mut s.t.env, &f1, &cap).unwrap();
+    }
+    let marks = read_entry(&s.t.env, &s.meme.mint).marks;
+    assert_eq!(marks.seed_slot, seed);
+    assert!(!marks.warming(s.t.env.svm.get_sysvar::<Clock>().slot));
+    // 12 steps of 10% from $0.05: about $0.157.
+    assert!((SB_ONE * 156 / 1_000..SB_ONE * 157 / 1_000).contains(&marks.deposit));
+}
+
+/// SOL crashes 60% (150 -> 60) with no read, so the record (1.0) lags the
+/// true at-cost pps (0.784). The T3 loss sale burns at the lower, fresh
+/// pps: the whole 10,000 stake, not 8,000 shares, and the crew keeps
+/// 70,400 (was 68,870 at the lagging record).
+#[test]
+fn sale_burn_uses_the_fresh_at_cost_pps_when_it_is_below_the_record() {
+    let mut s = open_seas(10_000, 90_000);
+    let a = s.buy(10_000);
+    s.t.swap_fresh(&a).unwrap();
+    for _ in 0..4 {
+        let b = buy_sol(&s, 9_000);
+        s.t.swap_fresh(&b).unwrap();
+    }
+    crash_meme(&mut s);
+    let sol = s.t.sol;
+    sol_price(&mut s.t.env, &sol, 60, 0, 60);
+    let sol_units = token_balance(
+        &s.t.env.svm,
+        &ata(&s.t.f.fund, &sol, &spl_token_interface::ID),
+    );
+    let sale = s.sell(s.meme_vault(), 1, 100_000);
+    let res = s.t.swap_fresh(&sale).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    assert_eq!(
+        (ev[0].loss_usd, ev[0].captain_shares_burned),
+        (8_000 * USDC, 10_000 * USDC)
+    );
+    assert_eq!(s.captain_shares(), 0);
+    assert_eq!(s.fund().total_shares, 90_000 * USDC);
+    let usdc = token_balance(&s.t.env.svm, &s.t.f.usdc_vault);
+    assert_eq!(usdc + sol_units * 60 / 1_000, 70_400 * USDC);
+    s.assert_supply();
 }
