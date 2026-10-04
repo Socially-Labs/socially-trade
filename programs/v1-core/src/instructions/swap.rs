@@ -200,7 +200,8 @@ struct Plan {
     trade_usd: u128,
     /// The input has a T3 cost basis (T3 sale rules apply).
     t3_sell: bool,
-    /// The output is a T3 token (T3 buy rules apply).
+    /// The trade adds T3 basis (T3 buy rules apply): the output is a T3 token,
+    /// or a buy into a holding that has a basis, whatever its tier.
     t3_buy: bool,
     /// Index of the T3 accounts in the remaining accounts.
     t3_start: usize,
