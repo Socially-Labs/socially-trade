@@ -1,16 +1,16 @@
 # Graph Report - Socially Trade  (2026-10-04)
 
 ## Corpus Check
-- 124 files · ~66,044 words
+- 124 files · ~66,230 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
 - 1315 nodes · 3435 edges · 76 communities (55 shown, 10 thin omitted)
 - Extraction: 80% EXTRACTED · 20% INFERRED · 0% AMBIGUOUS · INFERRED: 693 edges (avg confidence: 0.85)
-- Token usage: this AST refresh uses no LLM tokens; prior semantic extraction usage is unknown.
+- Token cost: this AST refresh used no LLM; prior semantic extraction usage is unknown.
 
 ## Graph Freshness
-- Built from commit: `7384ff9c`
+- Built from commit: `6a21f7f9`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -94,9 +94,9 @@
 10. `funded_user()` - 35 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Proposed NAV-based Crew join and leave` --semantically_similar_to--> `Planned live share issuance and redemption at NAV`  [INFERRED] [semantically similar]
-  docs/v0-paper-trading-architecture.md → socially-trade-whitepaper.pdf
 - `Proposed 10% high-water-mark fee with 80/20 minted shares` --semantically_similar_to--> `Planned 10% performance fee above post-fee high-water mark`  [INFERRED] [semantically similar]
+  docs/v0-paper-trading-architecture.md → socially-trade-whitepaper.pdf
+- `Proposed NAV-based Crew join and leave` --semantically_similar_to--> `Planned live share issuance and redemption at NAV`  [INFERRED] [semantically similar]
   docs/v0-paper-trading-architecture.md → socially-trade-whitepaper.pdf
 - `Proposed fund chat and append-only Captain decision corrections` --semantically_similar_to--> `Planned public Captain decision log linked to trades`  [INFERRED] [semantically similar]
   docs/v0-paper-trading-architecture.md → socially-trade-whitepaper.pdf
@@ -358,4 +358,4 @@ _Questions this graph is uniquely positioned to answer:_
   _Cohesion score 0.08019853709508883 - nodes in this community are weakly interconnected._
 ## Authentication freshness
 
-Runtime authentication is now Privy only. Older semantic nodes may describe historical generic JWT/development adapters; those adapters no longer exist in source. This refresh updates AST relationships, not semantic documentation extraction.
+Runtime authentication is Privy only and resolves cached public keys from the app JWKS endpoint by default. A PEM override is optional. Older semantic nodes may describe historical generic JWT/development adapters or mandatory manual keys; consult source and docs/privy-auth.md. This refresh updates AST relationships, not semantic documentation extraction.

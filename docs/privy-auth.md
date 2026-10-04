@@ -8,15 +8,14 @@ PostgreSQL user. Tokens and Privy secrets are not saved in the database.
 
 1. Sign in at [Privy Dashboard](https://dashboard.privy.io/) and create or select your app.
 2. Open **Configuration → App settings → Basics** and copy the **App ID**.
-3. Find the app's **verification key**, and copy the full public PEM key, including
-   `BEGIN PUBLIC KEY` and `END PUBLIC KEY`. Do not generate a wallet authorization
-   signing key for this setting; it must verify the app's access tokens.
-4. Enable the login methods your client will use, such as email or Google.
-5. Configure your client domains/redirects for the intended environment.
+3. Enable the login methods your client will use, such as email or Google.
+4. Configure your client domains/redirects for the intended environment.
 
-Dashboard navigation can change. The relevant values are the App ID and app access-token
-verification public key. The app secret shown in the dashboard is not required by
-this backend's local verification flow. Use separate Privy apps/configuration for
+You do not need to find or copy a verification key in the dashboard. The backend
+resolves public keys from `https://api.privy.io/v1/apps/<app-id>/jwks.json`, as Privy's
+official Node SDK does. The app secret shown in the dashboard is not required by
+this backend's verification flow. Keep it server-only if configured for future
+Privy server API operations. Use separate Privy apps/configuration for
 isolated development and production identities if desired.
 
 ## Configure the API
@@ -25,14 +24,21 @@ Set server environment variables before starting the API:
 
 ```dotenv
 PRIVY_APP_ID=your-privy-app-id
-PRIVY_VERIFICATION_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 ```
 
-Copy the public verification key for your app from the Privy dashboard.
-Both real newlines and escaped `\n` are accepted. No app secret is required for
+Leave `PRIVY_VERIFICATION_KEY` unset for normal use. The API fetches and caches the
+app's public keys for up to one hour, with a 30-second cooldown between key refreshes
+and a five-second fetch timeout. It supports key rotation without manually copying
+a PEM key. The first verification and subsequent refreshes require network access
+to Privy; cached keys verify tokens locally. No app secret is required for
 signature verification. Configure actual environment variables through the existing
 runtime/deployment environment; copying `.env.example` alone does not load it.
 The deployed API must use HTTPS.
+
+An optional `PRIVY_VERIFICATION_KEY` public PEM override is supported for isolated
+simulations or explicitly pinned keys. Both real newlines and escaped `\n` are
+accepted. An override disables automatic fetching and rotation; remove any placeholder
+value from your environment to use the normal JWKS path.
 
 ## Bootstrap the backend account
 
@@ -78,17 +84,18 @@ retrying the same financial action.
 
 ## Verification and errors
 
-- Signature algorithm restricted to ES256, using the configured public key.
+- Signature algorithm restricted to ES256, using the app's public keys.
 - Issuer must be `privy.io`; audience must include `PRIVY_APP_ID`.
 - Subject, issuer, audience, issued-at and expiry claims are required.
 - Expiry/not-before are checked; future issued-at timestamps beyond five seconds reject.
 - Subject must be a Privy DID. Development identity headers cannot override it.
 - Missing/invalid/expired token: `401 unauthorized`.
 - Missing configuration or invalid public-key configuration: `503 auth_unconfigured`.
+- Public-key fetch failure or malformed key service response: `503 auth_unavailable`.
 
-Keep server clocks synchronized. Verification is local and does not check remote
-session revocation on every request. Rotate the configured public key when Privy
-rotates your verification key and restart/reconfigure the service as needed.
+Keep server clocks synchronized. Verification does not check remote session
+revocation on every request. JWKS keys refresh automatically; if using a PEM
+override, rotate the configured public key manually when needed.
 
 ## Existing authentication and migration
 
@@ -107,3 +114,4 @@ now sign local ES256 tokens through the production verifier; those changes have
 not been run as part of this provider cleanup.
 
 Reference: [Privy access-token documentation](https://docs.privy.io/authentication/user-authentication/access-tokens).
+JWKS resolution: [official Privy Node SDK source](https://github.com/privy-io/node-sdk/blob/main/src/lib/auth.ts).

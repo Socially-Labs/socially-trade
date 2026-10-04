@@ -40,7 +40,7 @@ cargo test -p v1-core
 ## Local development
 
 Privy authentication is available through `POST /v0/auth/privy`. Configure
-`PRIVY_APP_ID` and `PRIVY_VERIFICATION_KEY` to use Privy tokens
+`PRIVY_APP_ID` to use Privy tokens; public verification keys are fetched automatically
 across protected endpoints. See [Privy setup and API flow](docs/privy-auth.md).
 
 Requires Node.js 22+ and pnpm 10.
@@ -65,7 +65,7 @@ TEST_DATABASE_URL=postgres://socially:socially@127.0.0.1:5432/socially_trade pnp
 
 Each run creates and removes its own database schema, uses synthetic SOL prices, and blocks external HTTP requests. The scenarios and findings are documented in [the simulation report](./docs/backend-simulation-report.md).
 
-For local backend development, start PostgreSQL with `docker compose up -d postgres`, set `DATABASE_URL` from `.env.example`, and run `pnpm --filter @socially/db migrate`. Privy is the only authentication provider in every environment. Set `PRIVY_APP_ID` and `PRIVY_VERIFICATION_KEY`, and send the Privy access token in the Authorization bearer header. See [Privy setup](docs/privy-auth.md).
+For local backend development, start PostgreSQL with `docker compose up -d postgres`, set `DATABASE_URL` from `.env.example`, and run `pnpm --filter @socially/db migrate`. Privy is the only authentication provider in every environment. Set `PRIVY_APP_ID`, and send the Privy access token in the Authorization bearer header. Public verification keys are fetched automatically. See [Privy setup](docs/privy-auth.md).
 
 Available endpoints:
 

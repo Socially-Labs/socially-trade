@@ -993,7 +993,7 @@
       "file_type": "code",
       "norm_label": "privyidentity()",
       "source_file": "apps/api/src/privy.ts",
-      "source_location": "L7"
+      "source_location": "L8"
     },
     {
       "id": "apps_api_src_request_idempotencykey",
@@ -11318,7 +11318,7 @@
       "node_kind": "heading",
       "norm_label": "bootstrap the backend account",
       "source_file": "docs/privy-auth.md",
-      "source_location": "L37"
+      "source_location": "L43"
     },
     {
       "id": "docs_privy_auth_configure_the_api",
@@ -11330,7 +11330,7 @@
       "node_kind": "heading",
       "norm_label": "configure the api",
       "source_file": "docs/privy-auth.md",
-      "source_location": "L22"
+      "source_location": "L21"
     },
     {
       "id": "docs_privy_auth_existing_authentication_and_migration",
@@ -11342,7 +11342,7 @@
       "node_kind": "heading",
       "norm_label": "existing authentication and migration",
       "source_file": "docs/privy-auth.md",
-      "source_location": "L93"
+      "source_location": "L100"
     },
     {
       "id": "docs_privy_auth_get_your_privy_configuration",
@@ -11378,7 +11378,7 @@
       "node_kind": "heading",
       "norm_label": "use protected endpoints",
       "source_file": "docs/privy-auth.md",
-      "source_location": "L68"
+      "source_location": "L74"
     },
     {
       "id": "docs_privy_auth_verification_and_errors",
@@ -11390,7 +11390,7 @@
       "node_kind": "heading",
       "norm_label": "verification and errors",
       "source_file": "docs/privy-auth.md",
-      "source_location": "L79"
+      "source_location": "L85"
     },
     {
       "id": "programs_v1_core_src_events",
@@ -16204,7 +16204,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/privy.ts",
-      "source_location": "L11",
+      "source_location": "L12",
       "weight": 1.0
     },
     {
@@ -36510,7 +36510,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/api/src/privy.ts",
-      "source_location": "L7",
+      "source_location": "L8",
       "weight": 1.0
     },
     {
@@ -37736,13 +37736,24 @@
     },
     {
       "source": "docs_privy_auth_privy_backend_authentication",
+      "target": "docs_privy_auth_existing_authentication_and_migration",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/privy-auth.md",
+      "source_location": "L100",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_privy_auth_privy_backend_authentication",
       "target": "docs_privy_auth_configure_the_api",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/privy-auth.md",
-      "source_location": "L22",
+      "source_location": "L21",
       "weight": 1.0
     },
     {
@@ -37753,18 +37764,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/privy-auth.md",
-      "source_location": "L37",
-      "weight": 1.0
-    },
-    {
-      "source": "docs_privy_auth_privy_backend_authentication",
-      "target": "docs_privy_auth_use_protected_endpoints",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "docs/privy-auth.md",
-      "source_location": "L68",
+      "source_location": "L43",
       "weight": 1.0
     },
     {
@@ -37780,24 +37780,24 @@
     },
     {
       "source": "docs_privy_auth_privy_backend_authentication",
+      "target": "docs_privy_auth_use_protected_endpoints",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/privy-auth.md",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_privy_auth_privy_backend_authentication",
       "target": "docs_privy_auth_verification_and_errors",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/privy-auth.md",
-      "source_location": "L79",
-      "weight": 1.0
-    },
-    {
-      "source": "docs_privy_auth_privy_backend_authentication",
-      "target": "docs_privy_auth_existing_authentication_and_migration",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "docs/privy-auth.md",
-      "source_location": "L93",
+      "source_location": "L85",
       "weight": 1.0
     },
     {
@@ -55418,5 +55418,5 @@
       "source_file": "socially-trade-whitepaper.pdf"
     }
   ],
-  "built_at_commit": "7384ff9ce68ab3fcc6e73465508b7099bfca2c54"
+  "built_at_commit": "6a21f7f9dd6da10f9e2db898e77340deee4048e6"
 }
