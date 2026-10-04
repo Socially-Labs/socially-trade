@@ -261,6 +261,25 @@ impl NavResult {
             .ok_or_else(|| error!(ErrorCode::MathOverflow))
     }
 
+    /// Unrealized T3 loss: the sum over based holdings of `basis - value`
+    /// where positive, each valued at `High` (spot or the slow price, the
+    /// higher), so a dump does not raise it. A holding in its mark warmup
+    /// counts no loss.
+    pub fn t3_loss(&self) -> Result<u128> {
+        let mut loss: u128 = 0;
+        for i in 0..self.len {
+            let basis = self.basis[i] as u128;
+            if basis == 0 || self.prices[i].is_some_and(|p| p.warming) {
+                continue;
+            }
+            let value = self.value_at(i, self.amounts[i], ValuationMode::High)?;
+            loss = loss
+                .checked_add(basis.saturating_sub(value))
+                .ok_or(ErrorCode::MathOverflow)?;
+        }
+        Ok(loss)
+    }
+
     /// USDC value of `amount` base units of holding `i`, priced in `mode`.
     pub fn value_at(&self, i: usize, amount: u64, mode: ValuationMode) -> Result<u128> {
         if self.unpriced[i] {
@@ -655,6 +674,31 @@ mod tests {
         let p = token(2_000_000, 1_500_000, Some(two));
         assert_eq!(p.value(10_000_000, Spot).unwrap(), 40_000_000);
         assert_eq!(p.value(10_000_000, StakeLowerBound).unwrap(), 30_000_000);
+    }
+
+    #[test]
+    fn t3_loss_uses_the_high_price_and_skips_a_warming_holding() {
+        // 10 tokens, basis $40: spot $1, mark $3 (High $30, loss $10).
+        let p = token(1_000_000, 3_000_000, None);
+        let mut r = NavResult {
+            len: 2,
+            amounts: [0; MAX_HOLDINGS],
+            prices: [None; MAX_HOLDINGS],
+            t2: [false; MAX_HOLDINGS],
+            basis: [0; MAX_HOLDINGS],
+            unpriced: [false; MAX_HOLDINGS],
+        };
+        r.amounts[..2].copy_from_slice(&[5_000_000, 10_000_000]);
+        r.prices[1] = Some(p);
+        r.basis[1] = 40_000_000;
+        assert_eq!(r.t3_loss().unwrap(), 10_000_000);
+        // Above cost: no loss.
+        r.basis[1] = 20_000_000;
+        assert_eq!(r.t3_loss().unwrap(), 0);
+        // In its warmup: no loss.
+        r.basis[1] = 40_000_000;
+        r.prices[1] = Some(TokenPrice { warming: true, ..p });
+        assert_eq!(r.t3_loss().unwrap(), 0);
     }
 
     #[test]

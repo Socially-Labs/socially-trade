@@ -16,16 +16,33 @@
 //!    breaker does not move. So the exiter cannot lower the fee by the choice
 //!    of fresh vs stale prices.
 //!
+//! 3. Optional, after the NAV layout: the captain's Member PDA (w), for the
+//!    first-loss burn below.
+//!
 //! One exception to "no price check": while the fund holds T3 cost basis and
 //! others hold shares, a captain exit needs valid fresh prices (see below).
+//!
+//! First loss. When a crew member exits with valid prices, the exit pays
+//! the member's part of the unrealized T3 loss from captain shares:
+//! `comp = t3_loss x shares / total_shares`, rounded up (`NavResult::t3_loss`:
+//! each based holding at the higher of spot and the slow price, a holding in
+//! its mark warmup counts no loss). The fund PDA burns captain shares worth
+//! `comp` at the true pps, the recorded NAV less `t3_loss`
+//! (`swap::burn_nav`), at most the captain's balance (the captain exit floor
+//! does not apply), and the member redeems them too:
+//! `(shares + burned) / total_shares` of every holding. Then the Member PDA
+//! of item 3 is required (`CaptainMemberMissing`): a priced exit does not
+//! drop the compensation in silence. An exit without prices pays no
+//! compensation. The captain gets none.
 
 use {
     crate::{
         constants::*,
         errors::ErrorCode,
-        events::{Exited, FeeCharged},
+        events::{Exited, FeeCharged, FirstLossApplied},
+        instructions::swap::{burn_nav, captain_stake},
         math,
-        nav::{self, ValuationMode},
+        nav::{self, ValuationMode, ACCOUNTS_PER_HOLDING},
         state::{Config, Fund, Member, Policy},
     },
     anchor_lang::{error::ErrorCode as AnchorError, prelude::*},
@@ -158,7 +175,44 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
         }
     }
 
-    // Pay out shares/total of each vault. `total` still counts the fee shares
+    // First loss (module doc). The member gets `comp` in kind, so the
+    // burned shares are priced at the true pps: the record less the loss.
+    let mut burned = 0;
+    if let Some(f) = fresh.filter(|f| user != captain && f.t3_loss > 0 && last > 0) {
+        let comp = f
+            .t3_loss
+            .checked_mul(shares as u128)
+            .ok_or(ErrorCode::MathOverflow)?
+            .div_ceil(total as u128);
+        if comp > 0 {
+            let member_info = nav_accs
+                .get(len * ACCOUNTS_PER_HOLDING)
+                .ok_or(ErrorCode::CaptainMemberMissing)?;
+            let shares_info = a.captain_shares.to_account_info();
+            let mint_info = a.share_mint.to_account_info();
+            let program_info = a.share_token_program.to_account_info();
+            let mut stake = captain_stake(
+                &a.fund,
+                member_info,
+                &shares_info,
+                &mint_info,
+                &program_info,
+            )?;
+            burned = stake.shares_worth(comp, burn_nav(&a.fund, f.t3_loss)?, total)?;
+            if burned > 0 {
+                stake.burn(&a.fund, burned)?;
+            }
+            emit!(FirstLossApplied {
+                fund: fund_key,
+                loss_usd: math::to_u64(comp)?,
+                captain_shares_burned: burned,
+            });
+        }
+    }
+    // The member redeems its shares and the burned captain shares.
+    let redeemed = shares.checked_add(burned).ok_or(ErrorCode::MathOverflow)?;
+
+    // Pay out redeemed/total of each vault. `total` still counts the fee shares
     // (minted to the captain, burned from the user below), so it is the real supply.
     // Triples are matched to holdings by mint key, in any order (a swap-remove
     // can reorder holdings after the client built the list). `len` triples,
@@ -175,7 +229,7 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
         require!(!seen[i], ErrorCode::DuplicateHolding);
         seen[i] = true;
         let held = nav::vault_amount(vault, &fund_key, mint_key)?;
-        let out = math::pro_rata(held, shares, total)?;
+        let out = math::pro_rata(held, redeemed, total)?;
         left[i] = held - out;
         if out == 0 {
             continue;
@@ -217,14 +271,14 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     )?;
 
     let fund = &mut ctx.accounts.fund;
-    fund.total_shares = total.checked_sub(shares).ok_or(ErrorCode::MathOverflow)?;
-    // Every holding fell by shares/total, so the T3 cost basis does too.
+    fund.total_shares = total.checked_sub(redeemed).ok_or(ErrorCode::MathOverflow)?;
+    // Every holding fell by redeemed/total, so the T3 cost basis does too.
     // Rounded up while the holding keeps units, so a basis never reaches 0
     // with units left (they would be unbased).
     if fund.t3_cost_basis_usd > 0 {
         let mut sum: u64 = 0;
         for (b, &units) in fund.t3_basis_usd.iter_mut().zip(left.iter()) {
-            let scaled = *b as u128 * (total - shares) as u128;
+            let scaled = *b as u128 * (total - redeemed) as u128;
             *b = math::to_u64(if units > 0 {
                 scaled.div_ceil(total as u128)
             } else {
@@ -304,6 +358,8 @@ pub(crate) struct FreshPps {
     pub stake: u64,
     /// Breaker inputs; `breaker.pps` is the target of the recorded pps.
     pub breaker: nav::BreakerPps,
+    /// Unrealized T3 loss (`NavResult::t3_loss`), USD.
+    pub t3_loss: u128,
 }
 
 pub(crate) fn fresh_pps(
@@ -320,5 +376,6 @@ pub(crate) fn fresh_pps(
         fee: pps(priced.nav_at_least_cost(ValuationMode::ExitFeeUpperBound)?)?,
         stake: pps(priced.valuation(ValuationMode::StakeLowerBound)?.nav)?,
         breaker: priced.breaker(fund.total_shares)?,
+        t3_loss: priced.t3_loss()?,
     })
 }

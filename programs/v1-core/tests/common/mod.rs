@@ -1162,10 +1162,14 @@ pub fn ix_exit_unpriced(env: &Env, f: &FundHandles, user: &Pubkey, shares: u64) 
     ix
 }
 
-/// `exit` with the exit accounts, then the NAV accounts (fresh fee price).
+/// `exit` with the exit accounts, the NAV accounts (fresh fee price) and
+/// the captain's Member PDA (first-loss burn).
 pub fn ix_exit(env: &Env, f: &FundHandles, user: &Pubkey, shares: u64) -> Instruction {
     let mut ix = ix_exit_unpriced(env, f, user, shares);
     ix.accounts.extend(nav_accounts(env, f));
+    let captain = read_fund(env, f).captain;
+    ix.accounts
+        .push(AccountMeta::new(member_pda(&f.fund, &captain), false));
     ix
 }
 

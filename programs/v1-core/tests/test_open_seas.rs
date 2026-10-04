@@ -264,11 +264,15 @@ fn t3_loss_above_the_stake_burns_at_most_the_captain_balance() {
     let mut s = open_seas(1_000, 19_000);
     let a = s.buy(1_000);
     s.t.swap_fresh(&a).unwrap();
-    // MEME falls to $0.0001: 20,000 MEME are worth 2 USDC.
+    // MEME falls to $0.0001: 20,000 MEME are worth 2 USDC. The recorded pps
+    // is 0.9 (say other holdings fell, and the record follows them).
     s.set_meme_price(SB_ONE / 10_000);
+    let mut f = s.fund();
+    f.last_price_per_share = 900_000;
+    write_fund(&mut s.t.env, &s.t.f, &f);
     let a = s.sell(20_000 * MEME, 1, 10_000_000);
     let res = s.t.swap_fresh(&a).unwrap();
-    // Loss 998; shares worth 998 at pps 19,002 / 20,000 are 1,050.4: capped at 1,000.
+    // Loss 998; shares worth 998 at the recorded pps 0.9 are 1,108.9: capped at 1,000.
     let ev = decode_events::<FirstLossApplied>(&res);
     assert_eq!(
         (ev[0].loss_usd, ev[0].captain_shares_burned),
@@ -886,8 +890,10 @@ fn sell_to_usdc_with_an_unpriced_holding_stores_no_mark() {
     assert_ne!(read_entry(&s.t.env, &coin.mint).marks, marks);
 }
 
+/// The burn reads the recorded pps, not a fresh one, so a T3 loss sale into
+/// USDC passes while another holding's feed is broken, and burns exactly.
 #[test]
-fn t3_loss_sale_needs_every_holding_priced() {
+fn t3_loss_sale_passes_while_another_feed_is_broken() {
     let mut s = open_seas(1_000, 19_000);
     let coin = second_token(&mut s, Tier::T3);
     let a = s.buy(400);
@@ -896,16 +902,28 @@ fn t3_loss_sale_needs_every_holding_priced() {
     s.t.swap_fresh(&a).unwrap();
     warp(&mut s.t.env.svm, 300);
     s.refresh();
-    // COIN is stale. A burn needs the full NAV: at 0 for COIN, the loss would
-    // burn captain shares at a pps that is too low.
+    // COIN is stale: a buy is blocked.
+    let a = buy_of(&s.t, &s.meme.mint, 10);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::PriceStale);
+    // All MEME for 396 USDC: a loss of 4, 4 shares at the recorded pps 1.0.
+    let before = s.fund();
     let loss = s.sell(8_000 * MEME, 99, 2_000_000);
-    expect_err(s.t.swap_fresh(&loss), ErrorCode::HoldingUnpriced);
-    assert_eq!(s.captain_shares(), 1_000 * USDC);
-    // A sale with no loss burns nothing, so it goes through.
-    let gain = s.sell(8_000 * MEME, 1, 19_000);
-    s.t.swap_fresh(&gain).unwrap();
-    assert_eq!(s.captain_shares(), 1_000 * USDC);
-    assert_eq!(s.fund().t3_cost_basis_usd, 400 * USDC);
+    let res = s.t.swap_fresh(&loss).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    assert_eq!(
+        (ev[0].loss_usd, ev[0].captain_shares_burned),
+        (4 * USDC, 4 * USDC)
+    );
+    assert_eq!(s.captain_shares(), 996 * USDC);
+    let f = s.fund();
+    assert_eq!(f.total_shares, 19_996 * USDC);
+    assert_eq!(f.t3_cost_basis_usd, 400 * USDC);
+    s.assert_supply();
+    // COIN counted 0: the record did not move.
+    assert_eq!(
+        (f.last_price_per_share, f.last_pps_slot),
+        (before.last_price_per_share, before.last_pps_slot)
+    );
 }
 
 /// WIF: a 6-dp token listed T3 with a Pyth price of $1, with a deep pool.
@@ -973,4 +991,243 @@ fn t3_buy_spends_only_usdc_or_an_unbased_pyth_or_kamino_holding() {
     let a = SwapArgs::new(s.t.env.usdc, wif, 100 * USDC, 99 * USDC, 1, 1);
     s.t.swap_fresh(&a).unwrap();
     assert_eq!(s.fund().t3_cost_basis_usd, 250 * USDC);
+}
+
+/// Captain 10,000, crew A and B 45,000 each. The fund buys 200,000 MEME
+/// ($10,000 of basis), then MEME falls 80% to $0.01 and stays there until
+/// the slow price follows it (16 intervals). The record stays at 1.0 (T3 at
+/// cost). Returns A, with a MEME account.
+fn crashed_fund() -> (Seas, Keypair) {
+    let mut s = open_seas(10_000, 45_000);
+    let b = funded_user(&mut s.t.env, 45_000 * USDC);
+    deposit(&mut s.t.env, &s.t.f, &b, 45_000 * USDC).unwrap();
+    let a = s.buy(10_000);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.meme_vault(), 200_000 * MEME);
+    crash_meme(&mut s);
+    let crew = s.crew.insecure_clone();
+    meme_account(&mut s, &crew);
+    (s, crew)
+}
+
+/// MEME falls to $0.01; poke once per interval until the slow price is
+/// there (16 intervals). The record stays at 1.0 (T3 at cost).
+fn crash_meme(s: &mut Seas) {
+    s.set_meme_price(SB_ONE / 100);
+    let cap = s.t.cap.insecure_clone();
+    for _ in 0..16 {
+        warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+        s.refresh();
+        poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+    }
+    assert_eq!(
+        read_entry(&s.t.env, &s.meme.mint).marks.deposit,
+        SB_ONE / 100
+    );
+    assert_eq!(s.fund().last_price_per_share, 1_000_000);
+}
+
+/// Create `user`'s MEME account.
+fn meme_account(s: &mut Seas, user: &Keypair) {
+    let ix = ix_create_ata(
+        &user.pubkey(),
+        &user.pubkey(),
+        &s.meme.mint,
+        &spl_token_interface::ID,
+    );
+    send(&mut s.t.env.svm, &[ix], &[user]).unwrap();
+}
+
+/// USD value of `user`'s USDC and MEME (at $0.01), USDC base units.
+fn value_at_one_cent(s: &Seas, user: &Pubkey) -> u64 {
+    let meme = token_balance(
+        &s.t.env.svm,
+        &ata(user, &s.meme.mint, &spl_token_interface::ID),
+    );
+    token_balance(&s.t.env.svm, &usdc_ata(&s.t.env, user)) + meme / 100_000
+}
+
+/// A crew exit with prices redeems captain shares worth its part of the
+/// unrealized T3 loss at the true pps (the record, T3 at cost, less the
+/// loss): the exiter leaves with exactly what it paid. The later sale burns
+/// exactly the loss left, and the captain loses exactly the 8,000.
+#[test]
+fn crew_exit_with_prices_takes_its_part_of_the_t3_loss_from_the_captain() {
+    let (mut s, a) = crashed_fund();
+    // A's part: 8,000 x 45% = 3,600. True pps (100,000 - 8,000) / 100,000:
+    // 3,600 / 0.92 = 3,913.043479 shares (rounded up).
+    let burned = 3_913_043_479;
+    let res = exit(&mut s.t.env, &s.t.f, &a, 45_000 * USDC).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    assert_eq!(
+        (ev[0].loss_usd, ev[0].captain_shares_burned),
+        (3_600 * USDC, burned)
+    );
+    // 44,021.739131 USDC + 97,826.086958 MEME ($978.260869). Without the burn: 41,400.
+    assert_eq!(value_at_one_cent(&s, &a.pubkey()), 45_000 * USDC);
+    assert_eq!(s.captain_shares(), 10_000 * USDC - burned);
+    let f = s.fund();
+    assert_eq!(f.total_shares, 55_000 * USDC - burned);
+    s.assert_supply();
+    // The basis scales by the shares left (rounded up).
+    assert_eq!(f.t3_cost_basis_usd, 5_108_695_653);
+    assert_eq!(f.last_price_per_share, 1_000_000);
+    let member: Member = read_account(&s.t.env.svm, &member_pda(&s.t.f.fund, &s.t.cap.pubkey()));
+    assert_eq!(member.hwm, 10_000 * USDC - burned);
+
+    // The sale realizes the loss left, 5,108.695653 - 1,021.739130, and
+    // burns it at the recorded pps 1.0.
+    let sale = s.sell(s.meme_vault(), 1, 100_000);
+    let res = s.t.swap_fresh(&sale).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    assert_eq!(
+        (ev[0].loss_usd, ev[0].captain_shares_burned),
+        (4_086_956_523, 4_086_956_523)
+    );
+    s.assert_supply();
+    // Captain 1,999.999998 shares of 46,999.999998, NAV 46,999.999999: the
+    // captain lost the 8,000, B keeps its 45,000.
+    assert_eq!(s.captain_shares(), 1_999_999_998);
+    assert_eq!(s.fund().total_shares, 46_999_999_998);
+    assert_eq!(
+        token_balance(&s.t.env.svm, &s.t.f.usdc_vault),
+        46_999_999_999
+    );
+}
+
+/// A sale after a real crash (spot and slow price already down) burns
+/// exactly the loss: shares at the recorded pps, T3 at cost.
+#[test]
+fn sale_after_a_real_crash_burns_exactly_the_loss() {
+    let (mut s, _) = crashed_fund();
+    let sale = s.sell(200_000 * MEME, 1, 100_000);
+    let res = s.t.swap_fresh(&sale).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    assert_eq!(
+        (ev[0].loss_usd, ev[0].captain_shares_burned),
+        (8_000 * USDC, 8_000 * USDC)
+    );
+    // NAV 92,000 for 92,000 shares: the crew keeps 90,000, the captain 2,000.
+    assert_eq!(s.captain_shares(), 2_000 * USDC);
+    assert_eq!(s.fund().total_shares, 92_000 * USDC);
+    assert_eq!(
+        token_balance(&s.t.env.svm, &s.t.f.usdc_vault),
+        92_000 * USDC
+    );
+    s.assert_supply();
+}
+
+/// The captain's own exit pays no compensation.
+#[test]
+fn captain_exit_gets_no_compensation() {
+    let mut s = open_seas(10_000, 10_000);
+    let a = s.buy(1_000);
+    s.t.swap_fresh(&a).unwrap();
+    crash_meme(&mut s);
+    let cap = s.t.cap.insecure_clone();
+    meme_account(&mut s, &cap);
+    let res = exit(&mut s.t.env, &s.t.f, &cap, 100 * USDC).unwrap();
+    assert!(decode_events::<FirstLossApplied>(&res).is_empty());
+    assert_eq!(s.captain_shares(), 9_900 * USDC);
+    assert_eq!(s.fund().total_shares, 19_900 * USDC);
+    // 100 / 20,000 of 20,000 MEME left.
+    assert_eq!(s.meme_vault(), 19_900 * MEME);
+}
+
+/// A T3 holding in its mark warmup pays no exit compensation, though its
+/// slow price is already below cost.
+#[test]
+fn warming_holding_gives_no_exit_compensation() {
+    let mut s = open_seas(1_000, 19_000);
+    let mut coin = second_token(&mut s, Tier::T3);
+    // The buy seeds COIN's marks at $0.05.
+    let a = buy_of(&s.t, &coin.mint, 1_000);
+    s.t.swap_fresh(&a).unwrap();
+    coin.fields.value = SB_ONE / 100;
+    let cap = s.t.cap.insecure_clone();
+    for _ in 0..5 {
+        warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+        s.refresh();
+        refresh_meme(&mut s.t.env, &coin);
+        poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+    }
+    // Slow price $0.05 x 0.9^5 = $0.0295245: 590 for a basis of 1,000. Still warming.
+    let marks = read_entry(&s.t.env, &coin.mint).marks;
+    assert_eq!(marks.deposit, SB_ONE * 295_245 / 10_000_000);
+    assert!(marks.warming(s.t.env.svm.get_sysvar::<Clock>().slot));
+    let crew = s.crew.insecure_clone();
+    let ix = ix_create_ata(
+        &crew.pubkey(),
+        &crew.pubkey(),
+        &coin.mint,
+        &spl_token_interface::ID,
+    );
+    send(&mut s.t.env.svm, &[ix], &[&crew]).unwrap();
+    let res = exit(&mut s.t.env, &s.t.f, &crew, 10_000 * USDC).unwrap();
+    assert!(decode_events::<FirstLossApplied>(&res).is_empty());
+    assert_eq!(s.captain_shares(), 1_000 * USDC);
+}
+
+/// An exit with no price accounts still works: in kind, no compensation.
+#[test]
+fn price_free_crew_exit_works_without_compensation() {
+    let (mut s, a) = crashed_fund();
+    let ix = ix_exit_unpriced(&s.t.env, &s.t.f, &a.pubkey(), 45_000 * USDC);
+    let res = send(&mut s.t.env.svm, &[ix], &[&a]).unwrap();
+    assert!(decode_events::<FirstLossApplied>(&res).is_empty());
+    // 40,500 USDC + 90,000 MEME ($900).
+    assert_eq!(value_at_one_cent(&s, &a.pubkey()), 41_400 * USDC);
+    assert_eq!(s.captain_shares(), 10_000 * USDC);
+    assert_eq!(s.fund().total_shares, 55_000 * USDC);
+    assert_eq!(s.fund().t3_cost_basis_usd, 5_500 * USDC);
+    s.assert_supply();
+}
+
+/// A spot dumped below the slow price does not raise the compensation.
+#[test]
+fn dumped_spot_does_not_raise_exit_compensation() {
+    let (mut s, a) = crashed_fund();
+    s.set_meme_price(SB_ONE / 1_000);
+    let res = exit(&mut s.t.env, &s.t.f, &a, 45_000 * USDC).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    assert_eq!(
+        (ev[0].loss_usd, ev[0].captain_shares_burned),
+        (3_600 * USDC, 3_913_043_479)
+    );
+
+    // Right after a crash the slow price is still at cost: no loss yet.
+    let mut s = open_seas(1_000, 19_000);
+    let a = s.buy(1_000);
+    s.t.swap_fresh(&a).unwrap();
+    s.set_meme_price(SB_ONE / 1_000);
+    let crew = s.crew.insecure_clone();
+    let ix = ix_create_ata(
+        &crew.pubkey(),
+        &crew.pubkey(),
+        &s.meme.mint,
+        &spl_token_interface::ID,
+    );
+    send(&mut s.t.env.svm, &[ix], &[&crew]).unwrap();
+    let res = exit(&mut s.t.env, &s.t.f, &crew, 10_000 * USDC).unwrap();
+    assert!(decode_events::<FirstLossApplied>(&res).is_empty());
+    assert_eq!(s.captain_shares(), 1_000 * USDC);
+}
+
+/// With valid prices and a loss to pay, the captain's Member account is
+/// required: a priced exit does not silently drop the compensation.
+#[test]
+fn priced_crew_exit_with_a_loss_needs_the_captain_member() {
+    let (mut s, a) = crashed_fund();
+    let mut ix = ix_exit_unpriced(&s.t.env, &s.t.f, &a.pubkey(), 45_000 * USDC);
+    ix.accounts.extend(nav_accounts(&s.t.env, &s.t.f));
+    expect_err(
+        send(&mut s.t.env.svm, &[ix.clone()], &[&a]),
+        ErrorCode::CaptainMemberMissing,
+    );
+    // Another member's account is rejected too.
+    ix.accounts.push(AccountMeta::new(
+        member_pda(&s.t.f.fund, &a.pubkey()),
+        false,
+    ));
+    assert!(send(&mut s.t.env.svm, &[ix], &[&a]).is_err());
 }

@@ -28,7 +28,8 @@
 //! captain stake value at the time of each buy. A sale of a holding with a basis takes out
 //! `basis * amount_in / position`. If the spot value received is less, the fund
 //! PDA (permanent delegate of the share mint) burns captain shares worth the
-//! loss at the pre-trade spot price per share, at most the captain's balance.
+//! loss at the pre-trade recorded price per share (`burn_nav`), at most the
+//! captain's balance.
 //!
 //! Routes. A trade values its proceeds, and a T3 buy its cost, at a spot
 //! price, and a Switchboard price follows a pool the captain can move. So a
@@ -45,8 +46,7 @@
 //! price does not read counts 0 for the trade (`nav::compute_for_usdc_sale`).
 //! A 0 value lowers the pre-trade NAV, so the size limits get stricter. Such a
 //! trade writes no breaker state (record, peak, frozen) and no mark. A T3
-//! loss burn needs the full NAV (`HoldingUnpriced`): at a NAV that is too
-//! low, the burn would take too many captain shares.
+//! loss burn reads no fresh price (`burn_nav`), so it passes too.
 
 use {
     crate::{
@@ -196,8 +196,7 @@ struct Plan {
     venue_start: usize,
     /// The new `(window_start, window_volume_usd)`; None for a voted trade.
     window: Option<(i64, u64)>,
-    /// Pre-trade spot NAV and the spot USD value of `amount_in`.
-    pre_nav: u128,
+    /// The spot USD value of `amount_in`.
     trade_usd: u128,
     /// The input has a T3 cost basis (T3 sale rules apply).
     t3_sell: bool,
@@ -438,7 +437,6 @@ fn prepare(
         out_is_new: out_held.is_none(),
         venue_start,
         window,
-        pre_nav,
         trade_usd,
         t3_sell,
         t3_buy,
@@ -664,51 +662,8 @@ fn apply_t3<'info>(
     priced: &NavResult,
     now: i64,
 ) -> Result<()> {
+    let mut stake = captain_stake(&t.fund, &accs[0], &accs[1], &accs[2], &accs[3])?;
     let fund_key = t.fund.key();
-    let captain = t.fund.captain;
-    let share_mint = t.fund.share_mint;
-    let (member_info, shares_info, mint_info, program_info) =
-        (&accs[0], &accs[1], &accs[2], &accs[3]);
-    require_keys_eq!(
-        *member_info.owner,
-        crate::ID,
-        AnchorError::AccountOwnedByWrongProgram
-    );
-    let mut member = Member::try_deserialize(&mut &member_info.try_borrow_data()?[..])?;
-    let member_pda = Pubkey::create_program_address(
-        &[
-            MEMBER_SEED,
-            fund_key.as_ref(),
-            captain.as_ref(),
-            &[member.bump],
-        ],
-        &crate::ID,
-    )
-    .map_err(|_| AnchorError::ConstraintSeeds)?;
-    require_keys_eq!(member_info.key(), member_pda, AnchorError::ConstraintSeeds);
-    // The captain's own share ATA: any other account (empty) would dodge the burn.
-    require_keys_eq!(
-        shares_info.key(),
-        get_associated_token_address_with_program_id(&captain, &share_mint, &TOKEN_2022_PROGRAM),
-        AnchorError::ConstraintAddress
-    );
-    require_keys_eq!(mint_info.key(), share_mint, AnchorError::ConstraintAddress);
-    require_keys_eq!(
-        program_info.key(),
-        TOKEN_2022_PROGRAM,
-        AnchorError::InvalidProgramId
-    );
-    // The ATA address pins mint and owner; the owner check pins the layout.
-    require_keys_eq!(
-        *shares_info.owner,
-        TOKEN_2022_PROGRAM,
-        AnchorError::AccountOwnedByWrongProgram
-    );
-    let mut balance = {
-        let data = shares_info.try_borrow_data()?;
-        require!(data.len() >= 72, AnchorError::AccountDidNotDeserialize);
-        u64::from_le_bytes(data[64..72].try_into().unwrap())
-    };
     let total = t.fund.total_shares;
     let mut basis = t.fund.t3_cost_basis_usd;
 
@@ -721,25 +676,14 @@ fn apply_t3<'info>(
         let proceeds = priced.value_at(plan.out_idx, amount_out, ValuationMode::Spot)?;
         let loss = (out as u128).saturating_sub(proceeds);
         if loss > 0 {
-            // Shares worth the loss at the pre-trade spot pps, rounded up.
-            // A holding counted 0 would lower that pps and burn too much.
-            require!(priced.complete(), ErrorCode::HoldingUnpriced);
-            require!(plan.pre_nav > 0, ErrorCode::NavZero);
-            let burn = loss
-                .checked_mul(total as u128)
-                .ok_or(ErrorCode::MathOverflow)?
-                .div_ceil(plan.pre_nav);
-            let burn = math::to_u64(burn.min(balance as u128))?;
+            // Shares worth the loss at the recorded pps (T3 at cost), so
+            // the crew's shares keep their value at cost. No fresh price is
+            // read, so a holding counted 0 does not change the burn.
+            let nav = burn_nav(&t.fund, 0)?;
+            require!(nav > 0, ErrorCode::NavZero);
+            let burn = stake.shares_worth(loss, nav, total)?;
             if burn > 0 {
-                burn_captain_shares(t, shares_info, mint_info, program_info, burn)?;
-                // Same as a partial exit: keep the same share of the high-water mark.
-                member.hwm = math::to_u64(math::mul_div_floor(
-                    member.hwm as u128,
-                    (balance - burn) as u128,
-                    balance as u128,
-                )?)?;
-                member.try_serialize(&mut &mut member_info.try_borrow_mut_data()?[..])?;
-                balance -= burn;
+                stake.burn(&t.fund, burn)?;
                 t.fund.total_shares = total - burn;
             }
             emit!(FirstLossApplied {
@@ -762,7 +706,7 @@ fn apply_t3<'info>(
             .ok_or(ErrorCode::MathOverflow)?;
         basis = basis.checked_add(cost).ok_or(ErrorCode::MathOverflow)?;
         let stake_nav = priced.valuation(ValuationMode::StakeLowerBound)?.nav;
-        let stake = math::mul_div_floor(balance as u128, stake_nav, total as u128)?;
+        let stake = math::mul_div_floor(stake.balance as u128, stake_nav, total as u128)?;
         require!(basis as u128 <= stake, ErrorCode::T3CapExceeded);
         let fund = &mut t.fund;
         let w = t3_window(
@@ -811,34 +755,144 @@ fn t3_window(start: i64, prev: u64, current: u64, now: i64) -> Result<T3Window> 
     })
 }
 
-/// Burn `amount` captain shares, signed by the fund PDA as the share mint's
-/// permanent delegate. The captain does not sign.
-fn burn_captain_shares<'info>(
-    t: &Trade<'info>,
-    from: &AccountInfo<'info>,
-    mint: &AccountInfo<'info>,
-    program: &AccountInfo<'info>,
-    amount: u64,
-) -> Result<()> {
-    let fund_id_le = t.fund.fund_id.to_le_bytes();
-    let seeds: &[&[u8]] = &[
-        FUND_SEED,
-        t.fund.captain.as_ref(),
-        &fund_id_le,
-        &[t.fund.bump],
-    ];
-    token_interface::burn(
-        CpiContext::new_with_signer(
-            program.key(),
-            token_interface::Burn {
-                mint: mint.clone(),
-                from: from.clone(),
-                authority: t.fund.to_account_info(),
-            },
-            &[seeds],
-        ),
-        amount,
+/// The captain's Member record and share balance, from checked accounts
+/// (`captain_stake`).
+pub(crate) struct CaptainStake<'a, 'info> {
+    member_info: &'a AccountInfo<'info>,
+    member: Member,
+    shares: &'a AccountInfo<'info>,
+    mint: &'a AccountInfo<'info>,
+    program: &'a AccountInfo<'info>,
+    /// The captain's share balance.
+    pub balance: u64,
+}
+
+/// Check the captain's Member PDA (w), share ATA (w), the share mint (w) and
+/// the Token-2022 program against `fund`, and read the captain's balance.
+pub(crate) fn captain_stake<'a, 'info>(
+    fund: &Account<'info, Fund>,
+    member_info: &'a AccountInfo<'info>,
+    shares: &'a AccountInfo<'info>,
+    mint: &'a AccountInfo<'info>,
+    program: &'a AccountInfo<'info>,
+) -> Result<CaptainStake<'a, 'info>> {
+    let fund_key = fund.key();
+    let captain = fund.captain;
+    let share_mint = fund.share_mint;
+    require_keys_eq!(
+        *member_info.owner,
+        crate::ID,
+        AnchorError::AccountOwnedByWrongProgram
+    );
+    let member = Member::try_deserialize(&mut &member_info.try_borrow_data()?[..])?;
+    let member_pda = Pubkey::create_program_address(
+        &[
+            MEMBER_SEED,
+            fund_key.as_ref(),
+            captain.as_ref(),
+            &[member.bump],
+        ],
+        &crate::ID,
     )
+    .map_err(|_| AnchorError::ConstraintSeeds)?;
+    require_keys_eq!(member_info.key(), member_pda, AnchorError::ConstraintSeeds);
+    // The captain's own share ATA: any other account (empty) would dodge the burn.
+    require_keys_eq!(
+        shares.key(),
+        get_associated_token_address_with_program_id(&captain, &share_mint, &TOKEN_2022_PROGRAM),
+        AnchorError::ConstraintAddress
+    );
+    require_keys_eq!(mint.key(), share_mint, AnchorError::ConstraintAddress);
+    require_keys_eq!(
+        program.key(),
+        TOKEN_2022_PROGRAM,
+        AnchorError::InvalidProgramId
+    );
+    // The ATA address pins mint and owner; the owner check pins the layout.
+    require_keys_eq!(
+        *shares.owner,
+        TOKEN_2022_PROGRAM,
+        AnchorError::AccountOwnedByWrongProgram
+    );
+    let balance = {
+        let data = shares.try_borrow_data()?;
+        require!(data.len() >= 72, AnchorError::AccountDidNotDeserialize);
+        u64::from_le_bytes(data[64..72].try_into().unwrap())
+    };
+    Ok(CaptainStake {
+        member_info,
+        member,
+        shares,
+        mint,
+        program,
+        balance,
+    })
+}
+
+/// The NAV that prices a first-loss burn of captain shares: the recorded
+/// NAV (`last_price_per_share x total_shares`, floor), less `unrealized`.
+/// The record values T3 at no less than cost and moves one step per
+/// interval at most, so neither a pump nor a dump moves it fast.
+/// - A sale burns shares that no one redeems; the crew's shares must keep
+///   their value at cost: `unrealized` = 0.
+/// - An exit pays the burned shares out in kind, at their true value:
+///   `unrealized` = the whole unrealized T3 loss (`NavResult::t3_loss`).
+pub(crate) fn burn_nav(fund: &Fund, unrealized: u128) -> Result<u128> {
+    let recorded = math::mul_div_floor(
+        fund.last_price_per_share as u128,
+        fund.total_shares as u128,
+        math::ONE,
+    )?;
+    Ok(recorded.saturating_sub(unrealized))
+}
+
+impl<'info> CaptainStake<'_, 'info> {
+    /// Captain shares worth `usd` at `nav / total` per share, rounded up (in
+    /// the crew's favor), at most `balance`. A `nav` of 0 gives the balance.
+    pub(crate) fn shares_worth(&self, usd: u128, nav: u128, total: u64) -> Result<u64> {
+        let want = match nav {
+            0 => u128::MAX,
+            _ => usd
+                .checked_mul(total as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .div_ceil(nav),
+        };
+        Ok(math::to_u64(want.min(self.balance as u128))?)
+    }
+
+    /// Burn `amount` (> 0, at most `balance`) captain shares, signed by the
+    /// fund PDA as the share mint's permanent delegate (the captain does not
+    /// sign), and keep the same share of the captain's high-water mark, as a
+    /// partial exit does. The caller lowers `fund.total_shares`.
+    pub(crate) fn burn(&mut self, fund: &Account<'info, Fund>, amount: u64) -> Result<()> {
+        let fund_id_le = fund.fund_id.to_le_bytes();
+        let seeds: &[&[u8]] = &[FUND_SEED, fund.captain.as_ref(), &fund_id_le, &[fund.bump]];
+        token_interface::burn(
+            CpiContext::new_with_signer(
+                self.program.key(),
+                token_interface::Burn {
+                    mint: self.mint.clone(),
+                    from: self.shares.clone(),
+                    authority: fund.to_account_info(),
+                },
+                &[seeds],
+            ),
+            amount,
+        )?;
+        let left = self
+            .balance
+            .checked_sub(amount)
+            .ok_or(ErrorCode::MathOverflow)?;
+        self.member.hwm = math::to_u64(math::mul_div_floor(
+            self.member.hwm as u128,
+            left as u128,
+            self.balance as u128,
+        )?)?;
+        self.member
+            .try_serialize(&mut &mut self.member_info.try_borrow_mut_data()?[..])?;
+        self.balance = left;
+        Ok(())
+    }
 }
 
 /// The vault of holding `i`: its NAV account, or the new output vault (`i == holdings_len`).
