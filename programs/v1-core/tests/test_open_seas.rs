@@ -6,7 +6,7 @@ mod common;
 use {
     common::*,
     v1_core::{
-        events::FirstLossApplied,
+        events::{FeeCharged, FirstLossApplied},
         state::{Marks, Member},
     },
 };
@@ -445,6 +445,46 @@ fn t3_buy_during_warmup_counts_the_warming_holding_at_zero() {
     let a = buy_of(&s.t, &coin.mint, 500);
     s.t.swap_fresh(&a).unwrap();
     assert_eq!(s.fund().t3_cost_basis_usd, 1_500 * USDC);
+}
+
+/// The captain pumps a new token's feed to $0.50 and makes its first buy at
+/// the true $0.06: the buy seeds the marks at $0.50. The crew exit fee, the
+/// record and the peak follow the true price.
+#[test]
+fn pumped_first_buy_seed_does_not_raise_the_record_or_the_crew_fee() {
+    let mut s = open_seas(1_000, 19_000);
+    let mut coin = second_token(&mut s, Tier::T3);
+    coin.fields.value = SB_ONE / 2;
+    refresh_meme(&mut s.t.env, &coin);
+    // 1,000 USDC buys 16,666.666666666 COIN at $0.06 (the feed says $0.50).
+    let usdc = s.t.env.usdc;
+    let a = SwapArgs::new(usdc, coin.mint, 1_000 * USDC, 16_666_666_666_666, 50_000, 3);
+    s.t.swap_fresh(&a).unwrap();
+    assert!(read_entry(&s.t.env, &coin.mint).marks.deposit > 0);
+    // True price from now on. NAV 19,000 + 999.999999 at $0.06, pps 0.999999.
+    coin.fields.value = SB_ONE * 6 / 100;
+    refresh_meme(&mut s.t.env, &coin);
+    let crew = s.crew.insecure_clone();
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&crew.pubkey(), &crew.pubkey(), &coin.mint, &token);
+    send(&mut s.t.env.svm, &[ix], &[&crew]).unwrap();
+    // In the warmup: at the $0.50 mark the fee pps would be 1.3667. No profit.
+    let res = exit(&mut s.t.env, &s.t.f, &crew, 1_000 * USDC).unwrap();
+    assert!(decode_events::<FeeCharged>(&res).is_empty());
+    // Through the warmup and 10 intervals after it the record stays at 1.0.
+    let cap = s.t.cap.insecure_clone();
+    for _ in 0..20 {
+        warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+        s.refresh();
+        refresh_meme(&mut s.t.env, &coin);
+        poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+        let f = s.fund();
+        assert!(!f.frozen);
+        assert!(f.last_price_per_share <= USDC);
+        assert!(f.peak_price_per_share <= USDC);
+    }
+    let res = exit(&mut s.t.env, &s.t.f, &crew, 1_000 * USDC).unwrap();
+    assert!(decode_events::<FeeCharged>(&res).is_empty());
 }
 
 /// A 50% pump does not let the captain leave early: the floor values the

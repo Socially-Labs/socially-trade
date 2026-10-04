@@ -823,6 +823,74 @@ fn relisted_switchboard_token_warms_up_before_it_moves_the_peak() {
     );
 }
 
+/// A re-listing seeded at a 10x pump ($0.50), with the true price $0.06 from
+/// then on: the record and the peak follow the true pps, the fund does not
+/// freeze, and the crew exit fee is not charged on the pump.
+#[test]
+fn pumped_relist_seed_does_not_raise_the_record_or_the_exit_fee() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // Member 200 USDC at pps 2.0: 100 shares, HWM 200. NAV 800, 400 shares.
+    deposit(&mut env, &f, &m, 200_000_000).unwrap();
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    // Re-listed to a new feed at $0.50: a poke seeds both marks there.
+    t.feed = Pubkey::new_unique();
+    t.fields.value = SB_ONE / 2;
+    register_token_with(&mut env, t.mint, t.source(), Tier::T2);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    // True price $0.06: NAV 500 + 360 = 860, pps 2.15. Through the warmup
+    // and 10 intervals after it, the record never passes 2.15.
+    t.fields.value = SB_ONE * 6 / 100;
+    for _ in 0..20 {
+        warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+        refresh_meme(&mut env, &t);
+        poke(&mut env, &f, &m).unwrap();
+        let fund = read_fund(&env, &f);
+        assert!(!fund.frozen);
+        assert!(fund.last_price_per_share <= 2_150_000);
+    }
+    let fund = read_fund(&env, &f);
+    assert_eq!(
+        (fund.last_price_per_share, fund.peak_price_per_share),
+        (2_150_000, 2_150_000)
+    );
+    // Fee on 215 - 200 = 15: 1.5 USDC at pps 2.15.
+    let res = exit(&mut env, &f, &m, 100_000_000).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (1_500_000, 2_150_000)
+    );
+}
+
+/// A genuine rally raises the fee price one mark step per interval: the
+/// record and the exit fee lag the spot.
+#[test]
+fn genuine_rally_raises_the_fee_price_one_mark_step_per_interval() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // Member 200 USDC at pps 2.0: 100 shares, HWM 200. NAV 800, 400 shares.
+    deposit(&mut env, &f, &m, 200_000_000).unwrap();
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    // MEME doubles to $0.10 and stays: at spot NAV 1,100, pps 2.75.
+    t.fields.value = SB_ONE / 10;
+    // One interval: the deposit mark is $0.055, NAV 500 + 330 = 830, pps 2.075.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_075_000);
+    // Fee on 207.5 - 200 = 7.5 (not on 75 at spot): 0.75 USDC.
+    let res = exit(&mut env, &f, &m, 100_000_000).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (750_000, 2_075_000)
+    );
+}
+
 #[test]
 fn nav_values_switchboard_token_at_feed_value() {
     let (mut env, m, f, t) = fund_with_meme();

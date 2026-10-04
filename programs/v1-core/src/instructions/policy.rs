@@ -90,7 +90,7 @@ pub struct PokeNav<'info> {
     pub policy: Box<Account<'info, Policy>>,
 }
 
-/// Recompute the EMA pps from the NAV remaining accounts and move the breaker.
+/// Recompute the pps from the NAV remaining accounts and move the breaker.
 pub fn poke_nav(ctx: Context<PokeNav>) -> Result<()> {
     let fund_key = ctx.accounts.fund.key();
     let now = Clock::get()?.unix_timestamp;

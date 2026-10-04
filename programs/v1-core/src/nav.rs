@@ -14,13 +14,13 @@
 //!   `switchboard`); `price_b` is not read. The feed has no EMA, so the entry
 //!   keeps two slow mark prices (`switchboard::next_marks`), moved and stored
 //!   by every read. The deposit mark (the slow mark) moves at most 10% per
-//!   150 slots both ways; it is the token's EMA (the target of the recorded
-//!   pps, see `update_breaker`) and the exit fee price. The low mark drops to
+//!   150 slots both ways; it is the token's EMA. The low mark drops to
 //!   the value at once and rises at most 10% per 150 slots; it serves only
 //!   the captain stake (StakeLowerBound) and the breaker trip check
 //!   (BreakerCheck). Spot uses the feed value; DepositUpperBound and High
 //!   `max(value, deposit mark)` (+ std_dev for the deposit); Ema the deposit
-//!   mark; ExitFeeUpperBound `deposit mark + std_dev`.
+//!   mark; ExitFeeUpperBound `min(value, deposit mark) + std_dev`, so marks
+//!   seeded at a pump do not raise the exit fee.
 //!
 //! Warmup: for `MARK_WARMUP_SLOTS` after a Switchboard token's marks are
 //! seeded (first read, or a new price source), `NavResult::warming` is true:
@@ -74,8 +74,9 @@ pub enum ValuationMode {
     /// `max(price, ema_price)`, no confidence: a dump cannot lower a value.
     High,
     /// The exit fee price: DepositUpperBound, except a Switchboard token at
-    /// `ema_price + conf` (the slow mark), so neither a pump nor a dump moves
-    /// it faster than one step per interval.
+    /// `min(price, ema_price) + conf` (ema = the slow mark): neither a pump
+    /// nor marks seeded at a pump raise it. Exit takes the max with the
+    /// recorded pps, so a dump does not lower the fee.
     ExitFeeUpperBound,
     /// The breaker trip check: the low mark for a Switchboard token (a real
     /// crash trips at once), else the EMA.
@@ -129,7 +130,7 @@ impl TokenPrice {
             ValuationMode::Spot => p.price,
             ValuationMode::DepositUpperBound => plus_conf(high)?,
             ValuationMode::ExitFeeUpperBound => match self.low_mark {
-                Some(_) => plus_conf(p.ema_price)?,
+                Some(_) => plus_conf(p.price.min(p.ema_price))?,
                 None => plus_conf(high)?,
             },
             ValuationMode::StakeLowerBound if self.warming => return Ok(0),
@@ -174,7 +175,7 @@ pub struct NavResult {
 /// What `update_breaker` needs from one NAV read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BreakerPps {
-    /// Ema pps: recorded as `last_price_per_share` and the peak.
+    /// `min(Spot pps, Ema pps)`: the target of `last_price_per_share`.
     pub pps: u64,
     /// BreakerCheck pps: the trip check.
     pub check: u64,
@@ -191,8 +192,10 @@ impl NavResult {
                 total_shares,
             )?)
         };
+        // Marks seeded at a pump stay above the spot for many intervals; the
+        // lower of the two keeps the record and the peak off them.
         Ok(BreakerPps {
-            pps: pps(ValuationMode::Ema)?,
+            pps: pps(ValuationMode::Ema)?.min(pps(ValuationMode::Spot)?),
             check: pps(ValuationMode::BreakerCheck)?,
             record: !self.warming(),
         })
@@ -395,7 +398,8 @@ pub(crate) fn token_entry(
     Ok(entry)
 }
 
-/// Record `pps` (the Ema pps) and move the drawdown breaker.
+/// Record `pps` (the lower of the Spot and Ema pps) and move the drawdown
+/// breaker.
 /// `last_price_per_share` moves toward `pps` at most once per
 /// `MARK_INTERVAL_SLOTS`, by at most `MARK_MAX_STEP_BPS` of itself, for every
 /// price source, so no pump or dump moves the recorded pps (the deposit
@@ -495,7 +499,13 @@ mod tests {
         assert_eq!(v(DepositUpperBound), 26_000_000);
         assert_eq!(v(High), 25_000_000);
         assert_eq!(v(Ema), 25_000_000);
-        assert_eq!(v(ExitFeeUpperBound), 26_000_000);
+        assert_eq!(v(ExitFeeUpperBound), 21_000_000);
+        // Spot above the deposit mark: the mark + std_dev.
+        let up = TokenPrice {
+            low_mark: Some(1_000_000),
+            ..token(3_000_000, 2_500_000, None)
+        };
+        assert_eq!(up.value(10_000_000, ExitFeeUpperBound).unwrap(), 26_000_000);
         assert_eq!(v(StakeLowerBound), 10_000_000);
         assert_eq!(v(BreakerCheck), 10_000_000);
         // A warming holding counts 0 toward the captain stake only.

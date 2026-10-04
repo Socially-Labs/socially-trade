@@ -576,7 +576,7 @@ fn settle<'info>(
     }
 
     // 11. New holding; drop an emptied non-USDC input (swap-remove, never
-    // index 0); then the breaker on the post-trade EMA pps.
+    // index 0); then the breaker on the post-trade pps.
     let usdc = t.config.usdc_mint;
     let fund = &mut t.fund;
     if plan.out_is_new {

@@ -10,7 +10,7 @@
 //!    token program. It is not read when the user's slice of that holding is 0.
 //! 2. Optional, after that: the NAV layout (see `nav`). The fee pps is
 //!    `max(fund.last_price_per_share, fresh ExitFeeUpperBound pps)` when every NAV
-//!    account is valid, and the breaker moves on the fresh EMA pps. If any is
+//!    account is valid, and the breaker moves on the fresh prices. If any is
 //!    absent or invalid, the fee pps is `fund.last_price_per_share` and the
 //!    breaker does not move. So the exiter cannot lower the fee by the choice
 //!    of fresh vs stale prices.
@@ -301,7 +301,7 @@ pub(crate) struct FreshPps {
     pub fee: u64,
     /// Captain stake pps (`StakeLowerBound`).
     pub stake: u64,
-    /// Breaker inputs; `breaker.pps` is the annual fee pps (`Ema`).
+    /// Breaker inputs; `breaker.pps` is the target of the recorded pps.
     pub breaker: nav::BreakerPps,
 }
 

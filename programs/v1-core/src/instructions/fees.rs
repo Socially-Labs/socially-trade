@@ -1,10 +1,8 @@
 //! Yearly performance fee. Anyone can call it for a member, once per year.
-//! Prices must be fresh and valid (unlike `exit`): the fee pps is the fresh
-//! EMA pps only (the slow price: Pyth EMA, or the mark of a Switchboard
-//! token). A keeper cannot pick an in-window spot price to raise the fee or
-//! to lower it (invalid prices fail the call), and a stale high
-//! `last_price_per_share` cannot inflate it. The breaker moves on the same
-//! pps before the fee is computed.
+//! Prices must be fresh and valid (unlike `exit`): the breaker first moves
+//! the recorded pps one step at most toward `min(Spot pps, Ema pps)` (see
+//! `nav::update_breaker`), and the fee is at the recorded pps. No in-window
+//! price moves the fee more than one step per interval.
 //! The fee shares are minted to the captain and burned from the member by
 //! the fund PDA, the permanent delegate of the share mint.
 
