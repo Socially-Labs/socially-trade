@@ -130,4 +130,6 @@ pub enum ErrorCode {
     T3ExitRouteNotAllowed,
     #[msg("A holding has no valid price; a T3 loss burn needs every holding priced")]
     HoldingUnpriced,
+    #[msg("A T3 buy must spend USDC or an unbased Pyth or Kamino priced holding")]
+    T3EntryRouteNotAllowed,
 }

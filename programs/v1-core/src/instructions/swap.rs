@@ -29,10 +29,16 @@
 //! `basis * amount_in / position`. If the spot value received is less, the fund
 //! PDA (permanent delegate of the share mint) burns captain shares worth the
 //! loss at the pre-trade spot price per share, at most the captain's balance.
-//! A sale of a holding with a basis must output USDC or a token priced by
-//! Pyth or Kamino (`T3ExitRouteNotAllowed`): the proceeds are valued at the
-//! output's price, and a Switchboard price follows a pool the captain can
-//! move. So a T3 to T3 rotation takes two trades, a sale into USDC, then a buy.
+//!
+//! Routes. A trade values its proceeds, and a T3 buy its cost, at a spot
+//! price, and a Switchboard price follows a pool the captain can move. So a
+//! sale of a holding with a basis must output USDC, or a token priced by Pyth
+//! or Kamino that is not T3 and not a based holding (`T3ExitRouteNotAllowed`).
+//! A trade that adds a basis (a T3 buy, or a buy into a based holding) must
+//! spend USDC, or a holding priced by Pyth or Kamino that has no basis
+//! (`T3EntryRouteNotAllowed`). So no trade is both a T3 sale and a T3 buy: a
+//! rotation from one based holding to another takes two trades, a sale into
+//! USDC (the loss is realized at cost), then a buy.
 //!
 //! Sales into USDC must not need every feed (pause, breaker and a broken
 //! feed never block them). The input must price; any other holding whose
@@ -282,7 +288,7 @@ fn prepare(
 
     // 3. Listed and active; input held; room for a new output. Only an
     // Open Seas fund buys T3 tokens.
-    listed(&t.input_entry, &input, config)?;
+    let in_entry = listed(&t.input_entry, &input, config)?;
     let out_entry = listed(&t.output_entry, &output, config)?;
     let t3_tier = out_entry.as_ref().is_some_and(|e| e.tier == Tier::T3);
     require!(!t3_tier || fund.open_seas, ErrorCode::NotOpenSeas);
@@ -296,15 +302,29 @@ fn prepare(
     if out_held.is_none() {
         require!(len < MAX_HOLDINGS, ErrorCode::TooManyHoldings);
     }
-    // A sale of a based holding exits to USDC, Pyth or Kamino (module doc).
+    // The sale rules follow the basis, not the tier: a token listed T3 that the
+    // fund holds without a basis sells like any other token. A buy into a
+    // based holding is a T3 buy whatever the tier.
     let t3_sell = fund.t3_basis_usd[in_idx] > 0;
-    let priced_exit = out_entry.as_ref().is_none_or(|e| {
-        matches!(
-            e.price_source,
-            PriceSource::Pyth { .. } | PriceSource::KaminoReserve { .. }
-        )
-    });
-    require!(!t3_sell || priced_exit, ErrorCode::T3ExitRouteNotAllowed);
+    let out_based = out_held.is_some_and(|i| fund.t3_basis_usd[i] > 0);
+    let t3_buy = t3_tier || out_based;
+    // Routes (module doc). USDC (no entry) passes.
+    let pyth_or_kamino = |e: &Option<TokenEntry>| {
+        e.as_ref().is_none_or(|e| {
+            matches!(
+                e.price_source,
+                PriceSource::Pyth { .. } | PriceSource::KaminoReserve { .. }
+            )
+        })
+    };
+    require!(
+        !t3_sell || (pyth_or_kamino(&out_entry) && !t3_buy),
+        ErrorCode::T3ExitRouteNotAllowed
+    );
+    require!(
+        !t3_buy || (pyth_or_kamino(&in_entry) && !t3_sell),
+        ErrorCode::T3EntryRouteNotAllowed
+    );
 
     // 4. Prices of every holding, plus the new output's price. A sale into
     // USDC counts a holding other than the input that does not price at 0.
@@ -345,18 +365,13 @@ fn prepare(
             }
         }
     };
-    // The sale rules follow the basis, not the tier: a token listed T3 that the
-    // fund holds without a basis sells like any other token. A buy into a
-    // based holding is a T3 buy whatever the tier. A T3 buy must not mix with
-    // unbased units of a holding.
-    let out_based = out_held.is_some_and(|i| fund.t3_basis_usd[i] > 0);
+    // A T3 buy must not mix with unbased units of a holding.
     if let Some(i) = out_held {
         require!(
             !t3_tier || out_based || priced.amounts[i] == 0,
             ErrorCode::T3UnbasedHolding
         );
     }
-    let t3_buy = t3_tier || out_based;
     let t3_start = venue_start;
     if t3_buy || t3_sell {
         venue_start += T3_ACCOUNTS;

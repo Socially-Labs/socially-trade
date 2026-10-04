@@ -907,3 +907,70 @@ fn t3_loss_sale_needs_every_holding_priced() {
     assert_eq!(s.captain_shares(), 1_000 * USDC);
     assert_eq!(s.fund().t3_cost_basis_usd, 400 * USDC);
 }
+
+/// WIF: a 6-dp token listed T3 with a Pyth price of $1, with a deep pool.
+fn listed_wif(s: &mut Seas) -> Pubkey {
+    const WIF_FEED: [u8; 32] = [40; 32];
+    let wif = create_mint(&mut s.t.env, 6);
+    register_token(&mut s.t.env, wif, WIF_FEED, Tier::T3);
+    let usdc = s.t.env.usdc;
+    setup_venue_pool(&mut s.t.env, &usdc, &wif, 0, 1_000_000 * USDC);
+    s.refresh();
+    set_usd_price(&mut s.t.env, &wif, &WIF_FEED, 100_000_000);
+    wif
+}
+
+#[test]
+fn t3_sale_into_a_t3_pyth_token_is_rejected() {
+    let mut s = open_seas(1_000, 19_000);
+    let wif = listed_wif(&mut s);
+    let a = s.buy(400); // 8,000 MEME, basis 400
+    s.t.swap_fresh(&a).unwrap();
+    // MEME into WIF in one trade: WIF's basis would take MEME's (movable)
+    // spot value, not its cost.
+    let rotate = SwapArgs::new(s.meme.mint, wif, 8_000 * MEME, 396 * USDC, 1, 20_000);
+    expect_err(s.t.swap_fresh(&rotate), ErrorCode::T3ExitRouteNotAllowed);
+    // Into a based Pyth holding: also rejected.
+    let a = SwapArgs::new(s.t.env.usdc, wif, 100 * USDC, 99 * USDC, 1, 1);
+    s.t.swap_fresh(&a).unwrap();
+    expect_err(s.t.swap_fresh(&rotate), ErrorCode::T3ExitRouteNotAllowed);
+    // Two trades work: MEME into USDC at cost, then USDC into WIF at cost.
+    let a = s.sell(8_000 * MEME, 1, 20_000);
+    s.t.swap_fresh(&a).unwrap();
+    let a = SwapArgs::new(s.t.env.usdc, wif, 400 * USDC, 396 * USDC, 1, 1);
+    s.t.swap_fresh(&a).unwrap();
+    let f = s.fund();
+    assert!(!f.holdings.contains(&s.meme.mint));
+    let i = f.holdings.iter().position(|m| *m == wif).unwrap();
+    assert_eq!(f.t3_basis_usd[i], 500 * USDC);
+    assert_eq!(f.t3_cost_basis_usd, 500 * USDC);
+}
+
+#[test]
+fn t3_buy_spends_only_usdc_or_an_unbased_pyth_or_kamino_holding() {
+    let mut s = open_seas(1_000, 19_000);
+    // Listing waits out a timelock: re-publish COIN after WIF is listed.
+    let coin = second_token(&mut s, Tier::T2);
+    let wif = listed_wif(&mut s);
+    refresh_meme(&mut s.t.env, &coin);
+    let a = buy_of(&s.t, &coin.mint, 500);
+    s.t.swap_fresh(&a).unwrap();
+    // A Switchboard input (unbased T2 COIN) cannot start a basis.
+    let into_meme = SwapArgs::new(coin.mint, s.meme.mint, 1_000 * MEME, 990 * MEME, 1, 1);
+    expect_err(
+        s.t.swap_fresh(&into_meme),
+        ErrorCode::T3EntryRouteNotAllowed,
+    );
+    let into_wif = SwapArgs::new(coin.mint, wif, 1_000 * MEME, 49 * USDC, 1, 20_000);
+    expect_err(s.t.swap_fresh(&into_wif), ErrorCode::T3EntryRouteNotAllowed);
+    // SOL (Pyth, unbased) into MEME: 1 SOL ($150) for 3,000 MEME, basis 150.
+    let a = buy_sol(&s, 300);
+    s.t.swap_fresh(&a).unwrap();
+    let a = SwapArgs::new(s.t.sol, s.meme.mint, SOL, 2_970 * MEME, 3_000, 1);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 150 * USDC);
+    // USDC into WIF: basis 100 more.
+    let a = SwapArgs::new(s.t.env.usdc, wif, 100 * USDC, 99 * USDC, 1, 1);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 250 * USDC);
+}
