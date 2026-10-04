@@ -10,5 +10,5 @@ const pool = process.env.DATABASE_URL ? createPool() : null;
 const app = createApp(pool);
 await app.listen({
   port,
-  host: process.env.HOST ?? (process.env.DEV_AUTH_TOKEN ? "127.0.0.1" : "0.0.0.0"),
+  host: process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1"),
 });

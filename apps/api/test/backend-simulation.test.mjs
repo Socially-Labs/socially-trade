@@ -1,3 +1,4 @@
+import { configurePrivyFixture } from './privy-fixture.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -20,7 +21,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
   assert.match(new URL(connectionString).hostname, /^(localhost|127\.0\.0\.1|\[::1\])$/);
   delete process.env.PYTH_API_KEY;
   process.env.NODE_ENV = 'development';
-  process.env.DEV_AUTH_TOKEN = randomUUID();
+  const tokenFor = configurePrivyFixture();
   process.env.DEV_PRICE_SEED_ENABLED = 'true';
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input, options) => {
@@ -41,8 +42,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
   let noteId;
   let settlementPendingOrder;
   const route = (suffix = '') => `/v0/funds/${fundId}${suffix}`;
-  const headers = (subject, key) => ({ authorization: `Bearer ${process.env.DEV_AUTH_TOKEN}`,
-    'x-dev-subject': `dev:${subject}`, ...(key ? { 'idempotency-key': key } : {}) });
+  const headers = (subject, key) => ({ authorization: `Bearer ${tokenFor(subject)}`, ...(key ? { 'idempotency-key': key } : {}) });
   async function request(method, url, subject, payload, key, expected = 200) {
     const response = await app.inject({ method, url, headers: subject ? headers(subject, key) : {}, payload });
     assert.equal(response.statusCode, expected, `${method} ${url}: ${response.body}`);

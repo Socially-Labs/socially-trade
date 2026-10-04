@@ -6,7 +6,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: () => DbPool): void
   app.post("/v0/auth/privy", {
     schema: { body: { type: "object", additionalProperties: false, properties: {} } },
   }, async (request, reply) => {
-    const actor = await requireActor(request, db(), true);
+    const actor = await requireActor(request, db());
     reply.header("cache-control", "no-store");
     return {
       mode: "PAPER", provider: "privy", privyUserId: actor.subject,
