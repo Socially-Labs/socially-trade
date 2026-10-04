@@ -262,9 +262,11 @@ impl NavResult {
     }
 
     /// Unrealized T3 loss: the sum over based holdings of `basis - value`
-    /// where positive, each valued at `High` (spot or the slow price, the
-    /// higher), so a dump does not raise it. A holding in its mark warmup
-    /// counts no loss.
+    /// where positive. A Switchboard holding is valued at its deposit mark
+    /// only (`Ema`): its spot follows a pool, so a pump would cancel the
+    /// loss and a dump would raise it; the mark moves one step per interval.
+    /// Pyth and Kamino holdings at `High` (spot or EMA, the higher), so a
+    /// dump does not raise it. A holding in its mark warmup counts no loss.
     pub fn t3_loss(&self) -> Result<u128> {
         let mut loss: u128 = 0;
         for i in 0..self.len {
@@ -272,7 +274,11 @@ impl NavResult {
             if basis == 0 || self.prices[i].is_some_and(|p| p.warming) {
                 continue;
             }
-            let value = self.value_at(i, self.amounts[i], ValuationMode::High)?;
+            let mode = match self.prices[i] {
+                Some(p) if p.low_mark.is_some() => ValuationMode::Ema,
+                _ => ValuationMode::High,
+            };
+            let value = self.value_at(i, self.amounts[i], mode)?;
             loss = loss
                 .checked_add(basis.saturating_sub(value))
                 .ok_or(ErrorCode::MathOverflow)?;
@@ -699,6 +705,15 @@ mod tests {
         r.basis[1] = 40_000_000;
         r.prices[1] = Some(TokenPrice { warming: true, ..p });
         assert_eq!(r.t3_loss().unwrap(), 0);
+        // Switchboard: the deposit mark only. Spot $4 above the $3 mark
+        // does not lower the loss; spot $1 below it does not raise it.
+        for spot in [4_000_000, 1_000_000] {
+            r.prices[1] = Some(TokenPrice {
+                low_mark: Some(500_000),
+                ..token(spot, 3_000_000, None)
+            });
+            assert_eq!(r.t3_loss().unwrap(), 10_000_000);
+        }
     }
 
     #[test]

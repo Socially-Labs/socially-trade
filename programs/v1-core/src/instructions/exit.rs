@@ -25,8 +25,9 @@
 //! First loss. When a crew member exits with valid prices, the exit pays
 //! the member's part of the unrealized T3 loss from captain shares:
 //! `comp = t3_loss x shares / total_shares`, rounded up (`NavResult::t3_loss`:
-//! each based holding at the higher of spot and the slow price, a holding in
-//! its mark warmup counts no loss). The fund PDA burns captain shares worth
+//! a Switchboard holding at its slow deposit mark only, a Pyth or Kamino
+//! holding at the higher of spot and EMA, a holding in its mark warmup
+//! counts no loss). The fund PDA burns captain shares worth
 //! `comp` at the true pps, the recorded NAV less `t3_loss`
 //! (`swap::burn_nav`), at most the captain's balance (the captain exit floor
 //! does not apply), and the member redeems them too:

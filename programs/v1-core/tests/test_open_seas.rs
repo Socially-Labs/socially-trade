@@ -1231,3 +1231,54 @@ fn priced_crew_exit_with_a_loss_needs_the_captain_member() {
     ));
     assert!(send(&mut s.t.env.svm, &[ix], &[&a]).is_err());
 }
+
+/// The captain pumps MEME's spot back to cost for A's exit read. The
+/// compensation uses the slow price only, so the pump does not cancel it:
+/// with no interval passed A gets exactly 45,000; with one interval passed
+/// the read moves the slow price one 10% step ($0.011), and A is short at
+/// most its part of that step.
+#[test]
+fn pumped_spot_at_exit_does_not_cancel_compensation() {
+    for wait in [false, true] {
+        let (mut s, a) = crashed_fund();
+        if wait {
+            warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+            s.refresh();
+        }
+        s.set_meme_price(SB_ONE / 20);
+        let res = exit(&mut s.t.env, &s.t.f, &a, 45_000 * USDC).unwrap();
+        let ev = decode_events::<FirstLossApplied>(&res);
+        let got = value_at_one_cent(&s, &a.pubkey());
+        if wait {
+            // Loss 10,000 - 2,200 = 7,800, A's part 3,510.
+            assert_eq!(ev[0].loss_usd, 3_510 * USDC);
+            // One step is $200 on the 200,000 MEME; A's 45% of it is $90.
+            assert!((44_900 * USDC..45_000 * USDC).contains(&got), "{got}");
+        } else {
+            assert_eq!(ev[0].loss_usd, 3_600 * USDC);
+            assert_eq!(got, 45_000 * USDC);
+        }
+    }
+}
+
+/// A member waits one interval, then dumps MEME's spot for its exit read.
+/// The read moves the slow price only one 10% step down ($0.009), so A
+/// gains at most its part of that step.
+#[test]
+fn dump_after_one_interval_gains_at_most_one_step() {
+    let (mut s, a) = crashed_fund();
+    warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+    s.refresh();
+    s.set_meme_price(SB_ONE / 1_000);
+    let res = exit(&mut s.t.env, &s.t.f, &a, 45_000 * USDC).unwrap();
+    let ev = decode_events::<FirstLossApplied>(&res);
+    // Loss 10,000 - 1,800 = 8,200, A's part 3,690.
+    assert_eq!(ev[0].loss_usd, 3_690 * USDC);
+    assert_eq!(
+        read_entry(&s.t.env, &s.meme.mint).marks.deposit,
+        SB_ONE * 9 / 1_000
+    );
+    // At the true $0.01: one step is $200 on the 200,000 MEME; A's 45% is $90.
+    let got = value_at_one_cent(&s, &a.pubkey());
+    assert!((45_000 * USDC + 1..=45_100 * USDC).contains(&got), "{got}");
+}
