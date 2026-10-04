@@ -3,9 +3,11 @@ import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
 import { myPositions } from "./crew.js";
 import { ApiFault } from "./errors.js";
+import { captainProfile, registerCaptainProfileRoutes, type CaptainProfileRow } from "./captain-profiles.js";
 import { CaptainHandleIndex, captainHandleSchema, insertCaptain } from "./captain-handles.js";
 
 export function registerAccountRoutes(app: FastifyInstance, db: () => DbPool): void {
+  registerCaptainProfileRoutes(app, db);
   let handleIndex: CaptainHandleIndex | undefined;
   const handles = () => handleIndex ??= new CaptainHandleIndex(db(), app.log, process.env.REDIS_URL);
   app.addHook("onClose", async () => { await handleIndex?.close(); });
@@ -53,28 +55,20 @@ export function registerAccountRoutes(app: FastifyInstance, db: () => DbPool): v
     const actor = await requireActor(request, db());
     const handle = request.body.handle;
     const bio = request.body.bio ?? "";
-    const existing = await db().query<{ handle: string; bio: string }>(
-      "SELECT handle, bio FROM captain_profiles WHERE user_id = $1",
+    const existing = await db().query<CaptainProfileRow>(
+      "SELECT user_id,handle,bio,avatar_url,banner_url FROM captain_profiles WHERE user_id = $1",
       [actor.id],
     );
     if (existing.rows[0]) {
       if (existing.rows[0].handle !== handle) {
         throw new ApiFault(409, "captain_profile_exists", "Captain profile already exists");
       }
-      return { userId: actor.id, handle: existing.rows[0].handle, bio: existing.rows[0].bio };
+      return captainProfile(existing.rows[0]);
     }
     const state = await insertCaptain(db(), actor.id, handle, bio);
     await handles().added(handle, state);
     reply.code(201);
-    return { userId: actor.id, handle, bio };
+    return { userId: actor.id, handle, bio, avatarUrl: null, bannerUrl: null };
   });
 
-  app.get<{ Params: { captainId: string } }>("/v0/captains/:captainId", async (request) => {
-    const result = await db().query<{ user_id: string; handle: string; bio: string }>(
-      "SELECT user_id, handle, bio FROM captain_profiles WHERE user_id = $1",
-      [request.params.captainId],
-    );
-    if (!result.rows[0]) throw new ApiFault(404, "captain_not_found", "Captain not found");
-    return { userId: result.rows[0].user_id, handle: result.rows[0].handle, bio: result.rows[0].bio };
-  });
 }
