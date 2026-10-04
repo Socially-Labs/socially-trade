@@ -95,7 +95,8 @@ pub struct CaptainLog {
 
 /// Captain shares were burned for a T3 loss, at most the captain's balance.
 /// A T3 sale: `loss_usd` is the loss realized against the cost basis, the
-/// shares are worth it at the recorded price per share (T3 at cost). A crew
+/// shares are worth it at the lower of the recorded and the fresh at-cost
+/// price per share (the recorded one when a holding is unpriced). A crew
 /// exit: `loss_usd` is the exiter's part of the unrealized T3 loss, the
 /// shares are worth it at the recorded price per share less the loss, and
 /// the exiter redeemed them.
