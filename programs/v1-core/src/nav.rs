@@ -12,10 +12,22 @@
 //!   rate, then valued like a Pyth token (all modes, underlying EMA and conf).
 //! - Switchboard: `price_a` = the On-Demand pull feed in the entry (see
 //!   `switchboard`); `price_b` is not read. The feed has no EMA, so the entry
-//!   keeps a slow mark price in its place (`switchboard::next_mark`): every
-//!   read moves it at most 10% per 150 slots toward the feed value, and stores
-//!   it. Spot uses the feed value, Ema the mark, DepositUpperBound
-//!   `max(value, mark) + std_dev`, StakeLowerBound `min(value, mark)`.
+//!   keeps two slow mark prices (`switchboard::next_marks`), moved and stored
+//!   by every read. The deposit mark (the slow mark) moves at most 10% per
+//!   150 slots both ways; it is the token's EMA, so every fee price and every
+//!   recorded pps move one step per interval at most. The low mark drops to
+//!   the value at once and rises at most 10% per 150 slots; it serves only
+//!   the captain stake (StakeLowerBound) and the breaker trip check
+//!   (BreakerCheck). Spot uses the feed value; DepositUpperBound and High
+//!   `max(value, deposit mark)` (+ std_dev for the deposit); Ema the deposit
+//!   mark; ExitFeeUpperBound `deposit mark + std_dev`.
+//!
+//! Warmup: for `MARK_WARMUP_SLOTS` after a Switchboard token's marks are
+//! seeded (first read, or a new price source), `NavResult::warming` is true:
+//! callers do not record the peak or `last_price_per_share` (`update_breaker`
+//! with `record = false`; the breaker can still trip), `deposit` and
+//! `charge_annual_fee` fail (`MarkWarmup`), and the holding counts 0 toward
+//! the captain stake.
 //!
 //! USDC is valued 1:1; its entry and price accounts are not read, but they
 //! must be present (uniform layout). This module is the only place that
@@ -51,14 +63,22 @@ pub enum ValuationMode {
     /// `max(price, ema_price) + conf`: an upper bound, so a depositor cannot
     /// pick a low in-window price to get more shares.
     DepositUpperBound,
-    /// EMA price of the price source (the mark for a Switchboard token): slow
-    /// to move, for the breaker / peak / recorded pps and the annual fee.
+    /// EMA price of the price source (the deposit mark for a Switchboard
+    /// token): slow both ways, for the recorded pps / peak and the annual fee.
     Ema,
-    /// `min(price, ema_price)`: a lower bound, so a pump cannot raise the
-    /// captain stake value (T3 caps, captain exit floor).
+    /// `min(price, low)`, low = the low mark for a Switchboard token, else the
+    /// EMA: a lower bound, so a pump cannot raise the captain stake value (T3
+    /// caps, captain exit floor). A warming Switchboard holding counts 0.
     StakeLowerBound,
     /// `max(price, ema_price)`, no confidence: a dump cannot lower a value.
     High,
+    /// The exit fee price: DepositUpperBound, except a Switchboard token at
+    /// `ema_price + conf` (the slow mark), so neither a pump nor a dump moves
+    /// it faster than one step per interval.
+    ExitFeeUpperBound,
+    /// The breaker trip check: the low mark for a Switchboard token (a real
+    /// crash trips at once), else the EMA.
+    BreakerCheck,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +99,11 @@ pub struct TokenPrice {
     pub decimals: u8,
     /// kToken -> underlying rate; None for a plain Pyth token.
     pub rate: Option<KaminoRate>,
+    /// Switchboard only: the low mark at `pyth.expo` (`pyth.ema_price` is
+    /// the deposit mark).
+    pub low_mark: Option<i64>,
+    /// Switchboard only: the marks are in their warmup (`Marks::warming`).
+    pub warming: bool,
 }
 
 impl TokenPrice {
@@ -89,22 +114,31 @@ impl TokenPrice {
             Some(r) => r.to_underlying(amount)?,
             None => amount,
         };
+        let high = p.price.max(p.ema_price);
+        let low = self.low_mark.unwrap_or(p.ema_price);
+        let plus_conf = |price: i64| -> Result<i64> {
+            i64::try_from(price as i128 + p.conf as i128)
+                .map_err(|_| error!(ErrorCode::MathOverflow))
+        };
+        let positive = |price: i64| -> Result<i64> {
+            require!(price > 0, ErrorCode::PriceNonPositive);
+            Ok(price)
+        };
         let price = match mode {
             ValuationMode::Spot => p.price,
-            ValuationMode::DepositUpperBound => {
-                let hi = p.price.max(p.ema_price) as i128 + p.conf as i128;
-                i64::try_from(hi).map_err(|_| ErrorCode::MathOverflow)?
-            }
+            ValuationMode::DepositUpperBound => plus_conf(high)?,
+            ValuationMode::ExitFeeUpperBound => match self.low_mark {
+                Some(_) => plus_conf(p.ema_price)?,
+                None => plus_conf(high)?,
+            },
+            ValuationMode::StakeLowerBound if self.warming => return Ok(0),
+            ValuationMode::StakeLowerBound => positive(p.price.min(low))?,
+            ValuationMode::BreakerCheck => positive(low)?,
             ValuationMode::Ema => {
                 require!(p.ema_price > 0, ErrorCode::PriceNonPositive);
                 p.ema_price
             }
-            ValuationMode::StakeLowerBound => {
-                let lo = p.price.min(p.ema_price);
-                require!(lo > 0, ErrorCode::PriceNonPositive);
-                lo
-            }
-            ValuationMode::High => p.price.max(p.ema_price),
+            ValuationMode::High => high,
         };
         Ok(math::token_value_usdc(
             amount,
@@ -136,7 +170,41 @@ pub struct NavResult {
     pub t2: [bool; MAX_HOLDINGS],
 }
 
+/// What `update_breaker` needs from one NAV read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BreakerPps {
+    /// Ema pps: recorded as `last_price_per_share` and the peak.
+    pub pps: u64,
+    /// BreakerCheck pps: the trip check.
+    pub check: u64,
+    /// False during a mark warmup: record nothing, only trip.
+    pub record: bool,
+}
+
 impl NavResult {
+    /// The breaker inputs of this read for `total_shares`.
+    pub fn breaker(&self, total_shares: u64) -> Result<BreakerPps> {
+        let pps = |mode| -> Result<u64> {
+            Ok(math::price_per_share(
+                self.valuation(mode)?.nav,
+                total_shares,
+            )?)
+        };
+        Ok(BreakerPps {
+            pps: pps(ValuationMode::Ema)?,
+            check: pps(ValuationMode::BreakerCheck)?,
+            record: !self.warming(),
+        })
+    }
+
+    /// A held (or newly bought) Switchboard token is in its mark warmup:
+    /// do not record the peak or the last pps.
+    pub fn warming(&self) -> bool {
+        self.prices[..self.len]
+            .iter()
+            .any(|p| p.is_some_and(|p| p.warming))
+    }
+
     pub fn valuation(&self, mode: ValuationMode) -> Result<Valuation> {
         let mut out = Valuation {
             nav: 0,
@@ -207,16 +275,16 @@ pub(crate) fn price_and_store_mark(
         return price(&mut entry, accs, now);
     }
     require!(info.is_writable, AnchorError::ConstraintMut);
-    let before = (entry.mark_price, entry.mark_slot);
+    let before = entry.marks;
     let p = price(&mut entry, accs, now)?;
-    if (entry.mark_price, entry.mark_slot) != before {
+    if entry.marks != before {
         entry.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
     }
     Ok(p)
 }
 
 /// The price of a listed token from its `[price_a, price_b]` accounts. For a
-/// Switchboard token this moves `entry`'s mark (`switchboard::next_mark`);
+/// Switchboard token this moves `entry`'s marks (`switchboard::next_marks`);
 /// the caller stores it (`price_and_store_mark`).
 fn price(entry: &mut TokenEntry, accs: &[AccountInfo], now: i64) -> Result<TokenPrice> {
     require!(accs.len() >= PRICE_ACCOUNTS, ErrorCode::PriceAccountMissing);
@@ -233,6 +301,8 @@ fn price(entry: &mut TokenEntry, accs: &[AccountInfo], now: i64) -> Result<Token
             pyth: pyth_at(&accs[0], &feed_id)?,
             decimals: entry.decimals,
             rate: None,
+            low_mark: None,
+            warming: false,
         }),
         PriceSource::KaminoReserve {
             reserve,
@@ -252,6 +322,8 @@ fn price(entry: &mut TokenEntry, accs: &[AccountInfo], now: i64) -> Result<Token
                 pyth: pyth_at(&accs[1], &underlying_feed_id)?,
                 decimals: underlying_decimals,
                 rate: Some(rate),
+                low_mark: None,
+                warming: false,
             })
         }
         PriceSource::Switchboard {
@@ -270,12 +342,14 @@ fn price(entry: &mut TokenEntry, accs: &[AccountInfo], now: i64) -> Result<Token
                 &queue,
                 slot,
             )?;
-            (entry.mark_price, entry.mark_slot) =
-                switchboard::next_mark(entry.mark_price, entry.mark_slot, p.value, slot);
+            entry.marks = switchboard::next_marks(entry.marks, p.value, slot);
+            let (pyth, low_mark) = p.to_pyth(&entry.marks)?;
             Ok(TokenPrice {
-                pyth: p.to_pyth(entry.mark_price)?,
+                pyth,
                 decimals: entry.decimals,
                 rate: None,
+                low_mark: Some(low_mark),
+                warming: entry.marks.warming(slot),
             })
         }
     }
@@ -320,22 +394,33 @@ pub(crate) fn token_entry(
     Ok(entry)
 }
 
-/// Record `pps` and move the drawdown breaker: peak only rises; frozen while
-/// `pps < peak * (1 - drawdown)`. Emits `BreakerChanged` when `frozen` flips.
-pub fn update_breaker(fund: &mut Fund, fund_key: &Pubkey, policy: &Policy, pps: u64) -> Result<()> {
-    fund.last_price_per_share = pps;
-    fund.peak_price_per_share = fund.peak_price_per_share.max(pps);
+/// Record `pps` (the Ema pps) and move the drawdown breaker: peak only
+/// rises; frozen while `check < peak * (1 - drawdown)` (`check` = the
+/// BreakerCheck pps). Emits `BreakerChanged` when `frozen` flips. With
+/// `record = false` (a mark warmup, see `NavResult::warming`) the peak and
+/// `last_price_per_share` stay, and the breaker can only trip.
+pub fn update_breaker(
+    fund: &mut Fund,
+    fund_key: &Pubkey,
+    policy: &Policy,
+    b: BreakerPps,
+) -> Result<()> {
+    let BreakerPps { pps, check, record } = b;
+    if record {
+        fund.last_price_per_share = pps;
+        fund.peak_price_per_share = fund.peak_price_per_share.max(pps);
+    }
     let keep_bps = 10_000u16
         .checked_sub(policy.params.drawdown_bps)
         .ok_or(ErrorCode::MathOverflow)?;
     let line = math::bps_of(fund.peak_price_per_share as u128, keep_bps)?;
-    let frozen = (pps as u128) < line;
+    let frozen = (check as u128) < line || (!record && fund.frozen);
     if frozen != fund.frozen {
         fund.frozen = frozen;
         emit!(BreakerChanged {
             fund: *fund_key,
             frozen,
-            price_per_share: pps,
+            price_per_share: check,
             peak: fund.peak_price_per_share,
         });
     }
@@ -359,6 +444,8 @@ mod tests {
             },
             decimals: 6,
             rate,
+            low_mark: None,
+            warming: false,
         }
     }
 
@@ -373,7 +460,30 @@ mod tests {
             assert_eq!(v(DepositUpperBound), 21_000_000);
             assert_eq!(v(StakeLowerBound), 15_000_000);
             assert_eq!(v(High), 20_000_000);
+            assert_eq!(v(ExitFeeUpperBound), 21_000_000);
+            assert_eq!(v(BreakerCheck), ema as u128 * 10);
         }
+    }
+
+    #[test]
+    fn switchboard_modes_use_the_deposit_mark_and_the_low_mark() {
+        // 10 tokens: spot $2, deposit mark $2.50, low mark $1, std_dev $0.10.
+        let p = TokenPrice {
+            low_mark: Some(1_000_000),
+            ..token(2_000_000, 2_500_000, None)
+        };
+        let v = |m| p.value(10_000_000, m).unwrap();
+        assert_eq!(v(Spot), 20_000_000);
+        assert_eq!(v(DepositUpperBound), 26_000_000);
+        assert_eq!(v(High), 25_000_000);
+        assert_eq!(v(Ema), 25_000_000);
+        assert_eq!(v(ExitFeeUpperBound), 26_000_000);
+        assert_eq!(v(StakeLowerBound), 10_000_000);
+        assert_eq!(v(BreakerCheck), 10_000_000);
+        // A warming holding counts 0 toward the captain stake only.
+        let w = TokenPrice { warming: true, ..p };
+        assert_eq!(w.value(10_000_000, StakeLowerBound).unwrap(), 0);
+        assert_eq!(w.value(10_000_000, Ema).unwrap(), 25_000_000);
     }
 
     #[test]

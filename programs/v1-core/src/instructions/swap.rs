@@ -591,9 +591,8 @@ fn settle<'info>(
         fund.t3_basis_usd[last] = 0;
         fund.holdings_len -= 1;
     }
-    let ema_nav = priced.valuation(ValuationMode::Ema)?.nav;
-    let pps = math::price_per_share(ema_nav, fund.total_shares)?;
-    nav::update_breaker(fund, &fund_key, &t.policy, pps)?;
+    let breaker = priced.breaker(fund.total_shares)?;
+    nav::update_breaker(fund, &fund_key, &t.policy, breaker)?;
     Ok(amount_out)
 }
 

@@ -126,4 +126,6 @@ pub enum ErrorCode {
     FeedConfigChanged,
     #[msg("Deposit mints fewer shares than min_shares")]
     SlippageExceeded,
+    #[msg("A Switchboard holding's mark prices are still warming up")]
+    MarkWarmup,
 }

@@ -3,7 +3,11 @@ mod common;
 use {
     anchor_spl::token_2022::spl_token_2022,
     common::*,
-    v1_core::state::{Fund, Member, Policy, PolicyParams},
+    v1_core::{
+        constants::YEAR_SECS,
+        events::FeeCharged,
+        state::{Fund, Marks, Member, Policy, PolicyParams},
+    },
 };
 
 #[test]
@@ -538,11 +542,179 @@ fn deposit_rejects_zero_nav_with_shares() {
 }
 
 /// Fund with 300 USDC (300 shares) + 6,000 MEME at $0.05 (= 300 USDC).
+/// MEME's marks are seeded at $0.05 and warmed up.
 fn fund_with_meme() -> (Env, Keypair, FundHandles, SbToken) {
     let (mut env, _cap, m, f) = fund_with_member();
     let t = listed_meme(&mut env, Tier::T2);
     inject_holding(&mut env, &f, t.mint, 6_000_000_000_000);
+    poke(&mut env, &f, &m).unwrap();
+    warp(&mut env.svm, MARK_WARMUP_SLOTS as i64);
+    refresh_meme(&mut env, &t);
     (env, m, f, t)
+}
+
+/// A pump does not raise the crew exit fee: a Switchboard holding is priced
+/// at its low mark + std_dev for the fee, not at max(spot, mark).
+#[test]
+fn crew_exit_fee_is_not_raised_by_a_pump() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // NAV 600, pps 2.0: 200 USDC buys 100 shares, HWM 200.
+    deposit(&mut env, &f, &m, 200_000_000).unwrap();
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    // MEME pumps 10x. At max(spot, mark): NAV 500 + 3,000 = 3,500, pps 8.75,
+    // value 875, fee 67.5. At the low mark ($0.05): pps 2.0, no profit.
+    t.fields.value = SB_ONE / 2;
+    refresh_meme(&mut env, &t);
+    let res = exit(&mut env, &f, &m, 100_000_000).unwrap();
+    assert!(decode_events::<FeeCharged>(&res).is_empty());
+    // 100 of 400 shares: a quarter of 500 USDC and of 6,000 MEME.
+    assert_eq!(
+        token_balance(&env.svm, &usdc_ata(&env, &m.pubkey())),
+        925_000_000
+    );
+    let meme = ata(&m.pubkey(), &t.mint, &token);
+    assert_eq!(token_balance(&env.svm, &meme), 1_500_000_000_000);
+}
+
+/// Member 200 USDC in at pps 2.0, then 200 USDC donated: NAV 1,000 for 400
+/// shares, pps 2.5, recorded by a poke. The member's profit is 50, fee 5.
+fn fund_with_meme_profit() -> (Env, Keypair, FundHandles, SbToken) {
+    let (mut env, m, f, t) = fund_with_meme();
+    deposit(&mut env, &f, &m, 200_000_000).unwrap();
+    mint_usdc(&mut env, &f.usdc_vault, 200_000_000);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_500_000);
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    (env, m, f, t)
+}
+
+/// Dump the pool, poke, exit: the recorded pps and the exit fee price move
+/// at most one mark step per interval, so the fee stays.
+#[test]
+fn dump_then_poke_then_exit_does_not_lower_the_exit_fee() {
+    let (mut env, m, f, mut t) = fund_with_meme_profit();
+    // MEME dumped 99% to $0.0005: at that price NAV 703, pps 1.7575, no profit.
+    t.fields.value = SB_ONE / 2_000;
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_500_000);
+    let res = exit(&mut env, &f, &m, 100_000_000).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (5_000_000, 2_500_000)
+    );
+}
+
+/// The same dump does not lower the annual fee.
+#[test]
+fn dump_does_not_lower_the_annual_fee() {
+    let (mut env, m, f, mut t) = fund_with_meme_profit();
+    warp(&mut env.svm, YEAR_SECS);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    t.fields.value = SB_ONE / 2_000;
+    refresh_meme(&mut env, &t);
+    let ix = ix_annual_fee(&env, &f, &m.pubkey(), &m.pubkey());
+    let res = send(&mut env.svm, &[ix], &[&m]).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (5_000_000, 2_500_000)
+    );
+}
+
+/// A real crash trips the breaker at once through the low mark; the recorded
+/// pps moves only by the slow mark.
+#[test]
+fn breaker_trips_on_a_crash_through_the_low_mark() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    poke(&mut env, &f, &m).unwrap();
+    assert!(!read_fund(&env, &f).frozen);
+    // MEME crashes to $0.0005: low-mark pps (300 + 3) / 300 = 1.01 < 70% of 2.0.
+    t.fields.value = SB_ONE / 2_000;
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    poke(&mut env, &f, &m).unwrap();
+    let fund = read_fund(&env, &f);
+    assert!(fund.frozen);
+    assert_eq!(
+        (fund.last_price_per_share, fund.peak_price_per_share),
+        (2_000_000, 2_000_000)
+    );
+}
+
+/// A re-listing to a Switchboard feed that the attacker pumps cannot raise
+/// the peak: NAV reads do not record the peak or the last pps until the
+/// marks have warmed up.
+#[test]
+fn relisted_switchboard_token_warms_up_before_it_moves_the_peak() {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let mint = create_mint(&mut env, 9);
+    register_token(&mut env, mint, BONK_FEED, Tier::T2);
+    set_usd_price(&mut env, &mint, &BONK_FEED, 5_000_000); // $0.05
+    inject_holding(&mut env, &f, mint, 6_000_000_000_000);
+    poke(&mut env, &f, &m).unwrap();
+    let fund = read_fund(&env, &f);
+    assert_eq!(
+        (fund.peak_price_per_share, fund.last_price_per_share),
+        (2_000_000, 2_000_000)
+    );
+    // Re-listed to a Switchboard feed pumped 10x ($0.50).
+    let mut t = SbToken {
+        mint,
+        feed: Pubkey::new_unique(),
+        fields: FeedFields {
+            value: SB_ONE / 2,
+            std_dev: 0,
+            slot: 0,
+            min_slot: 0,
+            num_samples: v1_core::switchboard::MIN_SAMPLES,
+            max_staleness: 250,
+            feed_hash: [9; 32],
+            queue: Pubkey::new_unique(),
+        },
+    };
+    register_token_with(&mut env, mint, t.source(), Tier::T2);
+    refresh_meme(&mut env, &t);
+    // At $0.50 the pps would be 11.0.
+    poke(&mut env, &f, &m).unwrap();
+    let fund = read_fund(&env, &f);
+    assert_eq!(
+        (fund.peak_price_per_share, fund.last_price_per_share),
+        (2_000_000, 2_000_000)
+    );
+    // Deposits wait for the warmup (the deposit price has no settled mark yet).
+    expect_err(
+        deposit(&mut env, &f, &m, 100_000_000),
+        ErrorCode::MarkWarmup,
+    );
+    // The pump ends at $0.06. One slot before the warmup ends: still not recorded.
+    t.fields.value = SB_ONE * 6 / 100;
+    warp(&mut env.svm, MARK_WARMUP_SLOTS as i64 - 1);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
+    // Warm: NAV 300 + 360 = 660, pps 2.2.
+    warp(&mut env.svm, 1);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    let fund = read_fund(&env, &f);
+    assert_eq!(
+        (fund.peak_price_per_share, fund.last_price_per_share),
+        (2_200_000, 2_200_000)
+    );
+    // Deposits open again, at max(spot, deposit mark) = $0.06: 220 USDC buys 100 shares.
+    deposit(&mut env, &f, &m, 220_000_000).unwrap();
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
+        100_000_000
+    );
 }
 
 #[test]
@@ -600,28 +772,64 @@ fn deposit_rejects_fewer_shares_than_min_shares() {
 }
 
 #[test]
-fn switchboard_mark_is_stored_and_moves_one_step_per_interval() {
+fn switchboard_marks_are_stored_the_low_mark_drops_at_once() {
     let (mut env, m, f, mut t) = fund_with_meme();
-    let mark = |env: &Env| {
-        let e = read_entry(env, &t.mint);
-        (e.mark_price, e.mark_slot)
-    };
-    assert_eq!(mark(&env), (0, 0));
-    // The first read sets the mark to the feed value.
+    let marks = |env: &Env| read_entry(env, &t.mint).marks;
+    // Seeded at $0.05 by the first read, 1,500 slots ago.
+    let seeded = marks(&env);
+    let now = env.svm.get_sysvar::<Clock>().slot;
+    assert_eq!((seeded.deposit, seeded.low), (SB_ONE / 20, SB_ONE / 20));
+    assert_eq!(seeded.seed_slot, now - MARK_WARMUP_SLOTS);
+    // MEME doubles: both marks move one 10% step, to $0.055.
+    t.fields.value = SB_ONE / 10;
+    refresh_meme(&mut env, &t);
     poke(&mut env, &f, &m).unwrap();
     let s0 = env.svm.get_sysvar::<Clock>().slot;
-    assert_eq!(mark(&env), (SB_ONE / 20, s0));
-    // MEME doubles. One slot before the interval ends: no move.
-    t.fields.value = SB_ONE / 10;
+    let m0 = marks(&env);
+    assert_eq!((m0.deposit, m0.deposit_slot), (SB_ONE * 55 / 1_000, s0));
+    assert_eq!((m0.low, m0.low_slot), (SB_ONE * 55 / 1_000, s0));
+    // One slot before the interval ends: no move.
     warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64 - 1);
     refresh_meme(&mut env, &t);
     poke(&mut env, &f, &m).unwrap();
-    assert_eq!(mark(&env), (SB_ONE / 20, s0));
-    // At the interval: one 10% step, $0.055.
+    assert_eq!(marks(&env), m0);
+    // MEME falls to $0.02 in the same interval: the low mark drops at once,
+    // the deposit mark waits.
+    t.fields.value = SB_ONE / 50;
+    refresh_meme(&mut env, &t);
+    env.svm.expire_blockhash();
+    poke(&mut env, &f, &m).unwrap();
+    let m1 = marks(&env);
+    assert_eq!(
+        (m1.deposit, m1.low, m1.low_slot),
+        (m0.deposit, SB_ONE / 50, s0)
+    );
+    // Back to $0.10 at the interval: the deposit mark steps up from $0.055,
+    // the low mark one step up from $0.02, not to $0.10.
+    t.fields.value = SB_ONE / 10;
     warp(&mut env.svm, 1);
     refresh_meme(&mut env, &t);
     poke(&mut env, &f, &m).unwrap();
-    assert_eq!(mark(&env), (SB_ONE * 55 / 1_000, s0 + MARK_INTERVAL_SLOTS));
+    let m2 = marks(&env);
+    assert_eq!(
+        (m2.deposit, m2.low),
+        (SB_ONE * 605 / 10_000, SB_ONE * 22 / 1_000)
+    );
+    assert_eq!(m2.seed_slot, seeded.seed_slot);
+}
+
+#[test]
+fn relisting_resets_the_marks_only_for_a_new_price_source() {
+    let (mut env, _m, _f, mut t) = fund_with_meme();
+    let seeded = read_entry(&env, &t.mint).marks;
+    assert_ne!(seeded, Marks::default());
+    // A tier change keeps the marks.
+    register_token_with(&mut env, t.mint, t.source(), Tier::T3);
+    assert_eq!(read_entry(&env, &t.mint).marks, seeded);
+    // A new feed is a new price source: unseeded marks.
+    t.feed = Pubkey::new_unique();
+    register_token_with(&mut env, t.mint, t.source(), Tier::T3);
+    assert_eq!(read_entry(&env, &t.mint).marks, Marks::default());
 }
 
 #[test]

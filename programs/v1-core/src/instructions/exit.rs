@@ -9,7 +9,7 @@
 //!    `user_token_i` is the user's token account for `mint_i` on the mint's
 //!    token program. It is not read when the user's slice of that holding is 0.
 //! 2. Optional, after that: the NAV layout (see `nav`). The fee pps is
-//!    `max(fund.last_price_per_share, fresh upper-bound pps)` when every NAV
+//!    `max(fund.last_price_per_share, fresh ExitFeeUpperBound pps)` when every NAV
 //!    account is valid, and the breaker moves on the fresh EMA pps. If any is
 //!    absent or invalid, the fee pps is `fund.last_price_per_share` and the
 //!    breaker does not move. So the exiter cannot lower the fee by the choice
@@ -103,7 +103,7 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
     // Fresh prices can only raise the fee pps, never lower it below the last pps.
     let fresh = fresh_pps(&a.fund, &fund_key, &a.config, nav_accs, now, ctx.program_id).ok();
     let last = a.fund.last_price_per_share;
-    let pps = fresh.map_or(last, |(up, _, _)| up.max(last));
+    let pps = fresh.map_or(last, |f| f.fee.max(last));
 
     let fund_id_le = a.fund.fund_id.to_le_bytes();
     let fund_seeds: &[&[u8]] = &[FUND_SEED, captain.as_ref(), &fund_id_le, &[a.fund.bump]];
@@ -146,8 +146,10 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
         let basis = a.fund.t3_cost_basis_usd;
         if basis > 0 {
             let low = match fresh {
-                Some((_, _, low)) => low,
-                None => fresh_pps(&a.fund, &fund_key, &a.config, nav_accs, now, ctx.program_id)?.2,
+                Some(f) => f.stake,
+                None => {
+                    fresh_pps(&a.fund, &fund_key, &a.config, nav_accs, now, ctx.program_id)?.stake
+                }
             };
             let stake = math::value_of_shares(balance - shares, low)?;
             let basis_left = math::pro_rata(basis, total - shares, total)?;
@@ -231,8 +233,8 @@ pub fn exit<'info>(ctx: Context<'info, Exit<'info>>, shares: u64) -> Result<()> 
         }
         fund.t3_cost_basis_usd = sum;
     }
-    if let Some((_, ema_pps, _)) = fresh {
-        nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, ema_pps)?;
+    if let Some(f) = fresh {
+        nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, f.breaker)?;
     }
 
     // Partial exit keeps the same share of the high-water mark.
@@ -292,8 +294,17 @@ pub(crate) fn charge_fee<'info>(
     Ok(fee)
 }
 
-/// `(fee pps from the upper-bound NAV, breaker pps from the EMA NAV, captain
-/// stake pps from the StakeLowerBound NAV)`.
+/// Price per share of fresh valid prices, by use.
+#[derive(Clone, Copy)]
+pub(crate) struct FreshPps {
+    /// Exit fee pps (`ExitFeeUpperBound`).
+    pub fee: u64,
+    /// Captain stake pps (`StakeLowerBound`).
+    pub stake: u64,
+    /// Breaker inputs; `breaker.pps` is the annual fee pps (`Ema`).
+    pub breaker: nav::BreakerPps,
+}
+
 pub(crate) fn fresh_pps(
     fund: &Fund,
     fund_key: &Pubkey,
@@ -301,15 +312,15 @@ pub(crate) fn fresh_pps(
     nav_accs: &[AccountInfo],
     now: i64,
     program_id: &Pubkey,
-) -> Result<(u64, u64, u64)> {
+) -> Result<FreshPps> {
     let priced = nav::compute(fund, fund_key, config, nav_accs, now, program_id)?;
     let pps = |mode| -> Result<u64> {
         let nav = priced.valuation(mode)?.nav;
         Ok(math::price_per_share(nav, fund.total_shares)?)
     };
-    Ok((
-        pps(ValuationMode::DepositUpperBound)?,
-        pps(ValuationMode::Ema)?,
-        pps(ValuationMode::StakeLowerBound)?,
-    ))
+    Ok(FreshPps {
+        fee: pps(ValuationMode::ExitFeeUpperBound)?,
+        stake: pps(ValuationMode::StakeLowerBound)?,
+        breaker: priced.breaker(fund.total_shares)?,
+    })
 }

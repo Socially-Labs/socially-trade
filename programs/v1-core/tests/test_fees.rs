@@ -10,26 +10,6 @@ use {
     },
 };
 
-fn ix_fee(env: &Env, f: &FundHandles, member_owner: &Pubkey, payer: &Pubkey) -> Instruction {
-    let fund = read_fund(env, f);
-    let mut ix = v1_ix(
-        v1_core::accounts::ChargeAnnualFee {
-            payer: *payer,
-            config: config_pda(),
-            fund: f.fund,
-            policy: f.policy,
-            member: member_pda(&f.fund, member_owner),
-            share_mint: f.share_mint,
-            member_shares: share_ata(f, member_owner),
-            captain_shares: share_ata(f, &fund.captain),
-            share_token_program: anchor_spl::token_2022::spl_token_2022::ID,
-        },
-        v1_core::instruction::ChargeAnnualFee {},
-    );
-    ix.accounts.extend(nav_accounts(env, f));
-    ix
-}
-
 #[allow(clippy::result_large_err)] // LiteSVM's own error type.
 fn charge(
     env: &mut Env,
@@ -37,7 +17,7 @@ fn charge(
     member_owner: &Pubkey,
     payer: &Keypair,
 ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-    let ix = ix_fee(env, f, member_owner, &payer.pubkey());
+    let ix = ix_annual_fee(env, f, member_owner, &payer.pubkey());
     send(&mut env.svm, &[ix], &[payer])
 }
 
@@ -205,13 +185,13 @@ fn annual_fee_requires_fresh_valid_prices() {
     let sol = listed_sol(&mut env, 150);
     inject_holding(&mut env, &f, sol, 1_000_000_000);
     warp(&mut env.svm, YEAR_SECS);
-    let ix = ix_fee(&env, &f, &m.pubkey(), &keeper.pubkey());
+    let ix = ix_annual_fee(&env, &f, &m.pubkey(), &keeper.pubkey());
     assert!(
         send(&mut env.svm, &[ix], &[&keeper]).is_err(),
         "stale price"
     );
     // No NAV accounts at all.
-    let mut ix = ix_fee(&env, &f, &m.pubkey(), &keeper.pubkey());
+    let mut ix = ix_annual_fee(&env, &f, &m.pubkey(), &keeper.pubkey());
     ix.accounts.truncate(9);
     assert!(send(&mut env.svm, &[ix], &[&keeper]).is_err());
     assert_eq!(

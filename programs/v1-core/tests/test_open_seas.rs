@@ -5,7 +5,10 @@ mod common;
 
 use {
     common::*,
-    v1_core::{events::FirstLossApplied, state::Member},
+    v1_core::{
+        events::FirstLossApplied,
+        state::{Marks, Member},
+    },
 };
 
 const USDC: u64 = 1_000_000;
@@ -31,6 +34,13 @@ fn open_seas(cap_usd: u64, crew_usd: u64) -> Seas {
         1_000_000 * USDC,
         100_000_000 * MEME,
     );
+    // MEME already trades: fund 1 holds a little, and a read seeded its
+    // (shared) marks one warmup ago, so fund 2 values it at once.
+    inject_holding(&mut t.env, &t.f, meme.mint, MEME);
+    refresh_meme(&mut t.env, &meme);
+    let cap = t.cap.insecure_clone();
+    poke(&mut t.env, &t.f, &cap).unwrap();
+    warp(&mut t.env.svm, MARK_WARMUP_SLOTS as i64);
     t.refresh_prices();
     refresh_meme(&mut t.env, &meme);
     let ix = ix_create_fund_full(&t.cap.pubkey(), 2, cap_usd * USDC, usdc, true);
@@ -340,15 +350,17 @@ fn captain_exit_floor_covers_t3_basis_while_t3_is_held() {
 #[test]
 fn a_new_switchboard_output_stores_its_mark() {
     let mut s = open_seas(1_000, 19_000);
-    assert_eq!(read_entry(&s.t.env, &s.meme.mint).mark_price, 0);
-    let a = s.buy(100);
-    s.t.swap_fresh(&a).unwrap();
-    assert_eq!(read_entry(&s.t.env, &s.meme.mint).mark_price, SB_ONE / 20);
-    // A new Switchboard output needs a writable output entry.
     let coin = second_token(&mut s, Tier::T3);
+    assert_eq!(read_entry(&s.t.env, &coin.mint).marks, Marks::default());
     let a = buy_of(&s.t, &coin.mint, 100);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(read_entry(&s.t.env, &coin.mint).marks.low, SB_ONE / 20);
+    // A new Switchboard output needs a writable output entry.
+    let other = second_token(&mut s, Tier::T3);
+    refresh_meme(&mut s.t.env, &coin);
+    let a = buy_of(&s.t, &other.mint, 100);
     let mut ix = ix_swap(&s.t.env, &s.t.f, &s.t.cap.pubkey(), None, &a);
-    let entry = token_pda(&coin.mint);
+    let entry = token_pda(&other.mint);
     for m in ix.accounts.iter_mut().filter(|m| m.pubkey == entry) {
         m.is_writable = false;
     }
@@ -358,6 +370,81 @@ fn a_new_switchboard_output_stores_its_mark() {
         send(&mut s.t.env.svm, &[ix], &[&cap]),
         anchor_lang::error::ErrorCode::ConstraintMut,
     );
+}
+
+/// After a real fall the low mark drops to the spot at once, so a pump back
+/// up cannot raise the captain stake (T3 caps and the exit floor). A mark
+/// that only moves 10% per interval would still read near the old price.
+#[test]
+fn captain_stake_after_a_fall_and_a_pump_uses_the_low_mark() {
+    let mut s = open_seas(2_000, 18_000);
+    let coin = second_token(&mut s, Tier::T3);
+    let cap = s.t.cap.insecure_clone();
+    // A 50% drawdown limit, so the fall below does not freeze trading.
+    let mut policy = read_policy(&s.t.env, &s.t.f);
+    policy.params.drawdown_bps = MAX_DRAWDOWN_BPS;
+    write_policy(&mut s.t.env, &s.t.f, &policy);
+    // 400,000 MEME sent to the fund (no basis): $20,000 at $0.05.
+    inject_holding(&mut s.t.env, &s.t.f, s.meme.mint, 400_000 * MEME);
+    poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+    warp(&mut s.t.env.svm, MARK_INTERVAL_SLOTS as i64);
+    s.refresh();
+    refresh_meme(&mut s.t.env, &coin);
+    // MEME falls 90% to $0.005. One read: the low mark drops to $0.005, the
+    // deposit mark moves one step, to $0.045.
+    s.set_meme_price(SB_ONE / 200);
+    poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+    // The captain pumps MEME back to $0.045. At min(spot, deposit mark):
+    // NAV 20,000 + 18,000 = 38,000, stake 3,800. At the low mark (one step
+    // up, $0.0055): NAV 20,000 + 2,200 = 22,200, stake 2,220.
+    s.set_meme_price(SB_ONE * 45 / 1_000);
+    let a = buy_of(&s.t, &coin.mint, 2_300);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    let a = buy_of(&s.t, &coin.mint, 2_200);
+    s.t.swap_fresh(&a).unwrap();
+    // Floor: the coin's marks are warming (seeded by the buy), so it counts
+    // 0. Stake NAV 17,800 + 2,200 = 20,000, pps 1.0. 1,900 left < basis
+    // left 2,200 x 19,900 / 20,000 = 2,189.
+    for mint in [s.meme.mint, coin.mint] {
+        let ix = ix_create_ata(
+            &cap.pubkey(),
+            &cap.pubkey(),
+            &mint,
+            &spl_token_interface::ID,
+        );
+        send(&mut s.t.env.svm, &[ix], &[&cap]).unwrap();
+    }
+    expect_err(
+        exit(&mut s.t.env, &s.t.f, &cap, 100 * USDC),
+        ErrorCode::CaptainStakeFloor,
+    );
+}
+
+/// A holding whose marks are still warming up counts 0 toward the captain
+/// stake, so a just-seeded (maybe pumped) price cannot raise the T3 caps.
+#[test]
+fn t3_buy_during_warmup_counts_the_warming_holding_at_zero() {
+    let mut s = open_seas(1_000, 19_000);
+    let coin = second_token(&mut s, Tier::T3);
+    let fresh = second_token(&mut s, Tier::T2);
+    refresh_meme(&mut s.t.env, &coin);
+    let cap = s.t.cap.insecure_clone();
+    // 400,000 FRESH sent to the fund: $20,000. The poke seeds its marks now.
+    inject_holding(&mut s.t.env, &s.t.f, fresh.mint, 400_000 * MEME);
+    poke(&mut s.t.env, &s.t.f, &cap).unwrap();
+    // Stake with FRESH: 1,000 / 20,000 x 40,000 = 2,000. Without: 1,000.
+    let a = buy_of(&s.t, &coin.mint, 1_500);
+    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
+    let a = buy_of(&s.t, &coin.mint, 1_000);
+    s.t.swap_fresh(&a).unwrap();
+    // Warm: NAV 19,000 + 20,000 + 1,000 = 40,000, stake 2,000; 500 more fits.
+    warp(&mut s.t.env.svm, MARK_WARMUP_SLOTS as i64);
+    s.refresh();
+    refresh_meme(&mut s.t.env, &coin);
+    refresh_meme(&mut s.t.env, &fresh);
+    let a = buy_of(&s.t, &coin.mint, 500);
+    s.t.swap_fresh(&a).unwrap();
+    assert_eq!(s.fund().t3_cost_basis_usd, 1_500 * USDC);
 }
 
 /// A 50% pump does not let the captain leave early: the floor values the

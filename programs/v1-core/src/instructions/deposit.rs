@@ -93,9 +93,10 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()
     // Shares from the upper-bound NAV (favor the fund); breaker from the EMA NAV.
     let nav_upper = priced.valuation(ValuationMode::DepositUpperBound)?.nav;
     require!(nav_upper > 0, ErrorCode::NavZero);
-    let nav_ema = priced.valuation(ValuationMode::Ema)?.nav;
+    // A warming mark has not found its price yet: no deposit can use it.
+    require!(!priced.warming(), ErrorCode::MarkWarmup);
+    let breaker = priced.breaker(total_before)?;
     let pps_paid = math::price_per_share(nav_upper, total_before)?;
-    let pps_ema = math::price_per_share(nav_ema, total_before)?;
     let shares = math::shares_for_deposit(amount, total_before, nav_upper)?;
     require!(shares >= min_shares, ErrorCode::SlippageExceeded);
 
@@ -138,7 +139,7 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()
         .total_shares
         .checked_add(shares)
         .ok_or(ErrorCode::MathOverflow)?;
-    nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, pps_ema)?;
+    nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, breaker)?;
 
     let member = &mut ctx.accounts.member;
     if member.owner == Pubkey::default() {

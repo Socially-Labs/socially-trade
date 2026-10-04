@@ -4,7 +4,7 @@ use {
     crate::{
         constants::{ADMIN_TIMELOCK_SECS, CONFIG_SEED, TOKEN_SEED, VENUE_SEED},
         errors::ErrorCode,
-        state::{Config, PriceSource, Tier, TokenEntry, VenueEntry},
+        state::{Config, Marks, PriceSource, Tier, TokenEntry, VenueEntry},
     },
     anchor_lang::prelude::*,
     anchor_spl::{token_2022::ID as TOKEN_2022_PROGRAM, token_interface::Mint},
@@ -93,6 +93,11 @@ pub struct ApplyToken<'info> {
 pub fn apply_token(ctx: Context<ApplyToken>) -> Result<()> {
     let entry = &mut ctx.accounts.token_entry;
     check_due(entry.pending_eta)?;
+    // A new price source starts from unseeded marks (the old ones belong to
+    // another price) and a fresh warmup.
+    if entry.pending_price_source != entry.price_source {
+        entry.marks = Marks::default();
+    }
     entry.price_source = entry.pending_price_source;
     entry.tier = entry.pending_tier;
     entry.active = true;

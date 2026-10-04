@@ -1793,3 +1793,29 @@ pub fn poke(
     let ix = ix_poke_nav(env, f);
     send(&mut env.svm, &[ix], &[payer])
 }
+
+/// `charge_annual_fee` for `member_owner`, paid by `payer`, with the NAV accounts.
+pub fn ix_annual_fee(
+    env: &Env,
+    f: &FundHandles,
+    member_owner: &Pubkey,
+    payer: &Pubkey,
+) -> Instruction {
+    let fund = read_fund(env, f);
+    let mut ix = v1_ix(
+        v1_core::accounts::ChargeAnnualFee {
+            payer: *payer,
+            config: config_pda(),
+            fund: f.fund,
+            policy: f.policy,
+            member: member_pda(&f.fund, member_owner),
+            share_mint: f.share_mint,
+            member_shares: share_ata(f, member_owner),
+            captain_shares: share_ata(f, &fund.captain),
+            share_token_program: TOKEN_2022,
+        },
+        v1_core::instruction::ChargeAnnualFee {},
+    );
+    ix.accounts.extend(nav_accounts(env, f));
+    ix
+}

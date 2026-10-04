@@ -79,7 +79,7 @@ pub fn charge_annual_fee<'info>(ctx: Context<'info, ChargeAnnualFee<'info>>) -> 
 
     let fund_key = a.fund.key();
     // Invalid or missing prices fail the call.
-    let (_, pps, _) = fresh_pps(
+    let fresh = fresh_pps(
         &a.fund,
         &fund_key,
         &a.config,
@@ -87,8 +87,16 @@ pub fn charge_annual_fee<'info>(ctx: Context<'info, ChargeAnnualFee<'info>>) -> 
         now,
         ctx.program_id,
     )?;
+    // A warming mark has not found its price yet: the fee waits.
+    require!(fresh.breaker.record, ErrorCode::MarkWarmup);
     // The breaker moves first, so the fee sees the same fund state as the next caller.
-    nav::update_breaker(&mut ctx.accounts.fund, &fund_key, &ctx.accounts.policy, pps)?;
+    let pps = fresh.breaker.pps;
+    nav::update_breaker(
+        &mut ctx.accounts.fund,
+        &fund_key,
+        &ctx.accounts.policy,
+        fresh.breaker,
+    )?;
 
     let a = &ctx.accounts;
     let balance = a.member_shares.amount;
