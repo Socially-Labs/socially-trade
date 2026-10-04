@@ -303,3 +303,7 @@ Full trade pagination, Captain-wide statistics and the private Crew timeline are
 - `docs/v0-paper-trading-architecture.md`: broader design, including future scope.
 
 Prepared against the backend on October 1, 2026. Recheck the source when contracts change.
+
+## Profile and banner edits
+
+After creating a Captain profile, update its bio and hosted image URLs with `PATCH /v0/captains/:captainId`. The public GET and create responses include `avatarUrl` and `bannerUrl` (null until configured). See [profile endpoint and storage setup](captain-profile-assets.md). File uploads require external storage; this endpoint saves metadata only.
