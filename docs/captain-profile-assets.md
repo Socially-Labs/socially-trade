@@ -4,7 +4,22 @@
 
 The backend implements authenticated upload reservations, presigned direct uploads to a private AWS S3 staging bucket, image validation/processing, publication to a separate private processed bucket served publicly through CloudFront and automatic profile attachment. No frontend is included.
 
-Local PostgreSQL has been started and migrations through **013** applied. Workspace builds and type checks pass. **Cloud provisioning and live upload verification remain blocked by an expired AWS login session.** The setup script is implemented; writing it is not evidence that buckets exist.
+Local PostgreSQL has been started and migrations through **013** applied. Workspace builds and type checks pass. **AWS storage was provisioned on October 5, 2026:** the CloudFormation stack reached `CREATE_COMPLETE`, CloudFront reports `Deployed`, and the local ignored `.env` contains the storage settings. Live authenticated upload verification is still pending.
+
+### Provisioned storage
+
+| Setting | Deployed value |
+| --- | --- |
+| Stack | `socially-captain-assets` |
+| Region | `us-east-1` |
+| Staging bucket | `socially-captains-420053132650-us-east-1-uploads` |
+| Processed bucket | `socially-captains-420053132650-us-east-1-assets` |
+| Delivery origin | `https://d3t09o1mis44fs.cloudfront.net` |
+| Distribution | `E1UWF4WP98P6XW` |
+
+AWS configuration reads confirmed that the processed bucket blocks public access and its policy is not public, staging CORS allows PUT from `http://localhost:3000`, and pending originals expire after one day. These are infrastructure checks, not evidence of a completed user upload.
+
+The deployment used the currently authenticated default AWS CLI profile. Configure the API host with its own IAM role and the runtime permissions below; the local sign-in session is temporary. Copy the non-secret storage settings into the API deployment environment and restart the API. Set `S3_UPLOAD_ORIGINS` to the actual browser app origins and rerun setup before shipping a web client; the current origin is for local integration. Native mobile clients do not use browser CORS. This checkpoint provisions storage and ships backend code; it does not deploy an API host.
 
 ## Client flow
 
@@ -162,4 +177,4 @@ S3 HeadObject uses GetObject permission. The API never needs CloudFormation or C
 
 ## Verification still pending
 
-AWS provisioning and live signed PUT (including browser CORS/Content-Length signing), decoded image publication, CloudFront delivery, token/owner denial, retries and expiration need runtime verification after AWS login is renewed. Builds and applied migrations do not establish that the cloud infrastructure is live. No new test suite has been run in this implementation checkpoint.
+Live signed PUT (including browser CORS/Content-Length signing), decoded image publication, CloudFront image delivery, token/owner denial, retries and expiration still need runtime verification with an authenticated Captain. Cloud infrastructure is deployed; these user flows have not been exercised against it. No new test suite has been run in this implementation checkpoint.
