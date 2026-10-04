@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "check-types": "tsc --noEmit -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "assets:setup": "node scripts/provision-r2.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
@@ -16,6 +17,8 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0",
     "@fastify/websocket": "^11.3.3",
     "@socially/contracts": "workspace:*",
     "@socially/db": "workspace:*",
@@ -26,6 +29,7 @@
     "fastify": "^5.12.5",
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "sharp": "^0.35.5"
   }
 }

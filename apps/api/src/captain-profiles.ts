@@ -54,6 +54,11 @@ export function registerCaptainProfileRoutes(app: FastifyInstance, db: () => DbP
     }
     const { bio, avatarUrl, bannerUrl } = request.body;
     const avatar = assetUrl(avatarUrl); const banner = assetUrl(bannerUrl);
+    for (const [kind, url] of [["avatar", avatar], ["banner", banner]] as const) {
+      if (url && !(await db().query("SELECT 1 FROM captain_asset_uploads WHERE captain_id=$1 AND kind=$2 AND public_url=$3 AND status='COMPLETED'", [actor.id, kind, url])).rowCount) {
+        throw new ApiFault(400, "asset_not_verified", "Complete your own image upload before attaching it");
+      }
+    }
     const row = (await db().query<CaptainProfileRow>(
       `UPDATE captain_profiles SET
         bio=CASE WHEN $2::boolean THEN $3::text ELSE bio END,

@@ -3,11 +3,13 @@ import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
 import { myPositions } from "./crew.js";
 import { ApiFault } from "./errors.js";
+import { registerCaptainUploadRoutes } from "./captain-uploads.js";
 import { captainProfile, registerCaptainProfileRoutes, type CaptainProfileRow } from "./captain-profiles.js";
 import { CaptainHandleIndex, captainHandleSchema, insertCaptain } from "./captain-handles.js";
 
 export function registerAccountRoutes(app: FastifyInstance, db: () => DbPool): void {
   registerCaptainProfileRoutes(app, db);
+  registerCaptainUploadRoutes(app, db);
   let handleIndex: CaptainHandleIndex | undefined;
   const handles = () => handleIndex ??= new CaptainHandleIndex(db(), app.log, process.env.REDIS_URL);
   app.addHook("onClose", async () => { await handleIndex?.close(); });
