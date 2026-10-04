@@ -12,3 +12,7 @@ await app.listen({
   port,
   host: process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1"),
 });
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => { void app.close().catch(() => { process.exitCode = 1; }); });
+}

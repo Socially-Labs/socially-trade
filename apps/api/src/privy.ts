@@ -4,7 +4,7 @@ import { ApiFault } from "./errors.js";
 let cachedJwks: { appId: string; resolve: JWTVerifyGetKey } | undefined;
 
 /** Verify access tokens, not identity tokens or client-supplied user IDs. */
-export async function privyIdentity(token: string): Promise<{ subject: string; displayName: string }> {
+export async function privyIdentity(token: string): Promise<{ subject: string; displayName: string; expiresAt: number }> {
   const appId = process.env.PRIVY_APP_ID;
   if (!appId) {
     throw new ApiFault(503, "auth_unconfigured", "PRIVY_APP_ID is required");
@@ -33,7 +33,7 @@ export async function privyIdentity(token: string): Promise<{ subject: string; d
         typeof payload.iat !== "number" || payload.iat > Math.floor(Date.now() / 1000) + 5) {
       throw new Error("Invalid Privy access token claims");
     }
-    return { subject: payload.sub, displayName: "Trader" };
+    return { subject: payload.sub, displayName: "Trader", expiresAt: payload.exp! };
   } catch (error) {
     if (error instanceof ApiFault) throw error;
     throw new ApiFault(401, "unauthorized", "Invalid or expired Privy access token");

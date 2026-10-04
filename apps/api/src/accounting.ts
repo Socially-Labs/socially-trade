@@ -36,7 +36,7 @@ export async function valueFund(
      LEFT JOIN LATERAL (
        SELECT price_usdc, source_at FROM price_observations
        WHERE instrument_id = p.instrument_id
-         AND (source = 'PYTH_HERMES' OR ($2::boolean AND source = 'DEV_SEED'))
+         AND (source = 'JUPITER_PRICE_V3' OR ($2::boolean AND source = 'DEV_SEED'))
        ORDER BY source_at DESC, received_at DESC LIMIT 1
      ) o ON true
      WHERE p.fund_id = $1 AND p.quantity > 0`,

@@ -74,7 +74,7 @@ export async function previewOrder(pool: DbPool, actor: Actor, fundId: string, i
     }
     const quote = await client.query<{ id: string; price_usdc: string; source_at: Date }>(
       `SELECT id, price_usdc::text, source_at FROM price_observations
-       WHERE instrument_id = $1 AND (source = 'PYTH_HERMES' OR ($2::boolean AND source = 'DEV_SEED'))
+       WHERE instrument_id = $1 AND (source = 'JUPITER_PRICE_V3' OR ($2::boolean AND source = 'DEV_SEED'))
        ORDER BY source_at DESC, received_at DESC LIMIT 1`,
       [input.instrumentId, process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true"],
     );

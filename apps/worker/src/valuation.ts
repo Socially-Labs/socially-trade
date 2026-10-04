@@ -29,7 +29,7 @@ export async function lockValuedFund(client: DbClient, fundId: string) {
        o.id observation_id,o.price_usdc::text,o.source_at
      FROM positions p LEFT JOIN LATERAL (
        SELECT id,price_usdc,source_at FROM price_observations WHERE instrument_id=p.instrument_id
-        AND (source='PYTH_HERMES' OR ($2::boolean AND source='DEV_SEED'))
+        AND (source='JUPITER_PRICE_V3' OR ($2::boolean AND source='DEV_SEED'))
        ORDER BY source_at DESC,received_at DESC LIMIT 1
      ) o ON true WHERE p.fund_id=$1 AND p.quantity>0`,
     [fundId, process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true"],
