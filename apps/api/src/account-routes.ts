@@ -3,8 +3,20 @@ import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
 import { myPositions } from "./crew.js";
 import { ApiFault } from "./errors.js";
+import { CaptainHandleIndex, captainHandleSchema, insertCaptain } from "./captain-handles.js";
 
 export function registerAccountRoutes(app: FastifyInstance, db: () => DbPool): void {
+  let handleIndex: CaptainHandleIndex | undefined;
+  const handles = () => handleIndex ??= new CaptainHandleIndex(db(), app.log, process.env.REDIS_URL);
+  app.addHook("onClose", async () => { await handleIndex?.close(); });
+
+  app.get<{ Querystring: { handle: string } }>("/v0/captains/handle-availability", {
+    schema: { querystring: { type: "object", required: ["handle"], additionalProperties: false,
+      properties: { handle: captainHandleSchema } } },
+  }, async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    return { mode: "PAPER", handle: request.query.handle, available: await handles().available(request.query.handle) };
+  });
   app.get("/v0/me", async (request) => {
     const actor = await requireActor(request, db());
     return {
@@ -32,7 +44,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: () => DbPool): v
         required: ["handle"],
         additionalProperties: false,
         properties: {
-          handle: { type: "string", pattern: "^[a-z0-9_]{3,24}$" },
+          handle: captainHandleSchema,
           bio: { type: "string", maxLength: 500 },
         },
       },
@@ -51,10 +63,8 @@ export function registerAccountRoutes(app: FastifyInstance, db: () => DbPool): v
       }
       return { userId: actor.id, handle: existing.rows[0].handle, bio: existing.rows[0].bio };
     }
-    await db().query(
-      "INSERT INTO captain_profiles (user_id, handle, bio) VALUES ($1, $2, $3)",
-      [actor.id, handle, bio],
-    );
+    const state = await insertCaptain(db(), actor.id, handle, bio);
+    await handles().added(handle, state);
     reply.code(201);
     return { userId: actor.id, handle, bio };
   });
