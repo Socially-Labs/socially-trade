@@ -1,38 +1,28 @@
-import { createRemoteJWKSet, errors, importSPKI, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { ApiFault } from "./errors.js";
 
-let cachedKey: { pem: string; key: Promise<CryptoKey> } | undefined;
 let cachedJwks: { appId: string; resolve: JWTVerifyGetKey } | undefined;
 
 /** Verify access tokens, not identity tokens or client-supplied user IDs. */
 export async function privyIdentity(token: string): Promise<{ subject: string; displayName: string }> {
   const appId = process.env.PRIVY_APP_ID;
-  const pem = process.env.PRIVY_VERIFICATION_KEY?.replace(/\\n/g, "\n");
   if (!appId) {
     throw new ApiFault(503, "auth_unconfigured", "PRIVY_APP_ID is required");
   }
-  let key: CryptoKey | JWTVerifyGetKey;
-  if (pem) {
-    // Optional override for isolated simulations or an explicitly pinned public key.
-    if (!cachedKey || cachedKey.pem !== pem) cachedKey = { pem, key: importSPKI(pem, "ES256") };
-    try { key = await cachedKey.key; }
-    catch { throw new ApiFault(503, "auth_unconfigured", "Privy verification key is invalid"); }
-  } else {
-    if (!cachedJwks || cachedJwks.appId !== appId) {
-      const resolve = createRemoteJWKSet(
-        new URL(`https://api.privy.io/v1/apps/${encodeURIComponent(appId)}/jwks.json`),
-        { cacheMaxAge: 60 * 60 * 1000, cooldownDuration: 30_000, timeoutDuration: 5_000 },
-      );
-      cachedJwks = { appId, resolve: async (header, token) => {
-        try { return await resolve(header, token); }
-        catch (error) {
-          if (error instanceof errors.JWKSNoMatchingKey) throw error;
-          throw new ApiFault(503, "auth_unavailable", "Privy verification keys are unavailable");
-        }
-      } };
-    }
-    key = cachedJwks.resolve;
+  if (!cachedJwks || cachedJwks.appId !== appId) {
+    const resolve = createRemoteJWKSet(
+      new URL(`https://api.privy.io/v1/apps/${encodeURIComponent(appId)}/jwks.json`),
+      { cacheMaxAge: 60 * 60 * 1000, cooldownDuration: 30_000, timeoutDuration: 5_000 },
+    );
+    cachedJwks = { appId, resolve: async (header, token) => {
+      try { return await resolve(header, token); }
+      catch (error) {
+        if (error instanceof errors.JWKSNoMatchingKey) throw error;
+        throw new ApiFault(503, "auth_unavailable", "Privy verification keys are unavailable");
+      }
+    } };
   }
+  const key = cachedJwks.resolve;
 
   try {
     const { payload } = await jwtVerify(token, key, {

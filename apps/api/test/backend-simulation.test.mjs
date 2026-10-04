@@ -26,6 +26,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input, options) => {
     const hostname = new URL(typeof input === 'string' ? input : input.url ?? input).hostname;
+    if (String(input) === 'https://api.privy.io/v1/apps/local-paper-test/jwks.json') return originalFetch(input, options);
     assert.match(hostname, /^(localhost|127\.0\.0\.1|\[::1\])$/, 'Tests must never contact a market-data provider');
     return originalFetch(input, options);
   };
