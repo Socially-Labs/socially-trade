@@ -306,4 +306,4 @@ Prepared against the backend on October 1, 2026. Recheck the source when contrac
 
 ## Profile and banner edits
 
-After creating a Captain profile, update its bio and hosted image URLs with `PATCH /v0/captains/:captainId`. The public GET and create responses include `avatarUrl` and `bannerUrl` (null until configured). See [profile endpoint and storage setup](captain-profile-assets.md). File uploads require external storage; this endpoint saves metadata only.
+After creating a Captain profile, update its bio and hosted image URLs with `PATCH /v0/captains/:captainId`. The public GET and create responses include `avatarUrl` and `bannerUrl` (null until configured). See [profile endpoint and storage setup](captain-profile-assets.md). For new files, reserve a signed upload through `/v0/captains/:captainId/assets/uploads`, PUT the file to storage, then call `/v0/captains/:captainId/assets/uploads/:uploadId/complete`. Completion validates and attaches the image automatically; PATCH can reselect only completed owned assets.

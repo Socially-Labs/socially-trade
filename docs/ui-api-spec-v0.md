@@ -1,6 +1,6 @@
 # v0 UI API integration specification
 
-**Scope:** every route currently registered by the paper API (40 operations).
+**Scope:** every route currently registered by the paper API (42 operations).
 **Reviewed:** 4 October 2026, against the current workspace source.
 **Audience:** web/mobile developers integrating Captain, Crew and public discovery screens.
 **Contract:** implemented behavior, including current limitations. Examples are illustrative, not live account data. This document does not claim new runtime test results.
@@ -108,6 +108,8 @@ Do not share cursor state between lists or between signed-in users. UUID history
 | 38 | `GET /v0/market/prices` | Public | — | Latest SOL snapshot | 200 |
 | 39 | `GET /v0/ws` | Public / Privy for private channel | — | Market prices and personal inbox | 101 WebSocket |
 | 40 | `PATCH /v0/captains/:captainId` | Captain owner | — | Edit bio, avatar and banner | 200 |
+| 41 | `POST /v0/captains/:captainId/assets/uploads` | Captain owner | — | Reserve a private image upload | 201 |
+| 42 | `POST /v0/captains/:captainId/assets/uploads/:uploadId/complete` | Captain owner | — | Validate, publish and attach image | 200 |
 
 ## 4. Response models
 
@@ -719,4 +721,8 @@ See [the complete market streaming contract](jupiter-market-stream-v0.md#rest-sn
 
 ## 14. Captain profile images and edits
 
-`PATCH /v0/captains/:captainId` requires the owning Captain's Privy token and accepts a partial JSON body containing `bio`, `avatarUrl` and/or `bannerUrl`. Omit fields to preserve them; set an image to null to remove it. Returns `CaptainProfile`. POST/GET Captain profile responses now include nullable image URLs. See [complete contracts and asset storage setup](captain-profile-assets.md) for validation, error codes, request examples and external upload requirements.
+`PATCH /v0/captains/:captainId` requires the owning Captain's Privy token and accepts a partial JSON body containing `bio`, `avatarUrl` and/or `bannerUrl`. Omit fields to preserve them; set an image to null to remove it. Returns `CaptainProfile`. POST/GET Captain profile responses now include nullable image URLs. See [complete contracts and asset storage setup](captain-profile-assets.md) for validation, error codes, request examples and upload reservation/completion contracts and R2 provisioning. Non-null image URLs must now come from that Captain's completed upload of the matching kind (`asset_not_verified` otherwise). Completion attaches the processed image automatically.
+
+### 41–42. Captain image upload workflow
+
+Reserve an upload with `{kind:"avatar"|"banner",contentType:"image/jpeg"|"image/png"|"image/webp",byteSize:number}`. PUT the raw File/Blob to the returned signed URL, then POST completion. Both API endpoints require the owning Captain's Privy token. Completion returns `{asset:{id,kind,url},profile:CaptainProfile}`. Signed URL TTL is five minutes, completion deadline ten minutes; maximum input size 5 MiB, 20 reservations/hour. See [the full upload wire contract](captain-profile-assets.md) for error/retry rules, image processing and storage setup.
