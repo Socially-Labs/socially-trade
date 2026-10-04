@@ -9,6 +9,7 @@ import { registerSocialRoutes } from "./social.js";
 import { registerNotificationRoutes } from "./notifications.js";
 import { registerPerformanceRoutes } from "./performance.js";
 import { registerHistoryRoutes } from "./history.js";
+import { registerAuthRoutes } from "./auth-routes.js";
 
 export function createApp(pool: DbPool | null) {
   const app = Fastify({
@@ -49,6 +50,7 @@ export function createApp(pool: DbPool | null) {
   app.get("/health", async () => ({ status: "ok", mode: "PAPER" }));
 
   registerAccountRoutes(app, db);
+  registerAuthRoutes(app, db);
   registerFundRoutes(app, db);
   registerOrderRoutes(app, db);
   registerFundEventRoutes(app, db);

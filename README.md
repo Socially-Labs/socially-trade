@@ -8,6 +8,8 @@ Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SO
 
 The current delivery is backend only, as requested. Verification uses API calls, PostgreSQL simulations and test cases; no frontend or Android application is included.
 
+UI developers: see the [complete v0 API integration specification](docs/ui-api-spec-v0.md) for all 36 operations, request/response contracts, authentication, pagination, errors and screen flows.
+
 ### Trade and Crew history
 
 - `GET /v0/funds/:fundId/orders`: full cursor-paginated order history with fill details.
@@ -39,6 +41,10 @@ cargo test -p v1-core
 
 ## Local development
 
+Privy authentication is available through `POST /v0/auth/privy`. Configure
+`PRIVY_APP_ID` to use Privy tokens; public verification keys are fetched automatically
+across protected endpoints. See [Privy setup and API flow](docs/privy-auth.md).
+
 Requires Node.js 22+ and pnpm 10.
 
 ```sh
@@ -61,7 +67,7 @@ TEST_DATABASE_URL=postgres://socially:socially@127.0.0.1:5432/socially_trade pnp
 
 Each run creates and removes its own database schema, uses synthetic SOL prices, and blocks external HTTP requests. The scenarios and findings are documented in [the simulation report](./docs/backend-simulation-report.md).
 
-For local backend development, start PostgreSQL with `docker compose up -d postgres`, set `DATABASE_URL` from `.env.example`, and run `pnpm --filter @socially/db migrate`. Set a long random `DEV_AUTH_TOKEN`; development requests use `Authorization: Bearer <token>` and `X-Dev-Subject: dev:alice`. This development identity is disabled when `NODE_ENV=production`. Production requests require `AUTH_JWKS_URL`, `AUTH_ISSUER`, and `AUTH_AUDIENCE` for JWT verification.
+For local backend development, start PostgreSQL with `docker compose up -d postgres`, set `DATABASE_URL` from `.env.example`, and run `pnpm --filter @socially/db migrate`. Privy is the only authentication provider in every environment. Set `PRIVY_APP_ID`, and send the Privy access token in the Authorization bearer header. Public verification keys are fetched automatically. See [Privy setup](docs/privy-auth.md).
 
 Available endpoints:
 

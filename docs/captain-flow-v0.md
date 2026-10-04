@@ -47,9 +47,9 @@ Display:
 
 Related read: `GET /v0/me/paper-balance`.
 
-Production JWT verification is supported. Development tokens are for local
-development only; obtaining a production token is an identity-provider flow,
-not a custom login endpoint in this API.
+Privy access-token verification is required in every environment. The client signs
+in with Privy, then calls `POST /v0/auth/privy` or a protected endpoint with its
+bearer token. There is no generic provider or development-token bypass.
 
 ## 2. Create a Captain profile
 

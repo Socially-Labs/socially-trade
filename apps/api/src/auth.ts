@@ -1,13 +1,10 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { inTransaction, ledgerAccountId, type DbPool } from "@socially/db";
 import { ApiFault } from "./errors.js";
+import { privyIdentity } from "./privy.js";
 
 const VIRTUAL_ALLOWANCE = "10000.000000";
-const jwksUrl = process.env.AUTH_JWKS_URL;
-const jwks = jwksUrl ? createRemoteJWKSet(new URL(jwksUrl)) : null;
-
 export interface Actor {
   id: string;
   subject: string;
@@ -15,42 +12,11 @@ export interface Actor {
   paperCash: string;
 }
 
-function sameSecret(actual: string, expected: string): boolean {
-  const left = Buffer.from(actual);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
 async function identity(request: FastifyRequest): Promise<{ subject: string; displayName: string }> {
   const authorization = request.headers.authorization;
   const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
   if (!token) throw new ApiFault(401, "unauthorized", "Bearer token required");
-
-  const devToken = process.env.DEV_AUTH_TOKEN;
-  if (process.env.NODE_ENV !== "production" && devToken && sameSecret(token, devToken)) {
-    const subject = request.headers["x-dev-subject"];
-    if (typeof subject !== "string" || !/^dev:[a-z0-9_-]{3,40}$/.test(subject)) {
-      throw new ApiFault(400, "invalid_dev_subject", "X-Dev-Subject must look like dev:alice");
-    }
-    return { subject, displayName: subject.slice(4) };
-  }
-
-  if (!jwks || !process.env.AUTH_ISSUER || !process.env.AUTH_AUDIENCE) {
-    throw new ApiFault(503, "auth_unconfigured", "JWT verification is not configured");
-  }
-  try {
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: process.env.AUTH_ISSUER,
-      audience: process.env.AUTH_AUDIENCE,
-    });
-    if (!payload.sub) throw new Error("Token has no subject");
-    return {
-      subject: payload.sub,
-      displayName: typeof payload.name === "string" ? payload.name.slice(0, 80) : "Trader",
-    };
-  } catch {
-    throw new ApiFault(401, "unauthorized", "Invalid bearer token");
-  }
+  return privyIdentity(token);
 }
 
 export async function requireActor(request: FastifyRequest, pool: DbPool): Promise<Actor> {

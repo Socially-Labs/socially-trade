@@ -1,3 +1,4 @@
+import { configurePrivyFixture } from './privy-fixture.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -9,13 +10,13 @@ test('paper history pagination and privacy', async t => {
   const connectionString = process.env.TEST_DATABASE_URL;
   assert.ok(connectionString);
   assert.match(new URL(connectionString).hostname, /^(localhost|127\.0\.0\.1|\[::1\])$/);
-  process.env.NODE_ENV='development'; process.env.DEV_AUTH_TOKEN=randomUUID();
+  process.env.NODE_ENV='development'; const tokenFor=configurePrivyFixture();
   const schema=`history_${randomUUID().replaceAll('-','')}`;
   const admin=new pg.Pool({connectionString});
   await admin.query(`CREATE SCHEMA ${schema}`);
   const pool=new pg.Pool({connectionString,options:`-c search_path=${schema}`});
   const app=createApp(pool); app.log.level='silent';
-  const headers=subject=>({authorization:`Bearer ${process.env.DEV_AUTH_TOKEN}`,'x-dev-subject':`dev:${subject}`});
+  const headers=subject=>({authorization:`Bearer ${tokenFor(subject)}`});
   async function get(url,subject,status=200){const r=await app.inject({url,headers:subject?headers(subject):{}});assert.equal(r.statusCode,status,r.body);return r.json();}
   async function all(url,key,subject){const rows=[];let cursor;do {const r=await get(`${url}?limit=17${cursor?'&after='+cursor:''}`,subject);rows.push(...r[key]);cursor=r.nextCursor;}while(cursor);return rows;}
   try {
