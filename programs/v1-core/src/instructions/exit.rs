@@ -10,8 +10,9 @@
 //!    token program. It is not read when the user's slice of that holding is 0.
 //! 2. Optional, after that: the NAV layout (see `nav`). The fee pps is
 //!    `max(fund.last_price_per_share, fresh ExitFeeUpperBound pps)` when every NAV
-//!    account is valid, and the breaker moves on the fresh prices. If any is
-//!    absent or invalid, the fee pps is `fund.last_price_per_share` and the
+//!    account is valid (T3 holdings at no less than cost, see
+//!    `NavResult::nav_at_least_cost`), and the breaker moves on the fresh
+//!    prices. If any is absent or invalid, the fee pps is `fund.last_price_per_share` and the
 //!    breaker does not move. So the exiter cannot lower the fee by the choice
 //!    of fresh vs stale prices.
 //!
@@ -297,7 +298,7 @@ pub(crate) fn charge_fee<'info>(
 /// Price per share of fresh valid prices, by use.
 #[derive(Clone, Copy)]
 pub(crate) struct FreshPps {
-    /// Exit fee pps (`ExitFeeUpperBound`).
+    /// Exit fee pps (`ExitFeeUpperBound`, T3 holdings at no less than cost).
     pub fee: u64,
     /// Captain stake pps (`StakeLowerBound`).
     pub stake: u64,
@@ -314,13 +315,10 @@ pub(crate) fn fresh_pps(
     program_id: &Pubkey,
 ) -> Result<FreshPps> {
     let priced = nav::compute(fund, fund_key, config, nav_accs, now, program_id)?;
-    let pps = |mode| -> Result<u64> {
-        let nav = priced.valuation(mode)?.nav;
-        Ok(math::price_per_share(nav, fund.total_shares)?)
-    };
+    let pps = |nav| -> Result<u64> { Ok(math::price_per_share(nav, fund.total_shares)?) };
     Ok(FreshPps {
-        fee: pps(ValuationMode::ExitFeeUpperBound)?,
-        stake: pps(ValuationMode::StakeLowerBound)?,
+        fee: pps(priced.nav_at_least_cost(ValuationMode::ExitFeeUpperBound)?)?,
+        stake: pps(priced.valuation(ValuationMode::StakeLowerBound)?.nav)?,
         breaker: priced.breaker(fund.total_shares)?,
     })
 }

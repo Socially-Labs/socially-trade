@@ -891,6 +891,121 @@ fn genuine_rally_raises_the_fee_price_one_mark_step_per_interval() {
     );
 }
 
+/// `fund_with_meme`, a member's 200 USDC at pps 2.0 (100 shares, HWM 200),
+/// then the true price $0.06: 500 USDC + 6,000 MEME, 400 shares, pps 2.15
+/// recorded. The 6,000 MEME carry a T3 cost basis of 360 (bought at $0.06).
+fn fund_with_based_meme() -> (Env, Keypair, FundHandles, SbToken) {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    deposit(&mut env, &f, &m, 200_000_000).unwrap();
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    let mut fund = read_fund(&env, &f);
+    assert_eq!(fund.holdings[1], t.mint);
+    fund.open_seas = true;
+    fund.t3_basis_usd[1] = 360_000_000;
+    fund.t3_cost_basis_usd = 360_000_000;
+    write_fund(&mut env, &f, &fund);
+    t.fields.value = SB_ONE * 6 / 100;
+    settle_pps(&mut env, &f, &m, |env| refresh_meme(env, &t));
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_150_000);
+    (env, m, f, t)
+}
+
+/// 200 USDC at the fair pps 2.15: 200 x 400 / 860 shares, floor.
+const FAIR_SHARES: u64 = 93_023_255;
+
+/// A re-listing seeded at a dump ($0.0005), with the true price $0.06 from
+/// then on: the slow mark stays low for many intervals, but a T3 holding is
+/// valued at no less than its cost for the record, the exit fee and the
+/// deposit price.
+#[test]
+fn dumped_relist_seed_does_not_lower_the_record_the_fee_or_the_deposit_price() {
+    let (mut env, m, f, mut t) = fund_with_based_meme();
+    t.feed = Pubkey::new_unique();
+    t.fields.value = SB_ONE / 2_000;
+    register_token_with(&mut env, t.mint, t.source(), Tier::T2);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    // Through the warmup and 6 intervals after it the deposit mark stays far
+    // under $0.06; the record stays at 2.15.
+    t.fields.value = SB_ONE * 6 / 100;
+    for _ in 0..16 {
+        warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+        refresh_meme(&mut env, &t);
+        poke(&mut env, &f, &m).unwrap();
+    }
+    assert!(read_entry(&env, &t.mint).marks.deposit < SB_ONE * 6 / 1_000);
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_150_000);
+    // Interval 17: fee on 215 - 200 = 15, 1.5 USDC at pps 2.15.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    refresh_meme(&mut env, &t);
+    let res = exit(&mut env, &f, &m, 50_000_000).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (1_500_000, 2_150_000)
+    );
+    // A second dump, then a new user deposits 200 USDC at the fair pps 2.15.
+    t.fields.value = SB_ONE / 2_000;
+    refresh_meme(&mut env, &t);
+    let d = funded_user(&mut env, 1_000_000_000);
+    deposit(&mut env, &f, &d, 200_000_000).unwrap();
+    let shares = token_balance(&env.svm, &share_ata(&f, &d.pubkey()));
+    assert!(shares.abs_diff(FAIR_SHARES) <= 1, "{shares}");
+}
+
+/// A dump at every poke for seven intervals: the record and the deposit
+/// price do not follow it down for a T3 holding.
+#[test]
+fn repeated_dumps_do_not_drag_the_record_or_dilute_a_deposit() {
+    let (mut env, m, f, mut t) = fund_with_based_meme();
+    for _ in 0..7 {
+        warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+        t.fields.value = SB_ONE / 2_000;
+        refresh_meme(&mut env, &t);
+        poke(&mut env, &f, &m).unwrap();
+    }
+    // The deposit mark followed: 0.06 x 0.9^7 = $0.0287.
+    assert!(read_entry(&env, &t.mint).marks.deposit < SB_ONE * 29 / 1_000);
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_150_000);
+    // A deposit at a dump: fair shares.
+    let d = funded_user(&mut env, 1_000_000_000);
+    deposit(&mut env, &f, &d, 200_000_000).unwrap();
+    let shares = token_balance(&env.svm, &share_ata(&f, &d.pubkey()));
+    assert!(shares.abs_diff(FAIR_SHARES) <= 1, "{shares}");
+    // The member's fee at a dump: 1.5 USDC at 2.15.
+    let res = exit(&mut env, &f, &m, 50_000_000).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (1_500_000, 2_150_000)
+    );
+}
+
+/// A genuine crash under cost: the breaker trips at once through the low
+/// mark, while the record and the deposit price stay at cost (the captain's
+/// first loss backs a T3 holding at cost until it is sold).
+#[test]
+fn crash_under_cost_trips_the_breaker_and_deposits_pay_cost() {
+    let (mut env, m, f, mut t) = fund_with_based_meme();
+    // MEME crashes to $0.0005 and stays: low-mark pps (500 + 3) / 400 =
+    // 1.2575 < 70% of 2.15.
+    t.fields.value = SB_ONE / 2_000;
+    for _ in 0..10 {
+        warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+        refresh_meme(&mut env, &t);
+        poke(&mut env, &f, &m).unwrap();
+        let fund = read_fund(&env, &f);
+        assert!(fund.frozen);
+        assert_eq!(fund.last_price_per_share, 2_150_000);
+    }
+    let d = funded_user(&mut env, 1_000_000_000);
+    deposit(&mut env, &f, &d, 200_000_000).unwrap();
+    let shares = token_balance(&env.svm, &share_ata(&f, &d.pubkey()));
+    assert!(shares.abs_diff(FAIR_SHARES) <= 1, "{shares}");
+}
+
 #[test]
 fn nav_values_switchboard_token_at_feed_value() {
     let (mut env, m, f, t) = fund_with_meme();

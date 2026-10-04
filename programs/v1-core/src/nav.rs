@@ -28,6 +28,12 @@
 //! with `record = false`; the breaker can still trip), and the holding counts
 //! 0 toward the captain stake.
 //!
+//! T3 cost floor: the deposit price, the exit fee price and the record target
+//! value each holding at no less than its T3 cost basis
+//! (`NavResult::nav_at_least_cost`), so a dump cannot lower them below cost.
+//! Pumps stay capped as above. The breaker check and the captain stake use no
+//! floor, so a real crash below cost still trips the breaker.
+//!
 //! USDC is valued 1:1; its entry and price accounts are not read, but they
 //! must be present (uniform layout). This module is the only place that
 //! knows the layout: other code uses the constants and `price`.
@@ -170,12 +176,16 @@ pub struct NavResult {
     pub prices: [Option<TokenPrice>; MAX_HOLDINGS],
     /// True for a T2 holding (tier caps).
     pub t2: [bool; MAX_HOLDINGS],
+    /// T3 cost basis of each holding, USD (6 dp), from `fund.t3_basis_usd`:
+    /// the floor of `nav_at_least_cost`.
+    pub basis: [u64; MAX_HOLDINGS],
 }
 
 /// What `update_breaker` needs from one NAV read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BreakerPps {
-    /// `min(Spot pps, Ema pps)`: the target of `last_price_per_share`.
+    /// `min(Spot pps, Ema pps)`, each NAV at least at cost
+    /// (`nav_at_least_cost`): the target of `last_price_per_share`.
     pub pps: u64,
     /// BreakerCheck pps: the trip check.
     pub check: u64,
@@ -186,17 +196,16 @@ pub struct BreakerPps {
 impl NavResult {
     /// The breaker inputs of this read for `total_shares`.
     pub fn breaker(&self, total_shares: u64) -> Result<BreakerPps> {
-        let pps = |mode| -> Result<u64> {
-            Ok(math::price_per_share(
-                self.valuation(mode)?.nav,
-                total_shares,
-            )?)
-        };
+        let pps = |nav: u128| -> Result<u64> { Ok(math::price_per_share(nav, total_shares)?) };
         // Marks seeded at a pump stay above the spot for many intervals; the
-        // lower of the two keeps the record and the peak off them.
+        // lower of the two keeps the record and the peak off them. A dump
+        // cannot take a T3 holding under its cost.
+        let record = self
+            .nav_at_least_cost(ValuationMode::Ema)?
+            .min(self.nav_at_least_cost(ValuationMode::Spot)?);
         Ok(BreakerPps {
-            pps: pps(ValuationMode::Ema)?.min(pps(ValuationMode::Spot)?),
-            check: pps(ValuationMode::BreakerCheck)?,
+            pps: pps(record)?,
+            check: pps(self.valuation(ValuationMode::BreakerCheck)?.nav)?,
             record: !self.warming(),
         })
     }
@@ -220,6 +229,22 @@ impl NavResult {
             out.nav = out.nav.checked_add(value).ok_or(ErrorCode::MathOverflow)?;
         }
         Ok(out)
+    }
+
+    /// NAV in `mode`, with each holding valued at no less than its T3 cost
+    /// basis. In Open Seas the captain stake (capped at >= the T3 basis)
+    /// backs the crew's T3 holdings at cost, so a dump below cost must not
+    /// lower a fee price or the deposit price. Holdings without a basis
+    /// keep their `mode` value. Not for sizes, caps or the breaker check.
+    pub fn nav_at_least_cost(&self, mode: ValuationMode) -> Result<u128> {
+        let v = self.valuation(mode)?;
+        v.values[..self.len]
+            .iter()
+            .zip(&self.basis)
+            .try_fold(0u128, |nav, (&value, &basis)| {
+                nav.checked_add(value.max(basis as u128))
+            })
+            .ok_or_else(|| error!(ErrorCode::MathOverflow))
     }
 
     /// USDC value of `amount` base units of holding `i`, priced in `mode`.
@@ -250,6 +275,7 @@ pub fn compute(
         amounts: [0; MAX_HOLDINGS],
         prices: [None; MAX_HOLDINGS],
         t2: [false; MAX_HOLDINGS],
+        basis: fund.t3_basis_usd,
     };
     for (i, (mint, accs)) in fund.holdings[..len]
         .iter()

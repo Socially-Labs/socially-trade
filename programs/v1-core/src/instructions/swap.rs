@@ -204,6 +204,7 @@ pub fn execute_swap<'info>(
         amounts: [0; MAX_HOLDINGS],
         prices: [None; MAX_HOLDINGS],
         t2: [false; MAX_HOLDINGS],
+        basis: [0; MAX_HOLDINGS],
     });
     let plan = prepare(t, remaining, p, delegate, now, &mut priced)?;
     if let Some((start, volume)) = plan.window {
@@ -558,7 +559,10 @@ fn settle<'info>(
     }
 
     // 10. Tier caps on the post-trade spot NAV, when the trade buys a T2 token.
+    // The post-trade basis, in `priced` order (before any swap-remove), is the
+    // floor of the record target.
     priced.amounts = after;
+    priced.basis = t.fund.t3_basis_usd;
     if priced.t2[plan.out_idx] {
         let post = priced.valuation(ValuationMode::Spot)?;
         let one_cap = math::bps_of(post.nav, T2_TOKEN_CAP_BPS)?;

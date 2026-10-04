@@ -90,10 +90,10 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()
         now,
         ctx.program_id,
     )?;
-    // Shares at the higher of the upper-bound NAV and the recorded pps (it
-    // moves one step per interval), so a dump cannot cheapen shares; favor
-    // the fund. Breaker from the EMA NAV.
-    let nav_upper = priced.valuation(ValuationMode::DepositUpperBound)?.nav;
+    // Shares at the higher of the upper-bound NAV (T3 holdings at no less
+    // than cost) and the recorded pps (it moves one step per interval), so a
+    // dump cannot cheapen shares; favor the fund.
+    let nav_upper = priced.nav_at_least_cost(ValuationMode::DepositUpperBound)?;
     require!(nav_upper > 0, ErrorCode::NavZero);
     let nav_recorded =
         (total_before as u128 * a.fund.last_price_per_share as u128).div_ceil(math::ONE);
