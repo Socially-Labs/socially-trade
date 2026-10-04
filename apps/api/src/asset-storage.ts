@@ -14,23 +14,20 @@ export class AssetStorage {
   private readonly stagingBucket: string;
   private readonly publicBase: string;
   constructor() {
-    const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-    const bucket = process.env.R2_BUCKET;
-    const stagingBucket = process.env.R2_UPLOAD_BUCKET;
-    const publicBase = process.env.R2_PUBLIC_BASE_URL;
-    if (!account || !accessKeyId || !secretAccessKey || !bucket || !stagingBucket || !publicBase) {
-      throw new ApiFault(503, "asset_storage_unconfigured", "R2 upload storage is not configured");
+    const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+    const bucket = process.env.S3_ASSET_BUCKET;
+    const stagingBucket = process.env.S3_UPLOAD_BUCKET;
+    const publicBase = process.env.ASSET_PUBLIC_BASE_URL;
+    if (!region || !bucket || !stagingBucket || !publicBase) {
+      throw new ApiFault(503, "asset_storage_unconfigured", "AWS S3 upload storage is not configured");
     }
     let base: URL;
     try { base = new URL(publicBase); } catch { throw new ApiFault(503, "asset_storage_unconfigured", "Invalid asset delivery URL"); }
-    if (!/^[a-f0-9]{32}$/i.test(account) || base.protocol !== "https:" || base.username || base.password || base.search || base.hash || bucket === stagingBucket) {
-      throw new ApiFault(503, "asset_storage_unconfigured", "Use separate staging/public buckets and an HTTPS delivery URL");
+    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash || bucket === stagingBucket) {
+      throw new ApiFault(503, "asset_storage_unconfigured", "Use separate staging/processed buckets and an HTTPS delivery URL");
     }
     this.bucket = bucket; this.stagingBucket = stagingBucket; this.publicBase = base.href.replace(/\/$/, "");
-    this.client = new S3Client({ region: "auto", endpoint: `https://${account}.r2.cloudflarestorage.com`,
-      credentials: { accessKeyId, secretAccessKey }, maxAttempts: 2, requestChecksumCalculation: "WHEN_REQUIRED" });
+    this.client = new S3Client({ region, maxAttempts: 2, requestChecksumCalculation: "WHEN_REQUIRED" });
   }
   async sign(file: UploadFile) {
     try {

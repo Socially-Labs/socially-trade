@@ -2,9 +2,9 @@
 
 ## Status
 
-The backend implements authenticated upload reservations, presigned direct uploads to a private R2 bucket, image validation/processing, publication to a separate public bucket and automatic profile attachment. No frontend is included.
+The backend implements authenticated upload reservations, presigned direct uploads to a private AWS S3 staging bucket, image validation/processing, publication to a separate private processed bucket served publicly through CloudFront and automatic profile attachment. No frontend is included.
 
-Local PostgreSQL has been started and migrations through **013** applied. Workspace builds and type checks pass. **Cloud provisioning and live upload verification remain blocked by missing Cloudflare/R2 credentials.** The setup script is implemented; writing it is not evidence that buckets exist.
+Local PostgreSQL has been started and migrations through **013** applied. Workspace builds and type checks pass. **Cloud provisioning and live upload verification remain blocked by an expired AWS login session.** The setup script is implemented; writing it is not evidence that buckets exist.
 
 ## Client flow
 
@@ -31,7 +31,7 @@ Success `201`:
   "uploadId":"00000000-0000-4000-8000-000000000002",
   "kind":"avatar",
   "method":"PUT",
-  "uploadUrl":"<short-lived R2 signed URL>",
+  "uploadUrl":"<short-lived S3 signed URL>",
   "headers":{"Content-Type":"image/png"},
   "byteSize":123456,
   "uploadUrlExpiresAt":"2026-10-05T00:05:00.000Z",
@@ -39,7 +39,7 @@ Success `201`:
 }
 ```
 
-Upload URL lasts five minutes. Complete within ten minutes of the reservation. The signed request binds content type and content length. Upload exactly the file bytes: no multipart wrapper, no base64, no JSON. A browser supplies Content-Length from a File/Blob automatically; native clients must supply the correct length. Do not send the Privy token to R2. Do not log or permanently store upload URLs.
+Upload URL lasts five minutes. Complete within ten minutes of the reservation. The signed request binds content type and content length. Upload exactly the file bytes: no multipart wrapper, no base64, no JSON. A browser supplies Content-Length from a File/Blob automatically; native clients must supply the correct length. Do not send the Privy token to S3. Do not log or permanently store upload URLs.
 
 ```javascript
 const reservation = await fetch(`${api}/v0/captains/${captainId}/assets/uploads`, {
@@ -109,41 +109,57 @@ Malformed image bytes do not update the profile. Staging cleanup runs best effor
 
 **Non-null image URLs must now belong to a completed upload owned by that Captain for that image kind.** Arbitrary external URLs return `400 asset_not_verified`. This tightens the earlier URL-only contract; existing legacy URLs remain readable until cleared/replaced. HTTPS/query/credential validation and optional `CAPTAIN_ASSET_ORIGINS` restrictions still apply. Completion attaches a verified image automatically, so PATCH is only needed to clear/reselect it or edit bio.
 
-## Cloud storage setup
+## AWS storage setup
 
-The files use Cloudflare R2. The setup creates two dedicated buckets:
+The infrastructure is defined in [infra/captain-assets.aws.yaml](../infra/captain-assets.aws.yaml), managed by a dedicated CloudFormation stack. There is no Cloudflare dependency.
 
-- `socially-captain-uploads`: private originals; presigned PUT, browser CORS and one-day pending cleanup.
-- `socially-captain-assets`: processed public WebP files; custom asset domain in production or `r2.dev` during development.
+- Private staging bucket: original uploads under `pending/`, presigned PUT, app-origin CORS and one-day expiration.
+- Private processed bucket: verified WebP assets under `captains/`, encrypted and public access blocked.
+- CloudFront distribution: public HTTPS delivery on its AWS-provided `cloudfront.net` domain. Origin Access Control signs requests to S3; the bucket policy allows only this distribution to read processed assets. Direct anonymous S3 reads stay blocked.
+- Bucket names include the stack's prefix, AWS account ID and region to avoid global-name collisions. Buckets are retained if the stack is removed or a replacement is attempted.
 
-Cloudflare supports [S3-compatible presigned uploads](https://developers.cloudflare.com/r2/api/s3/presigned-urls/), [browser CORS](https://developers.cloudflare.com/r2/buckets/cors/) and [custom-domain delivery](https://developers.cloudflare.com/r2/buckets/public-buckets/). `r2.dev` is development access; configure a custom domain for production.
+AWS supports [presigned uploads](https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html) and [CloudFront Origin Access Control](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html). The setup uses an AWS-provided delivery domain; custom domains/ACM certificates are optional future configuration.
 
-### Credentials needed
+### Authentication and environment
 
-Put values in the root `.env` or deployment environment; never send secrets to the UI or commit them:
+Local development uses the existing AWS profile through the SDK's default credential chain. Renew an expired session with `aws login`; for an SSO profile use `aws sso login --profile <profile>`. Production API processes should use an IAM role with the object permissions below. No application-specific long-lived access key is required. The installed JavaScript SDK supports [AWS login credentials](https://docs.aws.amazon.com/sdkref/latest/guide/feature-login-credentials.html).
 
 | Variable | Purpose |
 | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account owning the R2 buckets |
-| `CLOUDFLARE_API_TOKEN` | Setup-only token with R2 bucket-management permissions |
-| `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Runtime S3 credentials with object read/write permissions for both buckets, plus bucket read/list permissions used by setup |
-| `R2_BUCKET` | Public processed bucket; defaults to `socially-captain-assets` during setup |
-| `R2_UPLOAD_BUCKET` | Separate private bucket; defaults to `socially-captain-uploads` |
-| `R2_UPLOAD_ORIGINS` | Exact comma-separated app/browser origins; default local `http://localhost:3000` |
-| `R2_CUSTOM_DOMAIN`, `CLOUDFLARE_ZONE_ID` | Domain such as `assets.example.com` and its Cloudflare zone; required for production setup |
-| `R2_PUBLIC_BASE_URL` | Written by setup; permanent HTTPS delivery origin |
-| `CAPTAIN_ASSET_ORIGINS` | Written by setup to restrict profile image URLs to the delivery origin |
+| `AWS_REGION` | Bucket/stack region; current setup default `us-east-1` |
+| `AWS_PROFILE` | Optional local profile selection; omit for the default profile or production IAM role |
+| `ASSET_STACK_NAME` | Dedicated CloudFormation stack; default `socially-captain-assets` |
+| `ASSET_BUCKET_PREFIX` | Stable bucket name prefix; default `socially-captains`; changing deployed bucket names requires a data migration |
+| `S3_UPLOAD_ORIGINS` | Exact comma-separated app/browser origins; default `http://localhost:3000`, HTTPS required in production |
+| `S3_ASSET_BUCKET` | Processed bucket name, written by setup |
+| `S3_UPLOAD_BUCKET` | Private staging bucket name, written by setup |
+| `ASSET_PUBLIC_BASE_URL` | HTTPS CloudFront delivery origin, written by setup |
+| `ASSET_DISTRIBUTION_ID` | CloudFront distribution ID, written by setup; not required by the upload runtime |
+| `CAPTAIN_ASSET_ORIGINS` | Written by setup to restrict profile URLs to the CloudFront origin |
 
-Enable R2 in your Cloudflare account first if it is not enabled. Create the runtime S3 credentials through [Manage R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/). The management token and S3 credentials have different roles. If the buckets do not exist yet, run setup with just the account ID and management token first: it creates the two private buckets and stops before public delivery. Then issue S3 credentials scoped to those two buckets and rerun setup to finish. The API process needs the account ID, S3 credentials, both bucket names and delivery URL; it does not need the management API token.
+### Provisioning
 
 ```sh
+aws login
 pnpm --filter @socially/api assets:setup
 ```
 
-The script loads root `.env`, validates configuration, creates missing buckets, confirms an existing public bucket has no unrelated object keys, refuses a staging bucket with public custom domains, disables staging `r2.dev` access, merges its CORS/lifecycle rules, configures public delivery and checks S3 bucket access. It writes non-secret derived settings to `.env` and does not print credentials. Rerunning reuses buckets; it does not recreate them or erase existing data/rules. Public custom domain DNS/certificate readiness still needs confirmation after attachment.
+The setup script loads the root `.env` and calls the AWS CLI using its configured credentials. Its first run starts the CloudFormation stack without a long blocking wait. CloudFront deployment can take several minutes. Rerun the same setup command after the stack reaches `CREATE_COMPLETE`; it saves the output bucket names and delivery origin to `.env`. Updates likewise require a rerun after `UPDATE_COMPLETE`. Repeated runs reuse the tagged stack and report no changes when already configured.
 
-Restart API with its environment loaded after setup. Apply migration 013 on each deployed database. The repository scripts do not automatically load `.env` for the API; your process/deployment manager must pass it.
+It refuses unrelated stacks and a changed bucket prefix. It does not print credentials. A failed/rolled-back stack must be inspected through CloudFormation events; the script never deletes it or retained buckets automatically. Stack creation requires CloudFormation, S3 configuration and CloudFront create/configure permissions. No IAM user or role is created by this stack.
+
+Restart the API with environment values loaded by your deployment/process manager. Apply migrations through 013 on each deployed database. Local migrations through 013 have already been applied in this workspace.
+
+### Runtime IAM permissions
+
+Grant the API role only these object operations:
+
+- `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` on `arn:aws:s3:::<upload-bucket>/pending/*`.
+- `s3:PutObject` on `arn:aws:s3:::<processed-bucket>/captains/*`.
+- `s3:ListBucket` on the staging bucket, allowing missing upload HEAD requests to return 404 rather than 403.
+
+S3 HeadObject uses GetObject permission. The API never needs CloudFormation or CloudFront administration permissions. CloudFront read access is supplied by the stack's processed-bucket policy, separate from the API role. Bucket encryption uses AES256, so no KMS key permission is needed.
 
 ## Verification still pending
 
-Live R2 signed PUT (including browser CORS and Content-Length signing), decoded image publication, public domain delivery, token/owner denial, completion retries and expiration need runtime verification after credentials are supplied. Builds and applied migrations do not establish that external storage works. No new test suite has been run in this implementation checkpoint.
+AWS provisioning and live signed PUT (including browser CORS/Content-Length signing), decoded image publication, CloudFront delivery, token/owner denial, retries and expiration need runtime verification after AWS login is renewed. Builds and applied migrations do not establish that the cloud infrastructure is live. No new test suite has been run in this implementation checkpoint.

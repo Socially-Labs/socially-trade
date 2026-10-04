@@ -12,7 +12,7 @@ UI developers: see the [complete v0 API integration specification](docs/ui-api-s
 
 Captain username checks use `GET /v0/captains/handle-availability?handle=jassbawa`, with an optional Redis Bloom index and PostgreSQL fallback. See [setup and consistency details](docs/captain-handle-bloom.md).
 
-Captain profile images: owners can use `PATCH /v0/captains/:captainId` to update bio, `avatarUrl` and `bannerUrl`. The upload reservation and completion endpoints validate/process images through private/public R2 buckets and save their URLs in PostgreSQL. Run the documented R2 setup with your account credentials. See [API and asset setup](docs/captain-profile-assets.md).
+Captain profile images: owners can use `PATCH /v0/captains/:captainId` to update bio, `avatarUrl` and `bannerUrl`. The upload reservation and completion endpoints validate/process images through private AWS S3 staging/processed buckets, with CloudFront delivery and save their URLs in PostgreSQL. Run the documented AWS setup with your account credentials. See [API and asset setup](docs/captain-profile-assets.md).
 
 ### Trade and Crew history
 

@@ -721,7 +721,7 @@ See [the complete market streaming contract](jupiter-market-stream-v0.md#rest-sn
 
 ## 14. Captain profile images and edits
 
-`PATCH /v0/captains/:captainId` requires the owning Captain's Privy token and accepts a partial JSON body containing `bio`, `avatarUrl` and/or `bannerUrl`. Omit fields to preserve them; set an image to null to remove it. Returns `CaptainProfile`. POST/GET Captain profile responses now include nullable image URLs. See [complete contracts and asset storage setup](captain-profile-assets.md) for validation, error codes, request examples and upload reservation/completion contracts and R2 provisioning. Non-null image URLs must now come from that Captain's completed upload of the matching kind (`asset_not_verified` otherwise). Completion attaches the processed image automatically.
+`PATCH /v0/captains/:captainId` requires the owning Captain's Privy token and accepts a partial JSON body containing `bio`, `avatarUrl` and/or `bannerUrl`. Omit fields to preserve them; set an image to null to remove it. Returns `CaptainProfile`. POST/GET Captain profile responses now include nullable image URLs. See [complete contracts and asset storage setup](captain-profile-assets.md) for validation, error codes, request examples and upload reservation/completion contracts and AWS S3/CloudFront provisioning. Non-null image URLs must now come from that Captain's completed upload of the matching kind (`asset_not_verified` otherwise). Completion attaches the processed image automatically.
 
 ### 41–42. Captain image upload workflow
 
