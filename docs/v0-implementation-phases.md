@@ -167,3 +167,11 @@ Rankings currently use net return with a minimum seven-day age and display drawd
 - [Turborepo repository structure](https://turborepo.dev/docs/crafting-your-repository/structuring-a-repository)
 - [Turborepo package management](https://turborepo.dev/docs/crafting-your-repository/managing-dependencies)
 - [Turborepo adoption guide](https://turborepo.dev/docs/getting-started/add-to-existing-repository)
+
+## Jupiter ingestion checkpoints — 4 October 2026
+
+1. Implemented: dedicated Jupiter ingestor, organisation-wide Redis budget, round-robin credential rotation, source-time validation and transactional market outbox.
+2. Implemented: snapshot/WebSocket routes, retained-cursor replay, stale status, bounded client buffering, Privy private inbox and Jupiter-backed paper consumers.
+3. Implemented: environment/setup and UI contracts in [the streaming guide](jupiter-market-stream-v0.md).
+
+Build/type validation completed separately; provider, multi-replica, recovery and load checks remain pending as listed in that guide. No frontend or live-money execution was added.

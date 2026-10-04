@@ -1,12 +1,13 @@
 # v0 paper fill model
 
-This model is used only for simulated SOL/USDC trades. A Pyth SOL/USD observation supplies a mark price, not an executable swap quote. The API records the source observation and model version for every filled order. No trade is sent to Solana.
+This model is used only for simulated SOL/USDC trades. A Jupiter SOL/USD observation converted using USDC/USD supplies a mark price, not an executable swap quote. The API records the source observation and model version for every filled order. No trade is sent to Solana.
 
 ## Price source
 
-- Source: [Pyth Hermes SOL/USD](https://docs.pyth.network/price-feeds/core/fetch-price-updates), using its current `/v2/updates/price/latest` endpoint and an API key.
-- Accept an observation only when its publish time is no more than 90 seconds old, no more than 5 seconds in the future, and its confidence interval is at most 1% of the price.
-- The 90-second limit accommodates the [SOL/USD feed's published 55-second heartbeat](https://docs.pyth.network/price-feeds/core/push-feeds/solana). A provider outage or stale feed pauses pricing-dependent actions.
+- Source: [Jupiter Price V3](https://developers.jup.ag/docs/price), fetching SOL and USDC together with server-side API keys. SOL/USDC is SOL/USD divided by USDC/USD.
+- Resolve both source block times via Solana RPC; freshness uses the older time. Accept source age at most 90 seconds and future skew at most five seconds. No Pyth confidence interval is applied.
+- Display freshness is 15 seconds. The 90-second execution window is the current v0 policy, independent of provider update guarantees. Unavailable upstream data never creates a fabricated fresh observation.
+- See [ingestion and streaming architecture](jupiter-market-stream-v0.md) for polling, rate budgets, provenance and the retained three-second order delay.
 - Local development can insert an explicitly marked `DEV_SEED` observation with the worker CLI. These observations must never be used for a public performance record.
 
 ## Execution assumptions, model version 1

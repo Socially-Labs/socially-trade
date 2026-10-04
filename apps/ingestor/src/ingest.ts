@@ -31,9 +31,10 @@ export async function recordMarketPrice(pool: DbPool, price: MarketPrice, quoteU
         VALUES($1,'SOL','JUPITER_PRICE_V3',$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT(source,instrument_id,source_ref) DO NOTHING RETURNING id`,
         [observationId, ref, price.priceUsdc, price.sourceAt, price.receivedAt, price.sourceBlockId, price.priceUsd, quoteUsd, price.quoteSourceBlockId, price.quoteSourceAt]);
-      price = { ...price, observationId: inserted.rows[0]?.id ?? (await client.query<{ id: string }>(
-        "SELECT id FROM price_observations WHERE source='JUPITER_PRICE_V3' AND instrument_id='SOL' AND source_ref=$1", [ref],
-      )).rows[0]!.id };
+      const stored = (await client.query<{ id: string; received_at: Date }>(
+        "SELECT id,received_at FROM price_observations WHERE source='JUPITER_PRICE_V3' AND instrument_id='SOL' AND source_ref=$1", [ref],
+      )).rows[0]!;
+      price = { ...price, observationId: inserted.rows[0]?.id ?? stored.id, receivedAt: stored.received_at.toISOString() };
     }
     const sequence = (await client.query<{ sequence: string }>("UPDATE market_feed_state SET sequence=sequence+1 WHERE singleton RETURNING sequence::text")).rows[0]!.sequence;
     const payload: MarketEvent = { type: price.status === "UNAVAILABLE" ? "market_status" : "price_update", eventId: randomUUID(), price };

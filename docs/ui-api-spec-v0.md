@@ -1,6 +1,6 @@
 # v0 UI API integration specification
 
-**Scope:** every route currently registered by the paper API (37 operations).
+**Scope:** every route currently registered by the paper API (39 operations).
 **Reviewed:** 4 October 2026, against the current workspace source.
 **Audience:** web/mobile developers integrating Captain, Crew and public discovery screens.
 **Contract:** implemented behavior, including current limitations. Examples are illustrative, not live account data. This document does not claim new runtime test results.
@@ -105,6 +105,8 @@ Do not share cursor state between lists or between signed-in users. UUID history
 | 35 | `GET /v0/me/notifications` | User | — | Inbox | 200 |
 | 36 | `POST /v0/me/notifications/:notificationId/read` | User | — | Mark inbox item read | 200 |
 | 37 | `GET /v0/captains/handle-availability` | Public | — | Check username while onboarding | 200 |
+| 38 | `GET /v0/market/prices` | Public | — | Latest SOL snapshot | 200 |
+| 39 | `GET /v0/ws` | Public / Privy for private channel | — | Market prices and personal inbox | 101 WebSocket |
 
 ## 4. Response models
 
@@ -709,3 +711,7 @@ Fund descriptions are accepted on creation but absent from read responses. Fund 
 | Fill costs and asynchronous execution | `packages/market-data/src/index.ts`, `apps/worker/src/orders.ts` |
 
 Update this spec alongside any route/schema changes. It describes current workspace behavior; it does not establish that this version is deployed. Related docs: [Captain flow](captain-flow-v0.md), [trade history](paper-history-api.md), [fill model](v0-fill-model.md), [Privy setup](privy-auth.md).
+
+## 13. Jupiter market snapshot and WebSocket delivery
+
+See [the complete market streaming contract](jupiter-market-stream-v0.md#rest-snapshot) for both new endpoints, exact payloads, private authentication, replay cursors, stale values and reconnection behavior. Subscribe to `market.prices` for SOL updates and to `account.notifications` after authenticating with a Privy access-token frame. Keep financial commands on the documented REST endpoints. Fund activity/chat retain the existing SSE/REST flow.

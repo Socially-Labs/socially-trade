@@ -1,5 +1,7 @@
 # socially.trade v0: Paper Trading Architecture
 
+**Implementation update (4 October 2026):** the separate Jupiter ingestor, Redis quota, PostgreSQL outbox and WebSocket gateway are described in [Jupiter market streaming](jupiter-market-stream-v0.md). Its current provider, freshness and wire contracts supersede earlier proposals below.
+
 **Status:** implementation proposal
 **Scope:** paper trading only
 **Product basis:** `socially-trade-whitepaper.pdf` (September 2026)
