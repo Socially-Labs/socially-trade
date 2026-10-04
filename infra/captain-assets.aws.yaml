@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Socially Captain images - private S3 staging and processed assets with CloudFront OAC
+Parameters:
+  BucketPrefix:
+    Type: String
+    Default: socially-captains
+    MinLength: 3
+    MaxLength: 20
+    AllowedPattern: '[a-z][a-z0-9-]*[a-z0-9]'
+  UploadOrigins:
+    Type: CommaDelimitedList
+    Default: http://localhost:3000
+Resources:
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub '${BucketPrefix}-${AWS::AccountId}-${AWS::Region}-uploads'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - Id: socially-captain-upload
+            AllowedOrigins: !Ref UploadOrigins
+            AllowedMethods: [PUT]
+            AllowedHeaders: [content-type, content-length]
+            ExposedHeaders: [ETag]
+            MaxAge: 3600
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-pending-images
+            Status: Enabled
+            Prefix: pending/
+            ExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - Key: Project
+          Value: socially-trade
+  AssetBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub '${BucketPrefix}-${AWS::AccountId}-${AWS::Region}-assets'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Project
+          Value: socially-trade
+  UploadBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref UploadBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RequireHTTPS
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt UploadBucket.Arn
+              - !Sub '${UploadBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+  AssetOriginAccess:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-images'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  AssetCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${AWS::StackName}-images'
+        MinTTL: 0
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+  AssetDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${AWS::StackName} verified Captain images'
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        Origins:
+          - Id: captain-images
+            DomainName: !GetAtt AssetBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt AssetOriginAccess.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: captain-images
+          ViewerProtocolPolicy: https-only
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          CachePolicyId: !Ref AssetCachePolicy
+          Compress: true
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ErrorCachingMinTTL: 1
+          - ErrorCode: 404
+            ErrorCachingMinTTL: 1
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+  AssetBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AssetBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontVerifiedImages
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${AssetBucket.Arn}/captains/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${AssetDistribution}'
+          - Sid: RequireHTTPS
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt AssetBucket.Arn
+              - !Sub '${AssetBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+Outputs:
+  AssetBucket:
+    Value: !Ref AssetBucket
+  UploadBucket:
+    Value: !Ref UploadBucket
+  AssetBaseUrl:
+    Value: !Sub 'https://${AssetDistribution.DomainName}'
+  DistributionId:
+    Value: !Ref AssetDistribution
+  Region:
+    Value: !Ref AWS::Region
