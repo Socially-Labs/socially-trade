@@ -3,6 +3,7 @@ import type { FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { inTransaction, ledgerAccountId, type DbPool } from "@socially/db";
 import { ApiFault } from "./errors.js";
+import { privyIdentity } from "./privy.js";
 
 const VIRTUAL_ALLOWANCE = "10000.000000";
 const jwksUrl = process.env.AUTH_JWKS_URL;
@@ -21,18 +22,23 @@ function sameSecret(actual: string, expected: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-async function identity(request: FastifyRequest): Promise<{ subject: string; displayName: string }> {
+async function identity(request: FastifyRequest, privyOnly = false): Promise<{ subject: string; displayName: string }> {
   const authorization = request.headers.authorization;
   const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
   if (!token) throw new ApiFault(401, "unauthorized", "Bearer token required");
 
   const devToken = process.env.DEV_AUTH_TOKEN;
-  if (process.env.NODE_ENV !== "production" && devToken && sameSecret(token, devToken)) {
+  if (!privyOnly && process.env.NODE_ENV !== "production" && devToken && sameSecret(token, devToken)) {
     const subject = request.headers["x-dev-subject"];
     if (typeof subject !== "string" || !/^dev:[a-z0-9_-]{3,40}$/.test(subject)) {
       throw new ApiFault(400, "invalid_dev_subject", "X-Dev-Subject must look like dev:alice");
     }
     return { subject, displayName: subject.slice(4) };
+  }
+
+  if (privyOnly || process.env.AUTH_PROVIDER === "privy") return privyIdentity(token);
+  if (process.env.AUTH_PROVIDER && process.env.AUTH_PROVIDER !== "jwt") {
+    throw new ApiFault(503, "auth_unconfigured", "AUTH_PROVIDER must be jwt or privy");
   }
 
   if (!jwks || !process.env.AUTH_ISSUER || !process.env.AUTH_AUDIENCE) {
@@ -53,8 +59,8 @@ async function identity(request: FastifyRequest): Promise<{ subject: string; dis
   }
 }
 
-export async function requireActor(request: FastifyRequest, pool: DbPool): Promise<Actor> {
-  const { subject, displayName } = await identity(request);
+export async function requireActor(request: FastifyRequest, pool: DbPool, privyOnly = false): Promise<Actor> {
+  const { subject, displayName } = await identity(request, privyOnly);
   return inTransaction(pool, async (client) => {
     const id = randomUUID();
     const inserted = await client.query<Actor>(
