@@ -465,6 +465,9 @@ fn swap_breaker_uses_ema_and_size_uses_spot() {
     let mut t = trading_fund();
     t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
         .unwrap();
+    // Next interval (the recorded pps moves at most once per interval).
+    warp(&mut t.env.svm, MARK_INTERVAL_SLOTS as i64);
+    t.refresh_prices();
     // Spot $150 (trade size, price guard), EMA $50: EMA NAV = 9,100 + 6*50 = 9,400.
     let now_ts = now(&t.env);
     set_price_ema(
@@ -479,7 +482,8 @@ fn swap_breaker_uses_ema_and_size_uses_spot() {
         0,
     );
     t.swap_fresh(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
-    // After: USDC 8,950, SOL 7 -> EMA NAV 8,950 + 350 = 9,300 over 10,000 shares.
+    // After: USDC 8,950, SOL 7 -> EMA NAV 8,950 + 350 = 9,300 over 10,000
+    // shares: 0.93, inside one 10% step of 1.0.
     assert_eq!(fund(&t).last_price_per_share, 930_000);
 }
 

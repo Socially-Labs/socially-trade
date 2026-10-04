@@ -131,8 +131,6 @@ fn step(mark: i128) -> i128 {
 ///   most once per interval it rises toward the value by at most one step.
 ///   So it is never above the value after a read, and a pump raises it 10%
 ///   per interval at most, from wherever the price really was.
-/// - During the warmup the deposit mark equals the low mark, so a seed at a
-///   pumped value does not stay in the deposit mark after the warmup.
 pub fn next_marks(m: Marks, value: i128, now_slot: u64) -> Marks {
     if m.deposit <= 0 {
         return Marks {
@@ -155,10 +153,6 @@ pub fn next_marks(m: Marks, value: i128, now_slot: u64) -> Marks {
     } else if due(m.low_slot) {
         m.low = value.min(m.low.saturating_add(step(m.low)));
         m.low_slot = now_slot;
-    }
-    if m.warming(now_slot) {
-        m.deposit = m.low;
-        m.deposit_slot = m.low_slot;
     }
     m
 }
@@ -594,14 +588,15 @@ mod tests {
     }
 
     #[test]
-    fn deposit_mark_follows_the_low_mark_during_the_warmup() {
+    fn deposit_mark_stays_two_way_during_the_warmup() {
         // Seeded at a 10x pump ($0.50); the pump ends ($0.05).
         let seeded = next_marks(Marks::default(), E18 / 2, SLOT);
         let m = next_marks(seeded, E18 / 20, SLOT + 1);
-        assert_eq!((m.deposit, m.low), (E18 / 20, E18 / 20));
-        // After the warmup the deposit mark moves both ways, one step.
-        let m = next_marks(m, E18 / 40, SLOT + MARK_WARMUP_SLOTS);
-        assert_eq!((m.deposit, m.low), (E18 * 45 / 1_000, E18 / 40));
+        assert_eq!((m.deposit, m.low), (E18 / 2, E18 / 20));
+        // One interval later: one step down, still in the warmup.
+        let m = next_marks(m, E18 / 20, SLOT + MARK_INTERVAL_SLOTS);
+        assert!(m.warming(SLOT + MARK_INTERVAL_SLOTS));
+        assert_eq!(m.deposit, E18 * 45 / 100);
     }
 
     #[test]

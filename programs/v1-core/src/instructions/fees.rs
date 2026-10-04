@@ -87,16 +87,15 @@ pub fn charge_annual_fee<'info>(ctx: Context<'info, ChargeAnnualFee<'info>>) -> 
         now,
         ctx.program_id,
     )?;
-    // A warming mark has not found its price yet: the fee waits.
-    require!(fresh.breaker.record, ErrorCode::MarkWarmup);
-    // The breaker moves first, so the fee sees the same fund state as the next caller.
-    let pps = fresh.breaker.pps;
+    // The breaker moves first; the fee is at the recorded pps after that
+    // (one step per interval at most), so no in-window price moves it more.
     nav::update_breaker(
         &mut ctx.accounts.fund,
         &fund_key,
         &ctx.accounts.policy,
         fresh.breaker,
     )?;
+    let pps = ctx.accounts.fund.last_price_per_share;
 
     let a = &ctx.accounts;
     let balance = a.member_shares.amount;

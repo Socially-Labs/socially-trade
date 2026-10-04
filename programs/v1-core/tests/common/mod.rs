@@ -1819,3 +1819,18 @@ pub fn ix_annual_fee(
     ix.accounts.extend(nav_accounts(env, f));
     ix
 }
+
+/// Poke once per interval until the recorded pps stops moving (it moves at
+/// most one step per interval). `refresh` re-publishes the fund's prices.
+pub fn settle_pps(env: &mut Env, f: &FundHandles, payer: &Keypair, refresh: impl Fn(&mut Env)) {
+    for _ in 0..64 {
+        let before = read_fund(env, f).last_price_per_share;
+        warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+        refresh(env);
+        poke(env, f, payer).unwrap();
+        if read_fund(env, f).last_price_per_share == before {
+            return;
+        }
+    }
+    panic!("recorded pps did not settle");
+}

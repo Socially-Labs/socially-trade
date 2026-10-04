@@ -231,6 +231,7 @@ fn second_member_gets_shares_at_nav() {
 fn donation_raises_share_price_for_everyone() {
     let (mut env, _cap, m, f) = fund_with_member();
     mint_usdc(&mut env, &f.usdc_vault, 300_000_000); // NAV 600, pps 2.0
+    settle_pps(&mut env, &f, &m, |_| {}); // recorded one step per interval
     deposit(&mut env, &f, &m, 300_000_000).unwrap();
     assert_eq!(
         token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
@@ -335,6 +336,7 @@ fn nav_values_pyth_priced_holding() {
     let (mut env, _cap, m, f) = fund_with_member();
     let sol = listed_sol(&mut env, 150);
     inject_holding(&mut env, &f, sol, 2_000_000_000); // 2 SOL = $300 -> NAV 600, pps 2.0
+    settle_pps(&mut env, &f, &m, |env| sol_price(env, &sol, 150, 0, 150));
     deposit(&mut env, &f, &m, 300_000_000).unwrap();
     assert_eq!(
         token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
@@ -419,6 +421,7 @@ fn fund_at_peak_with_sol() -> (Env, Keypair, FundHandles, Pubkey) {
     let (mut env, _cap, m, f) = fund_with_member();
     let sol = listed_sol(&mut env, 150);
     inject_holding(&mut env, &f, sol, 2_000_000_000); // NAV 600 / 300 shares
+    settle_pps(&mut env, &f, &m, |env| sol_price(env, &sol, 150, 0, 150));
     deposit(&mut env, &f, &m, 300_000_000).unwrap(); // pps 2.0; NAV 900 / 450
     let fund = read_fund(&env, &f);
     assert_eq!((fund.peak_price_per_share, fund.frozen), (2_000_000, false));
@@ -433,8 +436,10 @@ fn breaker_freezes_on_ema_drawdown_and_thaws_on_recovery() {
     sol_price(&mut env, &sol, 150, 0, 1);
     let res = deposit(&mut env, &f, &m, 10_000_000).unwrap();
     assert_eq!(events(&res), 2, "Deposited + BreakerChanged");
+    // The trip check reads the fresh pps; the recorded pps already moved in
+    // this interval (the fixture), so it stays.
     let fund = read_fund(&env, &f);
-    assert_eq!(fund.last_price_per_share, 1_337_777);
+    assert_eq!(fund.last_price_per_share, 2_000_000);
     assert_eq!(fund.peak_price_per_share, 2_000_000);
     assert!(fund.frozen);
 
@@ -467,6 +472,7 @@ fn deposit_values_at_upper_bound_with_conf() {
     let (mut env, _cap, m, f) = fund_with_member();
     let sol = listed_sol(&mut env, 150);
     inject_holding(&mut env, &f, sol, 2_000_000_000);
+    settle_pps(&mut env, &f, &m, |env| sol_price(env, &sol, 150, 0, 150));
     // $150 +- $1.50 (1%): 2 SOL valued at $151.50 = $303 -> NAV 603 / 300 shares.
     sol_price(&mut env, &sol, 150, 150, 150);
     deposit(&mut env, &f, &m, 300_000_000).unwrap();
@@ -550,7 +556,116 @@ fn fund_with_meme() -> (Env, Keypair, FundHandles, SbToken) {
     poke(&mut env, &f, &m).unwrap();
     warp(&mut env.svm, MARK_WARMUP_SLOTS as i64);
     refresh_meme(&mut env, &t);
+    settle_pps(&mut env, &f, &m, |env| refresh_meme(env, &t));
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
     (env, m, f, t)
+}
+
+/// A dump at the last slot of a warmup, then a restore, cannot drag the
+/// recorded pps down more than one step: the exit fee stays, and a deposit
+/// after a second dump is not diluted.
+#[test]
+fn dump_at_the_end_of_a_warmup_cannot_skip_the_fee_or_dilute() {
+    let (mut env, m, f, mut t) = fund_with_meme();
+    // Member 200 USDC at pps 2.0: 100 shares, HWM 200. NAV 800, 400 shares.
+    deposit(&mut env, &f, &m, 200_000_000).unwrap();
+    let token = spl_token_interface::ID;
+    let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
+    send(&mut env.svm, &[ix], &[&m]).unwrap();
+    // True price $0.06: NAV 500 + 360 = 860, pps 2.15.
+    t.fields.value = SB_ONE * 6 / 100;
+    settle_pps(&mut env, &f, &m, |env| refresh_meme(env, &t));
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_150_000);
+    // Re-listed to a new feed: unseeded marks; a poke seeds them at $0.06.
+    t.feed = Pubkey::new_unique();
+    register_token_with(&mut env, t.mint, t.source(), Tier::T2);
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    // Dump to $0.0005 at the last warmup slot, poke.
+    warp(&mut env.svm, MARK_WARMUP_SLOTS as i64 - 1);
+    t.fields.value = SB_ONE / 2_000;
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    // Warmup over: restore $0.06, poke, exit. The deposit mark took one step
+    // down ($0.054): pps (500 + 324) / 400 = 2.06, one step from 2.15 at most.
+    warp(&mut env.svm, 1);
+    t.fields.value = SB_ONE * 6 / 100;
+    refresh_meme(&mut env, &t);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_060_000);
+    // Fee on 206 - 200 = 6: 0.6 USDC.
+    let res = exit(&mut env, &f, &m, 100_000_000).unwrap();
+    let ev = decode_events::<FeeCharged>(&res);
+    assert_eq!(
+        (ev[0].fee_usdc, ev[0].price_per_share),
+        (600_000, 2_060_000)
+    );
+    // A second dump, then a deposit: priced at no less than the recorded pps.
+    t.fields.value = SB_ONE / 2_000;
+    refresh_meme(&mut env, &t);
+    let d = funded_user(&mut env, 1_000_000_000);
+    deposit(&mut env, &f, &d, 206_000_000).unwrap();
+    // 206 USDC at pps 2.06 (NAV rounding floors one base unit).
+    assert_eq!(
+        token_balance(&env.svm, &share_ata(&f, &d.pubkey())),
+        99_999_999
+    );
+}
+
+/// SOL (Pyth) held 2 SOL at $150 next to 300 USDC: NAV 600, pps 2.0, settled.
+fn fund_with_sol() -> (Env, Keypair, FundHandles, Pubkey) {
+    let (mut env, _cap, m, f) = fund_with_member();
+    let sol = listed_sol(&mut env, 150);
+    inject_holding(&mut env, &f, sol, 2_000_000_000);
+    settle_pps(&mut env, &f, &m, |env| sol_price(env, &sol, 150, 0, 150));
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_000_000);
+    (env, m, f, sol)
+}
+
+/// A pump of a Pyth token (spot and EMA) raises the recorded pps and the
+/// peak one step per interval at most.
+#[test]
+fn pyth_pump_raises_the_recorded_pps_one_step_per_interval() {
+    let (mut env, m, f, sol) = fund_with_sol();
+    // SOL 10x: pps would be (300 + 3,000) / 300 = 11.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    sol_price(&mut env, &sol, 1_500, 0, 1_500);
+    poke(&mut env, &f, &m).unwrap();
+    let fund = read_fund(&env, &f);
+    assert_eq!(
+        (fund.last_price_per_share, fund.peak_price_per_share),
+        (2_200_000, 2_200_000)
+    );
+    // Again in the same interval: no move.
+    env.svm.expire_blockhash();
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_200_000);
+    // Next interval: one more step, 2.42.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    sol_price(&mut env, &sol, 1_500, 0, 1_500);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_420_000);
+}
+
+/// A genuine crash lowers the recorded pps one step per interval, while the
+/// breaker trips at once on the fresh price.
+#[test]
+fn crash_lowers_the_recorded_pps_one_step_and_trips_the_breaker() {
+    let (mut env, m, f, sol) = fund_with_sol();
+    // SOL -90%: fresh pps (300 + 30) / 300 = 1.1 < 70% of 2.0.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    sol_price(&mut env, &sol, 15, 0, 15);
+    poke(&mut env, &f, &m).unwrap();
+    let fund = read_fund(&env, &f);
+    assert!(fund.frozen);
+    assert_eq!(
+        (fund.last_price_per_share, fund.peak_price_per_share),
+        (1_800_000, 2_000_000)
+    );
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    sol_price(&mut env, &sol, 15, 0, 15);
+    poke(&mut env, &f, &m).unwrap();
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 1_620_000);
 }
 
 /// A pump does not raise the crew exit fee: a Switchboard holding is priced
@@ -584,7 +699,7 @@ fn fund_with_meme_profit() -> (Env, Keypair, FundHandles, SbToken) {
     let (mut env, m, f, t) = fund_with_meme();
     deposit(&mut env, &f, &m, 200_000_000).unwrap();
     mint_usdc(&mut env, &f.usdc_vault, 200_000_000);
-    poke(&mut env, &f, &m).unwrap();
+    settle_pps(&mut env, &f, &m, |env| refresh_meme(env, &t));
     assert_eq!(read_fund(&env, &f).last_price_per_share, 2_500_000);
     let token = spl_token_interface::ID;
     let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &t.mint, &token);
@@ -659,7 +774,9 @@ fn relisted_switchboard_token_warms_up_before_it_moves_the_peak() {
     register_token(&mut env, mint, BONK_FEED, Tier::T2);
     set_usd_price(&mut env, &mint, &BONK_FEED, 5_000_000); // $0.05
     inject_holding(&mut env, &f, mint, 6_000_000_000_000);
-    poke(&mut env, &f, &m).unwrap();
+    settle_pps(&mut env, &f, &m, |env| {
+        set_usd_price(env, &mint, &BONK_FEED, 5_000_000)
+    });
     let fund = read_fund(&env, &f);
     assert_eq!(
         (fund.peak_price_per_share, fund.last_price_per_share),
@@ -689,11 +806,6 @@ fn relisted_switchboard_token_warms_up_before_it_moves_the_peak() {
         (fund.peak_price_per_share, fund.last_price_per_share),
         (2_000_000, 2_000_000)
     );
-    // Deposits wait for the warmup (the deposit price has no settled mark yet).
-    expect_err(
-        deposit(&mut env, &f, &m, 100_000_000),
-        ErrorCode::MarkWarmup,
-    );
     // The pump ends at $0.06. One slot before the warmup ends: still not recorded.
     t.fields.value = SB_ONE * 6 / 100;
     warp(&mut env.svm, MARK_WARMUP_SLOTS as i64 - 1);
@@ -708,12 +820,6 @@ fn relisted_switchboard_token_warms_up_before_it_moves_the_peak() {
     assert_eq!(
         (fund.peak_price_per_share, fund.last_price_per_share),
         (2_200_000, 2_200_000)
-    );
-    // Deposits open again, at max(spot, deposit mark) = $0.06: 220 USDC buys 100 shares.
-    deposit(&mut env, &f, &m, 220_000_000).unwrap();
-    assert_eq!(
-        token_balance(&env.svm, &share_ata(&f, &m.pubkey())),
-        100_000_000
     );
 }
 
@@ -779,9 +885,10 @@ fn switchboard_marks_are_stored_the_low_mark_drops_at_once() {
     let seeded = marks(&env);
     let now = env.svm.get_sysvar::<Clock>().slot;
     assert_eq!((seeded.deposit, seeded.low), (SB_ONE / 20, SB_ONE / 20));
-    assert_eq!(seeded.seed_slot, now - MARK_WARMUP_SLOTS);
+    assert!(seeded.seed_slot + MARK_WARMUP_SLOTS <= now, "warm");
     // MEME doubles: both marks move one 10% step, to $0.055.
     t.fields.value = SB_ONE / 10;
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
     refresh_meme(&mut env, &t);
     poke(&mut env, &f, &m).unwrap();
     let s0 = env.svm.get_sysvar::<Clock>().slot;
@@ -862,11 +969,12 @@ fn deposit_after_a_dump_pays_the_mark() {
     let shares = share_ata(&f, &m.pubkey());
     assert_eq!(token_balance(&env.svm, &shares), 100_000_000);
     // One interval later the mark is 10% lower, $0.045: NAV 500 + 270 = 770
-    // for 400 shares, pps 1.925.
+    // for 400 shares, pps 1.925. The deposit pays the recorded pps 2.0
+    // (higher): 192.5 USDC buys 96.25 shares.
     warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
     refresh_meme(&mut env, &t);
     deposit(&mut env, &f, &m, 192_500_000).unwrap();
-    assert_eq!(token_balance(&env.svm, &shares), 200_000_000);
+    assert_eq!(token_balance(&env.svm, &shares), 196_250_000);
 }
 
 /// A 10x pump and pokes move the peak by at most one mark step per interval.
@@ -1052,6 +1160,7 @@ fn fund_with_kusdc() -> (Env, Keypair, FundHandles, KToken) {
     let (mut env, _cap, m, f) = fund_with_member();
     let k = listed_kusdc(&mut env);
     inject_holding(&mut env, &f, k.mint, 300_000_000);
+    settle_pps(&mut env, &f, &m, |env| refresh_kusdc(env, &k));
     (env, m, f, k)
 }
 
@@ -1075,6 +1184,9 @@ fn nav_values_ktoken_at_reserve_rate() {
 #[test]
 fn nav_values_ktoken_with_underlying_ema_and_conf() {
     let (mut env, m, f, k) = fund_with_kusdc();
+    // Next interval (the recorded pps moves once per interval).
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+    refresh_kusdc(&mut env, &k);
     // USDC spot 1.00, conf 0.01, ema 0.98.
     let t = now(&env);
     set_price_ema(

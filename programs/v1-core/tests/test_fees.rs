@@ -42,10 +42,13 @@ fn member(env: &Env, f: &FundHandles, owner: &Pubkey) -> Member {
 }
 
 /// Captain 300, member 1000 USDC in. Donate 195 so pps = 1.15 (member value 1150).
+/// The recorded pps reaches 1.15 one step per interval (settled).
 fn whitepaper() -> (Env, Keypair, Keypair, FundHandles) {
     let (mut env, cap, m, f) = fund_with_member();
     deposit(&mut env, &f, &m, 1_000_000_000).unwrap();
     mint_usdc(&mut env, &f.usdc_vault, 195_000_000);
+    settle_pps(&mut env, &f, &m, |_| {});
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 1_150_000);
     (env, cap, m, f)
 }
 
@@ -53,7 +56,10 @@ fn whitepaper() -> (Env, Keypair, Keypair, FundHandles) {
 fn annual_fee_not_due_before_a_year() {
     let (mut env, _cap, m, f) = whitepaper();
     let keeper = funded_user(&mut env, 0);
-    warp(&mut env.svm, YEAR_SECS - 10);
+    // The fixture's settle pokes moved the clock: aim at the anniversary.
+    let due = member(&env, &f, &m.pubkey()).last_fee_at + YEAR_SECS;
+    let wait = due - now(&env) - 10;
+    warp(&mut env.svm, wait);
     expect_err(
         charge(&mut env, &f, &m.pubkey(), &keeper),
         ErrorCode::FeeNotDue,
@@ -121,22 +127,24 @@ fn annual_fee_zero_below_hwm() {
 }
 
 #[test]
-fn annual_fee_ignores_stale_higher_last_pps() {
-    // The annual fee uses the fresh upper-bound pps only.
+fn annual_fee_uses_the_recorded_pps_after_one_step() {
+    // The annual fee uses the recorded pps after this call's update, which
+    // moves one step toward the fresh pps at most. A recorded 1.30 with a
+    // fresh 1.15 gives 1.30 - 10% = 1.17, not 1.30.
     let (mut env, cap, m, f) = whitepaper();
     let keeper = funded_user(&mut env, 0);
     let mut fund = read_fund(&env, &f);
     fund.last_price_per_share = 1_300_000;
     write_fund(&mut env, &f, &fund);
     warp(&mut env.svm, YEAR_SECS);
-    // Fresh pps 1.15: the whitepaper fee (15 USDC = 13.043478 shares), not the 1.30 fee.
+    // Value 1,170, HWM 1,000: fee 17 USDC = 14.529914 shares at 1.17.
     charge(&mut env, &f, &m.pubkey(), &keeper).unwrap();
     assert_eq!(
         token_balance(&env.svm, &share_ata(&f, &cap.pubkey())),
-        300_000_000 + 13_043_478
+        300_000_000 + 14_529_914
     );
-    assert_eq!(member(&env, &f, &m.pubkey()).hwm, 1_135_000_000);
-    assert_eq!(read_fund(&env, &f).last_price_per_share, 1_150_000);
+    assert_eq!(member(&env, &f, &m.pubkey()).hwm, 1_153_000_000);
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 1_170_000);
 }
 
 /// The annual fee uses the slow (EMA) pps, so the keeper's choice of an
@@ -146,6 +154,8 @@ fn annual_fee_uses_the_ema_price() {
     let (mut env, cap, m, f) = whitepaper();
     let sol = listed_sol(&mut env, 150);
     inject_holding(&mut env, &f, sol, 1_000_000_000);
+    // The recorded pps settles at the EMA pps one step per interval.
+    settle_pps(&mut env, &f, &m, |env| sol_price(env, &sol, 160, 100, 150));
     let keeper = funded_user(&mut env, 0);
     warp(&mut env.svm, YEAR_SECS);
     // SOL spot $160 +- $1, EMA $150. EMA NAV 1,495 + 150 = 1,645 for 1,300

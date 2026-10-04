@@ -14,8 +14,8 @@
 //!   `switchboard`); `price_b` is not read. The feed has no EMA, so the entry
 //!   keeps two slow mark prices (`switchboard::next_marks`), moved and stored
 //!   by every read. The deposit mark (the slow mark) moves at most 10% per
-//!   150 slots both ways; it is the token's EMA, so every fee price and every
-//!   recorded pps move one step per interval at most. The low mark drops to
+//!   150 slots both ways; it is the token's EMA (the target of the recorded
+//!   pps, see `update_breaker`) and the exit fee price. The low mark drops to
 //!   the value at once and rises at most 10% per 150 slots; it serves only
 //!   the captain stake (StakeLowerBound) and the breaker trip check
 //!   (BreakerCheck). Spot uses the feed value; DepositUpperBound and High
@@ -25,9 +25,8 @@
 //! Warmup: for `MARK_WARMUP_SLOTS` after a Switchboard token's marks are
 //! seeded (first read, or a new price source), `NavResult::warming` is true:
 //! callers do not record the peak or `last_price_per_share` (`update_breaker`
-//! with `record = false`; the breaker can still trip), `deposit` and
-//! `charge_annual_fee` fail (`MarkWarmup`), and the holding counts 0 toward
-//! the captain stake.
+//! with `record = false`; the breaker can still trip), and the holding counts
+//! 0 toward the captain stake.
 //!
 //! USDC is valued 1:1; its entry and price accounts are not read, but they
 //! must be present (uniform layout). This module is the only place that
@@ -35,7 +34,9 @@
 
 use {
     crate::{
-        constants::{MAX_HOLDINGS, TOKEN_SEED},
+        constants::{
+            BPS_DENOMINATOR, MARK_INTERVAL_SLOTS, MARK_MAX_STEP_BPS, MAX_HOLDINGS, TOKEN_SEED,
+        },
         errors::ErrorCode,
         events::BreakerChanged,
         kamino::{self, KaminoRate},
@@ -394,11 +395,16 @@ pub(crate) fn token_entry(
     Ok(entry)
 }
 
-/// Record `pps` (the Ema pps) and move the drawdown breaker: peak only
-/// rises; frozen while `check < peak * (1 - drawdown)` (`check` = the
-/// BreakerCheck pps). Emits `BreakerChanged` when `frozen` flips. With
-/// `record = false` (a mark warmup, see `NavResult::warming`) the peak and
-/// `last_price_per_share` stay, and the breaker can only trip.
+/// Record `pps` (the Ema pps) and move the drawdown breaker.
+/// `last_price_per_share` moves toward `pps` at most once per
+/// `MARK_INTERVAL_SLOTS`, by at most `MARK_MAX_STEP_BPS` of itself, for every
+/// price source, so no pump or dump moves the recorded pps (the deposit
+/// floor, the exit fee floor, the annual fee price) faster. The peak follows
+/// the recorded pps only. Frozen while `check < peak * (1 - drawdown)`
+/// (`check` = the fresh BreakerCheck pps, so a real crash trips at once).
+/// Emits `BreakerChanged` when `frozen` flips. With `record = false` (a mark
+/// warmup, see `NavResult::warming`) nothing is recorded, and the breaker can
+/// only trip.
 pub fn update_breaker(
     fund: &mut Fund,
     fund_key: &Pubkey,
@@ -406,9 +412,11 @@ pub fn update_breaker(
     b: BreakerPps,
 ) -> Result<()> {
     let BreakerPps { pps, check, record } = b;
-    if record {
-        fund.last_price_per_share = pps;
-        fund.peak_price_per_share = fund.peak_price_per_share.max(pps);
+    let slot = Clock::get()?.slot;
+    if record && slot >= fund.last_pps_slot.saturating_add(MARK_INTERVAL_SLOTS) {
+        fund.last_price_per_share = rate_limited(fund.last_price_per_share, pps);
+        fund.last_pps_slot = slot;
+        fund.peak_price_per_share = fund.peak_price_per_share.max(fund.last_price_per_share);
     }
     let keep_bps = 10_000u16
         .checked_sub(policy.params.drawdown_bps)
@@ -425,6 +433,16 @@ pub fn update_breaker(
         });
     }
     Ok(())
+}
+
+/// `fresh` clamped to one `MARK_MAX_STEP_BPS` step around `last` (floor
+/// step). A recorded 0 (a NAV that was 0) takes `fresh` at once.
+fn rate_limited(last: u64, fresh: u64) -> u64 {
+    if last == 0 {
+        return fresh;
+    }
+    let step = (last as u128 * MARK_MAX_STEP_BPS as u128 / BPS_DENOMINATOR as u128) as u64;
+    fresh.clamp(last - step, last.saturating_add(step))
 }
 
 #[cfg(test)]
@@ -484,6 +502,16 @@ mod tests {
         let w = TokenPrice { warming: true, ..p };
         assert_eq!(w.value(10_000_000, StakeLowerBound).unwrap(), 0);
         assert_eq!(w.value(10_000_000, Ema).unwrap(), 25_000_000);
+    }
+
+    #[test]
+    fn recorded_pps_moves_one_step_toward_the_fresh_pps() {
+        assert_eq!(rate_limited(2_000_000, 11_000_000), 2_200_000);
+        assert_eq!(rate_limited(2_000_000, 1_000), 1_800_000);
+        assert_eq!(rate_limited(2_000_000, 2_150_000), 2_150_000);
+        assert_eq!(rate_limited(2_000_000, 1_850_000), 1_850_000);
+        assert_eq!(rate_limited(0, 1_500_000), 1_500_000);
+        assert_eq!(rate_limited(u64::MAX, u64::MAX), u64::MAX);
     }
 
     #[test]

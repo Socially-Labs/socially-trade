@@ -90,14 +90,17 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()
         now,
         ctx.program_id,
     )?;
-    // Shares from the upper-bound NAV (favor the fund); breaker from the EMA NAV.
+    // Shares at the higher of the upper-bound NAV and the recorded pps (it
+    // moves one step per interval), so a dump cannot cheapen shares; favor
+    // the fund. Breaker from the EMA NAV.
     let nav_upper = priced.valuation(ValuationMode::DepositUpperBound)?.nav;
     require!(nav_upper > 0, ErrorCode::NavZero);
-    // A warming mark has not found its price yet: no deposit can use it.
-    require!(!priced.warming(), ErrorCode::MarkWarmup);
+    let nav_recorded =
+        (total_before as u128 * a.fund.last_price_per_share as u128).div_ceil(math::ONE);
+    let nav_paid = nav_upper.max(nav_recorded);
     let breaker = priced.breaker(total_before)?;
-    let pps_paid = math::price_per_share(nav_upper, total_before)?;
-    let shares = math::shares_for_deposit(amount, total_before, nav_upper)?;
+    let pps_paid = math::price_per_share(nav_paid, total_before)?;
+    let shares = math::shares_for_deposit(amount, total_before, nav_paid)?;
     require!(shares >= min_shares, ErrorCode::SlippageExceeded);
 
     token_interface::transfer_checked(

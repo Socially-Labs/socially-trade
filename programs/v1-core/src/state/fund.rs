@@ -38,4 +38,7 @@ pub struct Fund {
     pub t3_basis_usd: [u64; MAX_HOLDINGS],
     /// USD (6 dp) of T3 buys in the window before the current one.
     pub t3_prev_window_buys_usd: u64,
+    /// Slot of the last move of `last_price_per_share`: it moves at most one
+    /// step per interval (see `nav::update_breaker`).
+    pub last_pps_slot: u64,
 }
