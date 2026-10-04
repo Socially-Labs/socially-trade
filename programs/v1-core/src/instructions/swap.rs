@@ -29,7 +29,18 @@
 //! `basis * amount_in / position`. If the spot value received is less, the fund
 //! PDA (permanent delegate of the share mint) burns captain shares worth the
 //! loss at the pre-trade spot price per share, at most the captain's balance.
-//! A T3 to T3 trade is a T3 sale, then a T3 buy.
+//! A sale of a holding with a basis must output USDC or a token priced by
+//! Pyth or Kamino (`T3ExitRouteNotAllowed`): the proceeds are valued at the
+//! output's price, and a Switchboard price follows a pool the captain can
+//! move. So a T3 to T3 rotation takes two trades, a sale into USDC, then a buy.
+//!
+//! Sales into USDC must not need every feed (pause, breaker and a broken
+//! feed never block them). The input must price; any other holding whose
+//! price does not read counts 0 for the trade (`nav::compute_for_usdc_sale`).
+//! A 0 value lowers the pre-trade NAV, so the size limits get stricter. Such a
+//! trade writes no breaker state (record, peak, frozen) and no mark. A T3
+//! loss burn needs the full NAV (`HoldingUnpriced`): at a NAV that is too
+//! low, the burn would take too many captain shares.
 
 use {
     crate::{
@@ -39,7 +50,9 @@ use {
         instructions::delegate::charge_delegate,
         math,
         nav::{self, NavResult, ValuationMode, ACCOUNTS_PER_HOLDING, PRICE_ACCOUNTS},
-        state::{Config, Delegate, Fund, Member, Policy, Tier, TokenEntry, VenueEntry},
+        state::{
+            Config, Delegate, Fund, Member, Policy, PriceSource, Tier, TokenEntry, VenueEntry,
+        },
     },
     anchor_lang::{
         error::ErrorCode as AnchorError,
@@ -205,6 +218,7 @@ pub fn execute_swap<'info>(
         prices: [None; MAX_HOLDINGS],
         t2: [false; MAX_HOLDINGS],
         basis: [0; MAX_HOLDINGS],
+        unpriced: [false; MAX_HOLDINGS],
     });
     let plan = prepare(t, remaining, p, delegate, now, &mut priced)?;
     if let Some((start, volume)) = plan.window {
@@ -282,10 +296,24 @@ fn prepare(
     if out_held.is_none() {
         require!(len < MAX_HOLDINGS, ErrorCode::TooManyHoldings);
     }
+    // A sale of a based holding exits to USDC, Pyth or Kamino (module doc).
+    let t3_sell = fund.t3_basis_usd[in_idx] > 0;
+    let priced_exit = out_entry.as_ref().is_none_or(|e| {
+        matches!(
+            e.price_source,
+            PriceSource::Pyth { .. } | PriceSource::KaminoReserve { .. }
+        )
+    });
+    require!(!t3_sell || priced_exit, ErrorCode::T3ExitRouteNotAllowed);
 
-    // 4. Prices of every holding, plus the new output's price.
+    // 4. Prices of every holding, plus the new output's price. A sale into
+    // USDC counts a holding other than the input that does not price at 0.
     let fund_key = fund.key();
-    *priced = nav::compute(fund, &fund_key, config, remaining, now, &crate::ID)?;
+    *priced = if sell_to_usdc {
+        nav::compute_for_usdc_sale(fund, &fund_key, config, remaining, now, &crate::ID, in_idx)?
+    } else {
+        nav::compute(fund, &fund_key, config, remaining, now, &crate::ID)?
+    };
     let nav_end = len * ACCOUNTS_PER_HOLDING;
     require_keys_eq!(
         t.fund_input_vault.key(),
@@ -321,7 +349,6 @@ fn prepare(
     // fund holds without a basis sells like any other token. A buy into a
     // based holding is a T3 buy whatever the tier. A T3 buy must not mix with
     // unbased units of a holding.
-    let t3_sell = fund.t3_basis_usd[in_idx] > 0;
     let out_based = out_held.is_some_and(|i| fund.t3_basis_usd[i] > 0);
     if let Some(i) = out_held {
         require!(
@@ -551,6 +578,11 @@ fn settle<'info>(
         .checked_sub(before[plan.out_idx])
         .ok_or(ErrorCode::OutputNotReceived)?;
     require!(amount_out >= p.min_out, ErrorCode::OutputNotReceived);
+    // A new holding must hold something.
+    require!(
+        !plan.out_is_new || amount_out > 0,
+        ErrorCode::OutputNotReceived
+    );
 
     // T3 sale (basis out, first loss), then T3 buy (basis in, caps).
     if plan.t3_sell || plan.t3_buy {
@@ -580,7 +612,8 @@ fn settle<'info>(
     }
 
     // 11. New holding; drop an emptied non-USDC input (swap-remove, never
-    // index 0); then the breaker on the post-trade pps.
+    // index 0); then the breaker on the post-trade pps, only when every
+    // holding priced.
     let usdc = t.config.usdc_mint;
     let fund = &mut t.fund;
     if plan.out_is_new {
@@ -595,8 +628,10 @@ fn settle<'info>(
         fund.t3_basis_usd[last] = 0;
         fund.holdings_len -= 1;
     }
-    let breaker = priced.breaker(fund.total_shares)?;
-    nav::update_breaker(fund, &fund_key, &t.policy, breaker)?;
+    if priced.complete() {
+        let breaker = priced.breaker(fund.total_shares)?;
+        nav::update_breaker(fund, &fund_key, &t.policy, breaker)?;
+    }
     Ok(amount_out)
 }
 
@@ -672,6 +707,8 @@ fn apply_t3<'info>(
         let loss = (out as u128).saturating_sub(proceeds);
         if loss > 0 {
             // Shares worth the loss at the pre-trade spot pps, rounded up.
+            // A holding counted 0 would lower that pps and burn too much.
+            require!(priced.complete(), ErrorCode::HoldingUnpriced);
             require!(plan.pre_nav > 0, ErrorCode::NavZero);
             let burn = loss
                 .checked_mul(total as u128)

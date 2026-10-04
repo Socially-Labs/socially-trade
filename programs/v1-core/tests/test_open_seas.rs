@@ -14,6 +14,8 @@ use {
 const USDC: u64 = 1_000_000;
 /// One MEME (9 dp). MEME starts at $0.05, so 1 USDC buys 20 MEME.
 const MEME: u64 = 1_000_000_000;
+/// One SOL (9 dp), $150.
+const SOL: u64 = 1_000_000_000;
 
 struct Seas {
     t: Trading,
@@ -675,13 +677,17 @@ fn t3_buy_into_units_without_basis_is_rejected() {
 }
 
 #[test]
-fn t3_to_t3_swap_is_a_sale_then_a_buy() {
+fn t3_to_t3_rotation_takes_a_sale_into_usdc_then_a_buy() {
     let mut s = open_seas(1_000, 19_000);
     let coin = second_token(&mut s, Tier::T3);
     let a = s.buy(400); // 8,000 MEME, basis 400
     s.t.swap_fresh(&a).unwrap();
-    // All MEME for 1% less COIN: proceeds 396, loss 4 on the MEME basis.
-    let a = SwapArgs::new(s.meme.mint, coin.mint, 8_000 * MEME, 7_920 * MEME, 99, 100);
+    // A sale into a token the captain can price from its own pool could hide
+    // the loss: MEME into COIN in one trade is rejected.
+    let rotate = SwapArgs::new(s.meme.mint, coin.mint, 8_000 * MEME, 7_920 * MEME, 99, 100);
+    expect_err(s.t.swap_fresh(&rotate), ErrorCode::T3ExitRouteNotAllowed);
+    // Sale first: all MEME for 1% less USDC, a loss of 4 on the MEME basis.
+    let a = s.sell(8_000 * MEME, 99, 2_000_000);
     let res = s.t.swap_fresh(&a).unwrap();
     let ev = decode_events::<FirstLossApplied>(&res);
     assert_eq!(
@@ -690,16 +696,42 @@ fn t3_to_t3_swap_is_a_sale_then_a_buy() {
     );
     assert_eq!(s.captain_shares(), 996 * USDC);
     s.assert_supply();
-    // MEME left the holdings; COIN took its slot with the buy's basis (input spot value).
+    // Then the buy: COIN takes MEME's slot with its own basis.
+    let a = buy_of(&s.t, &coin.mint, 396);
+    s.t.swap_fresh(&a).unwrap();
     let f = s.fund();
     assert_eq!(f.holdings[..2], [s.t.env.usdc, coin.mint]);
-    assert_eq!(f.t3_basis_usd[..3], [0, 400 * USDC, 0]);
-    assert_eq!(f.t3_cost_basis_usd, 400 * USDC);
-    assert_eq!(f.t3_window_buys_usd, 800 * USDC);
-    // Back to MEME: the buy side counts in the window, 800 + 396 > 996.
-    let a = SwapArgs::new(coin.mint, s.meme.mint, 7_920 * MEME, 7_920 * MEME, 1, 1);
-    expect_err(s.t.swap_fresh(&a), ErrorCode::T3CapExceeded);
-    assert_eq!(s.captain_shares(), 996 * USDC);
+    assert_eq!(f.t3_basis_usd[..3], [0, 396 * USDC, 0]);
+    assert_eq!(f.t3_cost_basis_usd, 396 * USDC);
+    assert_eq!(f.t3_window_buys_usd, 796 * USDC);
+}
+
+#[test]
+fn t3_sale_exits_only_to_usdc_or_a_pyth_or_kamino_token() {
+    for tier in [Tier::T2, Tier::T3] {
+        let mut s = open_seas(1_000, 19_000);
+        let coin = second_token(&mut s, tier);
+        let a = s.buy(400);
+        s.t.swap_fresh(&a).unwrap();
+        // COIN's feed reads 2.5x: 3,200 COIN would show proceeds of 400 for a
+        // sale worth 160 at the pool. Any Switchboard output is rejected.
+        s.t.swap_fresh(&buy_of(&s.t, &coin.mint, 10)).unwrap();
+        let mut pumped = coin;
+        pumped.fields.value = SB_ONE / 8;
+        refresh_meme(&mut s.t.env, &pumped);
+        let rotate = SwapArgs::new(s.meme.mint, coin.mint, 8_000 * MEME, 3_200 * MEME, 2, 5);
+        expect_err(s.t.swap_fresh(&rotate), ErrorCode::T3ExitRouteNotAllowed);
+        // COIN bought as T3 has a basis of 10; as T2 it has none.
+        let coin_basis = if tier == Tier::T3 { 10 * USDC } else { 0 };
+        assert_eq!(s.fund().t3_cost_basis_usd, 400 * USDC + coin_basis);
+        // A Pyth output (SOL at $150) is allowed: 8,000 MEME ($400) for 2.67 SOL.
+        let sol = s.t.sol;
+        let a = SwapArgs::new(s.meme.mint, sol, 8_000 * MEME, 2_640_000_000, 1, 3_000);
+        s.t.swap_fresh(&a).unwrap();
+        let f = s.fund();
+        assert_eq!(f.t3_cost_basis_usd, coin_basis);
+        assert!(!f.holdings.contains(&s.meme.mint));
+    }
 }
 
 #[test]
@@ -754,4 +786,124 @@ fn exit_rounds_a_tiny_basis_up_while_units_remain() {
     let a = s.buy(10);
     s.t.swap_fresh(&a).unwrap();
     assert_eq!(s.fund().t3_cost_basis_usd, 10 * USDC + 1);
+}
+
+/// Buy SOL ($150) with `usd` USDC: 1 USDC unit = 20/3 SOL units.
+fn buy_sol(s: &Seas, usd: u64) -> SwapArgs {
+    let out = usd * USDC * 20 / 3;
+    SwapArgs::new(s.t.env.usdc, s.t.sol, usd * USDC, out * 99 / 100, 20, 3)
+}
+
+/// Sell 1 SOL into USDC at $150.
+fn sell_one_sol(s: &Seas) -> SwapArgs {
+    SwapArgs::new(s.t.sol, s.t.env.usdc, SOL, 150 * USDC, 3, 20)
+}
+
+/// Break the MEME feed: `stale` leaves it unpublished (the caller warps),
+/// `repointed` publishes a result for another job.
+fn break_meme(s: &mut Seas, how: &str) -> ErrorCode {
+    if how == "stale" {
+        return ErrorCode::PriceStale;
+    }
+    let mut other = s.meme;
+    other.fields.feed_hash = [9; 32];
+    refresh_meme(&mut s.t.env, &other);
+    ErrorCode::FeedConfigChanged
+}
+
+#[test]
+fn sell_to_usdc_survives_a_broken_feed_on_another_holding() {
+    for how in ["stale", "repointed"] {
+        let mut s = open_seas(1_000, 19_000);
+        let a = s.buy(400);
+        s.t.swap_fresh(&a).unwrap();
+        let a = buy_sol(&s, 300);
+        s.t.swap_fresh(&a).unwrap();
+        // Past the record interval and the 60 s age cap; MEME is not re-published.
+        warp(&mut s.t.env.svm, 300);
+        s.t.refresh_prices();
+        let code = break_meme(&mut s, how);
+        // The broken feed still blocks a buy, and a sale of MEME itself.
+        let a = buy_sol(&s, 10);
+        expect_err(s.t.swap_fresh(&a), code);
+        let a = s.sell(1_000 * MEME, 1, 20_000);
+        expect_err(s.t.swap_fresh(&a), code);
+
+        let before = s.fund();
+        let usdc = token_balance(&s.t.env.svm, &s.t.f.usdc_vault);
+        let marks = read_entry(&s.t.env, &s.meme.mint).marks;
+        let a = sell_one_sol(&s);
+        s.t.swap_fresh(&a).unwrap();
+        let f = s.fund();
+        assert_eq!(
+            token_balance(&s.t.env.svm, &s.t.f.usdc_vault),
+            usdc + 150 * USDC
+        );
+        // MEME counted 0: nothing of the breaker, the record or the marks moved.
+        assert_eq!(
+            (
+                f.last_price_per_share,
+                f.last_pps_slot,
+                f.peak_price_per_share,
+                f.frozen
+            ),
+            (
+                before.last_price_per_share,
+                before.last_pps_slot,
+                before.peak_price_per_share,
+                before.frozen
+            )
+        );
+        assert_eq!(read_entry(&s.t.env, &s.meme.mint).marks, marks);
+        // Control: with MEME priced again, the same sale records.
+        refresh_meme(&mut s.t.env, &s.meme);
+        let a = sell_one_sol(&s);
+        s.t.swap_fresh(&a).unwrap();
+        assert_ne!(s.fund().last_pps_slot, before.last_pps_slot);
+    }
+}
+
+#[test]
+fn sell_to_usdc_with_an_unpriced_holding_stores_no_mark() {
+    let mut s = open_seas(1_000, 19_000);
+    let coin = second_token(&mut s, Tier::T2);
+    let a = buy_of(&s.t, &coin.mint, 500);
+    s.t.swap_fresh(&a).unwrap();
+    let a = s.buy(400);
+    s.t.swap_fresh(&a).unwrap();
+    warp(&mut s.t.env.svm, MARK_WARMUP_SLOTS as i64);
+    s.t.refresh_prices();
+    refresh_meme(&mut s.t.env, &coin);
+    // MEME is stale; COIN, the input, prices.
+    let marks = read_entry(&s.t.env, &coin.mint).marks;
+    let usdc = s.t.env.usdc;
+    let sell = SwapArgs::new(coin.mint, usdc, 1_000 * MEME, 50 * USDC, 1, 20_000);
+    s.t.swap_fresh(&sell).unwrap();
+    assert_eq!(read_entry(&s.t.env, &coin.mint).marks, marks);
+    // Control: with every feed fresh, the same sale moves COIN's marks.
+    refresh_meme(&mut s.t.env, &s.meme);
+    s.t.swap_fresh(&sell).unwrap();
+    assert_ne!(read_entry(&s.t.env, &coin.mint).marks, marks);
+}
+
+#[test]
+fn t3_loss_sale_needs_every_holding_priced() {
+    let mut s = open_seas(1_000, 19_000);
+    let coin = second_token(&mut s, Tier::T3);
+    let a = s.buy(400);
+    s.t.swap_fresh(&a).unwrap();
+    let a = buy_of(&s.t, &coin.mint, 400);
+    s.t.swap_fresh(&a).unwrap();
+    warp(&mut s.t.env.svm, 300);
+    s.refresh();
+    // COIN is stale. A burn needs the full NAV: at 0 for COIN, the loss would
+    // burn captain shares at a pps that is too low.
+    let loss = s.sell(8_000 * MEME, 99, 2_000_000);
+    expect_err(s.t.swap_fresh(&loss), ErrorCode::HoldingUnpriced);
+    assert_eq!(s.captain_shares(), 1_000 * USDC);
+    // A sale with no loss burns nothing, so it goes through.
+    let gain = s.sell(8_000 * MEME, 1, 19_000);
+    s.t.swap_fresh(&gain).unwrap();
+    assert_eq!(s.captain_shares(), 1_000 * USDC);
+    assert_eq!(s.fund().t3_cost_basis_usd, 400 * USDC);
 }

@@ -34,6 +34,12 @@
 //! Pumps stay capped as above. The breaker check and the captain stake use no
 //! floor, so a real crash below cost still trips the breaker.
 //!
+//! Sales into USDC (`compute_for_usdc_sale`): a holding other than the
+//! input whose entry or price does not read counts 0
+//! (`NavResult::unpriced`), so one broken feed cannot block a sale of
+//! another holding. Such a read stores no mark, and the caller writes no
+//! breaker state.
+//!
 //! USDC is valued 1:1; its entry and price accounts are not read, but they
 //! must be present (uniform layout). This module is the only place that
 //! knows the layout: other code uses the constants and `price`.
@@ -47,7 +53,7 @@ use {
         events::BreakerChanged,
         kamino::{self, KaminoRate},
         math, pyth,
-        state::{Config, Fund, Policy, PriceSource, Tier, TokenEntry},
+        state::{Config, Fund, Marks, Policy, PriceSource, Tier, TokenEntry},
         switchboard,
     },
     anchor_lang::{error::ErrorCode as AnchorError, prelude::*},
@@ -179,6 +185,9 @@ pub struct NavResult {
     /// T3 cost basis of each holding, USD (6 dp), from `fund.t3_basis_usd`:
     /// the floor of `nav_at_least_cost`.
     pub basis: [u64; MAX_HOLDINGS],
+    /// True for a holding whose price did not read (`compute_for_usdc_sale`
+    /// only): it counts 0 in every mode.
+    pub unpriced: [bool; MAX_HOLDINGS],
 }
 
 /// What `update_breaker` needs from one NAV read.
@@ -208,6 +217,11 @@ impl NavResult {
             check: pps(self.valuation(ValuationMode::BreakerCheck)?.nav)?,
             record: !self.warming(),
         })
+    }
+
+    /// Every holding has a price (no `unpriced` holding).
+    pub fn complete(&self) -> bool {
+        !self.unpriced[..self.len].contains(&true)
     }
 
     /// A held (or newly bought) Switchboard token is in its mark warmup:
@@ -249,6 +263,9 @@ impl NavResult {
 
     /// USDC value of `amount` base units of holding `i`, priced in `mode`.
     pub fn value_at(&self, i: usize, amount: u64, mode: ValuationMode) -> Result<u128> {
+        if self.unpriced[i] {
+            return Ok(0);
+        }
         match self.prices[i] {
             Some(p) => p.value(amount, mode),
             None => Ok(amount as u128),
@@ -265,6 +282,46 @@ pub fn compute(
     now: i64,
     program_id: &Pubkey,
 ) -> Result<NavResult> {
+    read_nav(fund, fund_key, config, remaining, now, program_id, None)
+}
+
+/// `compute` for a sale of holding `input` into USDC. The input must price;
+/// any other holding whose registry entry or price does not read counts 0
+/// (`NavResult::unpriced`). A 0 value lowers the NAV, so the size limits of
+/// the trade get stricter, never looser. When a read fails, the trade
+/// stores no mark at all.
+pub fn compute_for_usdc_sale(
+    fund: &Fund,
+    fund_key: &Pubkey,
+    config: &Config,
+    remaining: &[AccountInfo],
+    now: i64,
+    program_id: &Pubkey,
+    input: usize,
+) -> Result<NavResult> {
+    read_nav(
+        fund,
+        fund_key,
+        config,
+        remaining,
+        now,
+        program_id,
+        Some(input),
+    )
+}
+
+/// `compute`; with `tolerate = Some(input)`, `compute_for_usdc_sale`. The
+/// moved marks are stored after every read passed.
+#[inline(never)]
+fn read_nav(
+    fund: &Fund,
+    fund_key: &Pubkey,
+    config: &Config,
+    remaining: &[AccountInfo],
+    now: i64,
+    program_id: &Pubkey,
+    tolerate: Option<usize>,
+) -> Result<NavResult> {
     let len = fund.holdings_len as usize;
     require!(
         remaining.len() >= len * ACCOUNTS_PER_HOLDING,
@@ -276,17 +333,41 @@ pub fn compute(
         prices: [None; MAX_HOLDINGS],
         t2: [false; MAX_HOLDINGS],
         basis: fund.t3_basis_usd,
+        unpriced: [false; MAX_HOLDINGS],
     };
-    for (i, (mint, accs)) in fund.holdings[..len]
+    let mut marks: [Option<Marks>; MAX_HOLDINGS] = [None; MAX_HOLDINGS];
+    let holdings = fund.holdings[..len]
         .iter()
-        .zip(remaining.chunks_exact(ACCOUNTS_PER_HOLDING))
-        .enumerate()
-    {
+        .zip(remaining.chunks_exact(ACCOUNTS_PER_HOLDING));
+    for (i, (mint, accs)) in holdings.clone().enumerate() {
         out.amounts[i] = vault_amount(&accs[0], fund_key, mint)?;
-        if *mint != config.usdc_mint {
-            let entry = token_entry(&accs[1], mint, program_id)?;
+        if *mint == config.usdc_mint {
+            continue;
+        }
+        let read = token_entry(&accs[1], mint, program_id).and_then(|mut entry| {
             out.t2[i] = entry.tier == Tier::T2;
-            out.prices[i] = Some(price_and_store_mark(&accs[1], entry, &accs[2..], now)?);
+            price_with_marks(&accs[1], &mut entry, &accs[2..], now)
+        });
+        match read {
+            Ok((price, moved)) => {
+                out.prices[i] = Some(price);
+                marks[i] = moved;
+            }
+            Err(_) if tolerate.is_some_and(|input| input != i) => {
+                out.t2[i] = false;
+                out.unpriced[i] = true;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    if out.complete() {
+        for ((_, accs), m) in holdings.zip(marks) {
+            if let Some(m) = m {
+                let info = &accs[1];
+                let mut entry = TokenEntry::try_deserialize(&mut &info.try_borrow_data()?[..])?;
+                entry.marks = m;
+                entry.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
+            }
         }
     }
     Ok(out)
@@ -301,16 +382,30 @@ pub(crate) fn price_and_store_mark(
     accs: &[AccountInfo],
     now: i64,
 ) -> Result<TokenPrice> {
-    if !matches!(entry.price_source, PriceSource::Switchboard { .. }) {
-        return price(&mut entry, accs, now);
-    }
-    require!(info.is_writable, AnchorError::ConstraintMut);
-    let before = entry.marks;
-    let p = price(&mut entry, accs, now)?;
-    if entry.marks != before {
+    let (p, moved) = price_with_marks(info, &mut entry, accs, now)?;
+    if moved.is_some() {
         entry.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
     }
     Ok(p)
+}
+
+/// `price`, and the moved marks of a Switchboard token to store (None when
+/// they did not move, or for any other source). For a Switchboard token
+/// `info`, the entry's account, must be writable (`ConstraintMut`), whether
+/// or not the marks move.
+fn price_with_marks(
+    info: &AccountInfo,
+    entry: &mut TokenEntry,
+    accs: &[AccountInfo],
+    now: i64,
+) -> Result<(TokenPrice, Option<Marks>)> {
+    if !matches!(entry.price_source, PriceSource::Switchboard { .. }) {
+        return Ok((price(entry, accs, now)?, None));
+    }
+    require!(info.is_writable, AnchorError::ConstraintMut);
+    let before = entry.marks;
+    let p = price(entry, accs, now)?;
+    Ok((p, (entry.marks != before).then_some(entry.marks)))
 }
 
 /// The price of a listed token from its `[price_a, price_b]` accounts. For a

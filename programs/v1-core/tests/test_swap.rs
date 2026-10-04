@@ -1231,3 +1231,15 @@ fn swap_new_output_takes_two_price_accounts() {
     send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
     assert_eq!(fund(&t).holdings_len, 2);
 }
+
+#[test]
+fn new_output_with_zero_amount_out_is_rejected() {
+    let mut t = trading_fund();
+    t.swap_fresh(&buy_sol(&t, 300 * USDC, 1_980_000_000))
+        .unwrap();
+    // 1 SOL unit is worth 0 USDC units, so min_out 0 passes the price guard;
+    // the venue pays 0 BONK. BONK must not become a holding.
+    let a = SwapArgs::new(t.sol, t.bonk, 1, 0, 0, 1);
+    expect_err(t.swap_fresh(&a), ErrorCode::OutputNotReceived);
+    assert_eq!(fund(&t).holdings_len, 2);
+}

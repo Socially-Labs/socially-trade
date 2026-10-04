@@ -126,4 +126,8 @@ pub enum ErrorCode {
     FeedConfigChanged,
     #[msg("Deposit mints fewer shares than min_shares")]
     SlippageExceeded,
+    #[msg("A sale of a T3 holding must output USDC or a Pyth or Kamino priced token")]
+    T3ExitRouteNotAllowed,
+    #[msg("A holding has no valid price; a T3 loss burn needs every holding priced")]
+    HoldingUnpriced,
 }
