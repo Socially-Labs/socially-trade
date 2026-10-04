@@ -1,16 +1,16 @@
 # Graph Report - Socially Trade  (2026-10-04)
 
 ## Corpus Check
-- 125 files · ~72,276 words
+- 129 files · ~74,321 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1375 nodes · 3499 edges · 81 communities (61 shown, 9 thin omitted)
-- Extraction: 80% EXTRACTED · 20% INFERRED · 0% AMBIGUOUS · INFERRED: 693 edges (avg confidence: 0.85)
+- 1411 nodes · 3559 edges · 83 communities (62 shown, 10 thin omitted)
+- Extraction: 81% EXTRACTED · 19% INFERRED · 0% AMBIGUOUS · INFERRED: 693 edges (avg confidence: 0.85)
 - Token cost: this AST refresh used no LLM; prior semantic extraction usage is unknown.
 
 ## Graph Freshness
-- Built from commit: `fb5b581d`
+- Built from commit: `e20b705e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -56,8 +56,8 @@
 - math.rs
 - Trade
 - v1-core/src/lib.rs
+- Fund
 - warp
-- funded
 - Exit
 - Whitepaper v1.0: proposed live socially.trade product
 - CreateFund
@@ -67,16 +67,16 @@
 - 7. Paper orders and trade history
 - Privy backend authentication
 - events.rs
-- pyth.rs
+- compute
 - Published simulated SOL/USDC fill model version 1
 - README: implemented backend and local development
 - swap
 - Phased v0 delivery plan and recorded backend checkpoints
 - v1-core
 - 6. Funds and Crew allocation
-- WriteLog
-- Paper history API
-- Fund
+- Captain handle availability and Redis Bloom index
+- ui-api-spec-v0.md
+- Q: Which Solana Agent Kit integrations can make Socially Trade more useful?
 - build-programs.sh
 - mock-venue
 - v1-core
@@ -85,6 +85,8 @@
 - 9. Fund activity, chat and decision log
 - 12. Recommended screen flows
 - 2. Shared conventions
+- Policy
+- 010_captain_handle_index.sql
 
 ## God Nodes (most connected - your core abstractions)
 1. `expect_err()` - 99 edges
@@ -117,15 +119,15 @@
 - **Proposed atomic paper execution** — docs_v0_paper_trading_architecture_orders, docs_v0_paper_trading_architecture_ledger, docs_v0_paper_trading_architecture_outbox, docs_v0_paper_trading_architecture_projections [EXTRACTED 1.00]
 - **Planned live fund integrity mechanisms** — socially_trade_whitepaper_fund_vault, socially_trade_whitepaper_delegates, socially_trade_whitepaper_policy, socially_trade_whitepaper_profile [EXTRACTED 1.00]
 
-## Communities (81 total, 9 thin omitted)
+## Communities (83 total, 10 thin omitted)
 
 ### Community 0 - "ApiFault"
-Cohesion: 0.08
-Nodes (66): registerAccountRoutes(), beginIdempotent(), finishIdempotent(), PositionValue, saveNav(), Valuation, valueFund(), createApp() (+58 more)
+Cohesion: 0.06
+Nodes (72): registerAccountRoutes(), beginIdempotent(), finishIdempotent(), PositionValue, saveNav(), Valuation, valueFund(), createApp() (+64 more)
 
 ### Community 1 - "instructions/delegate.rs"
-Cohesion: 0.29
-Nodes (12): add_delegate(), charge_delegate(), code(), d(), daily_limit_and_reset(), day_volume_overflow_is_math_overflow(), per_trade_limit(), revoke_delegate() (+4 more)
+Cohesion: 0.11
+Nodes (30): captain_log(), Account, Box, Context, Option, Result, Signer, WriteLog (+22 more)
 
 ### Community 2 - "worker/src/orders.ts"
 Cohesion: 0.10
@@ -137,7 +139,7 @@ Nodes (13): Verified per-asset ledger and projection reconciliation, Verified JW
 
 ### Community 4 - "api/package.json"
 Cohesion: 0.06
-Nodes (32): dependencies, decimal.js, fastify, jose, pg, @socially/contracts, @socially/db, @socially/domain (+24 more)
+Nodes (34): dependencies, decimal.js, fastify, ioredis, jose, pg, @socially/contracts, @socially/db (+26 more)
 
 ### Community 5 - "worker/package.json"
 Cohesion: 0.07
@@ -237,19 +239,19 @@ Nodes (3): Workspace apps/* packages, pnpm workspace globs, Workspace packages/*
 
 ### Community 42 - "common/mod.rs"
 Cohesion: 0.07
-Nodes (109): InstructionData, LiteSVM, config_pda(), create_mint(), custom_code(), Env, exit_accounts(), fund_pda() (+101 more)
+Nodes (111): E, InstructionData, LiteSVM, config_pda(), create_mint(), custom_code(), decode_events(), Env (+103 more)
 
 ### Community 43 - "fund_with_member"
 Cohesion: 0.06
-Nodes (108): create_fund(), delegate_pda(), deposit(), events(), exit(), expect_anchor_err(), expect_code(), expect_log() (+100 more)
+Nodes (105): create_fund(), deposit(), events(), exit(), expect_anchor_err(), expect_code(), expect_log(), fund_with_member() (+97 more)
 
 ### Community 44 - "expect_err"
 Cohesion: 0.11
-Nodes (66): ata(), expect_err(), ix_swap(), register_token(), set_usd_price(), setup_venue_pool(), Trading, trading_fund() (+58 more)
+Nodes (69): ata(), delegate_pda(), expect_err(), ix_add_delegate(), register_token(), set_usd_price(), setup_venue_pool(), Trading (+61 more)
 
 ### Community 45 - "math.rs"
-Cohesion: 0.08
-Nodes (18): ErrorCode, bps_of(), fee_below_one_share_keeps_hwm(), fee_whitepaper_priya(), fee_with_zero_pps_gives_zero_fee_shares(), FeeOutcome, mul_div_floor(), no_fee_at_hwm() (+10 more)
+Cohesion: 0.05
+Nodes (32): ErrorCode, bps_of(), fee_below_one_share_keeps_hwm(), fee_whitepaper_priya(), fee_with_zero_pps_gives_zero_fee_shares(), FeeOutcome, mul_div_floor(), no_fee_at_hwm() (+24 more)
 
 ### Community 46 - "Trade"
 Cohesion: 0.09
@@ -259,13 +261,13 @@ Nodes (53): cancel_proposal(), CancelProposal, CastVote, execute_proposal(), Exe
 Cohesion: 0.06
 Nodes (64): ProgramData, apply_token(), apply_venue(), ApplyToken, ApplyVenue, check_due(), eta(), queue_token() (+56 more)
 
-### Community 48 - "warp"
-Cohesion: 0.11
-Nodes (37): E, apply_policy(), ApplyPolicy, poke_nav(), PokeNav, Account, Box, Context (+29 more)
+### Community 48 - "Fund"
+Cohesion: 0.26
+Nodes (13): apply_policy(), ApplyPolicy, poke_nav(), PokeNav, Account, Box, Context, Result (+5 more)
 
-### Community 49 - "funded"
-Cohesion: 0.23
-Nodes (33): funded(), venue_data(), big_buy(), big_trade_fails_without_majority(), big_trade_passes_with_majority(), cancelled_proposal_cannot_execute(), crew(), double_vote_rejected() (+25 more)
+### Community 49 - "warp"
+Cohesion: 0.12
+Nodes (55): PolicyParams, funded(), read_policy(), venue_data(), warp(), apply(), apply_rechecks_floor(), below_floor_rejected() (+47 more)
 
 ### Community 50 - "Exit"
 Cohesion: 0.20
@@ -296,16 +298,16 @@ Cohesion: 0.22
 Nodes (9): 15. `POST /v0/funds/:fundId/orders/preview`, 16. `POST /v0/funds/:fundId/orders`, 17. `GET /v0/funds/:fundId/orders`, 18. `GET /v0/funds/:fundId/orders/:orderId`, 19. `POST /v0/funds/:fundId/orders/:orderId/cancel`, 20. `GET /v0/captains/:captainId/orders`, 21. `GET /v0/captains/:captainId/trade-statistics`, 22. `GET /v0/me/crew-transactions` (+1 more)
 
 ### Community 57 - "Privy backend authentication"
-Cohesion: 0.29
+Cohesion: 0.25
 Nodes (7): Bootstrap the backend account, Configure the API, Existing authentication and migration, Get your Privy configuration, Privy backend authentication, Use protected endpoints, Verification and errors
 
 ### Community 58 - "events.rs"
 Cohesion: 0.25
 Nodes (13): BreakerChanged, CaptainLog, Deposited, Exited, FeeCharged, FundCreated, PolicyApplied, PolicyQueued (+5 more)
 
-### Community 59 - "pyth.rs"
-Cohesion: 0.10
-Nodes (25): compute(), NavResult, AccountInfo, Option, Pubkey, Result, token_entry(), update_breaker() (+17 more)
+### Community 59 - "compute"
+Cohesion: 0.33
+Nodes (11): compute(), NavResult, AccountInfo, Option, Pubkey, Result, token_entry(), update_breaker() (+3 more)
 
 ### Community 60 - "Published simulated SOL/USDC fill model version 1"
 Cohesion: 0.39
@@ -331,21 +333,21 @@ Nodes (8): Build and test, Client notes, Disclosures and accepted risks, Instruc
 Cohesion: 0.25
 Nodes (8): 10. `GET /v0/funds/:fundId`, 11. `GET /v0/funds/:fundId/policy`, 12. `GET /v0/funds/:fundId/holdings`, 13. `POST /v0/funds/:fundId/joins`, 14. `POST /v0/funds/:fundId/exits`, 6. Funds and Crew allocation, 8. `POST /v0/funds`, 9. `GET /v0/funds`
 
-### Community 66 - "WriteLog"
+### Community 66 - "Captain handle availability and Redis Bloom index"
 Cohesion: 0.25
-Nodes (8): captain_log(), Account, Box, Context, Option, Result, Signer, WriteLog
+Nodes (7): Captain handle availability and Redis Bloom index, Configuration and lifecycle, Read flow, Setup, UI contract, Validation recorded, Write flow and recovery
 
-### Community 67 - "Paper history API"
-Cohesion: 0.22
+### Community 67 - "ui-api-spec-v0.md"
+Cohesion: 0.25
 Nodes (6): Captain history and statistics, Cursor convention, Fund order history, Paper history API, Private Crew transaction timeline, Verification
 
-### Community 68 - "Fund"
-Cohesion: 0.23
-Nodes (12): AddDelegate, RevokeDelegate, Account, Box, Program, Signer, System, UpdateDelegate (+4 more)
+### Community 68 - "Q: Which Solana Agent Kit integrations can make Socially Trade more useful?"
+Cohesion: 0.40
+Nodes (4): Answer, Outcome, Q: Which Solana Agent Kit integrations can make Socially Trade more useful?, Source Nodes
 
 ### Community 76 - "5. Accounts and Captain onboarding"
-Cohesion: 0.25
-Nodes (8): 1. `GET /health`, 2. `POST /v0/auth/privy`, 3. `GET /v0/me`, 4. `GET /v0/me/paper-balance`, 5. Accounts and Captain onboarding, 5. `GET /v0/me/paper-positions`, 6. `POST /v0/captains`, 7. `GET /v0/captains/:captainId`
+Cohesion: 0.22
+Nodes (9): 1. `GET /health`, 2. `POST /v0/auth/privy`, 37. `GET /v0/captains/handle-availability`, 3. `GET /v0/me`, 4. `GET /v0/me/paper-balance`, 5. Accounts and Captain onboarding, 5. `GET /v0/me/paper-positions`, 6. `POST /v0/captains` (+1 more)
 
 ### Community 77 - "8. Performance, charts and records"
 Cohesion: 0.29
@@ -363,28 +365,32 @@ Nodes (5): 12. Recommended screen flows, Captain dashboard and trading, Crew dis
 Cohesion: 0.50
 Nodes (4): 2. Shared conventions, Idempotency, Pagination: three separate contracts, Values and identifiers
 
+### Community 82 - "010_captain_handle_index.sql"
+Cohesion: 0.67
+Nodes (3): advance_captain_handle_revision(), captain_handle_index_state, captain_handle_revision_changed
+
 ## Knowledge Gaps
-- **326 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+321 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 522 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **339 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+334 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 538 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Fund` connect `Fund` to `WriteLog`, `common/mod.rs`, `fund_with_member`, `Trade`, `warp`, `Exit`, `CreateFund`, `Deposit`, `ChargeAnnualFee`, `pyth.rs`?**
-  _High betweenness centrality (0.056) - this node is a cross-community bridge._
-- **Why does `Config` connect `v1-core/src/lib.rs` to `common/mod.rs`, `Trade`, `warp`, `Exit`, `CreateFund`, `Deposit`, `ChargeAnnualFee`, `pyth.rs`?**
-  _High betweenness centrality (0.043) - this node is a cross-community bridge._
-- **Why does `expect_err()` connect `expect_err` to `common/mod.rs`, `fund_with_member`, `math.rs`, `warp`, `funded`?**
-  _High betweenness centrality (0.043) - this node is a cross-community bridge._
+- **Why does `Fund` connect `Fund` to `instructions/delegate.rs`, `common/mod.rs`, `fund_with_member`, `Trade`, `Exit`, `CreateFund`, `Deposit`, `ChargeAnnualFee`, `compute`?**
+  _High betweenness centrality (0.051) - this node is a cross-community bridge._
+- **Why does `Config` connect `v1-core/src/lib.rs` to `common/mod.rs`, `Trade`, `Fund`, `Exit`, `CreateFund`, `Deposit`, `ChargeAnnualFee`, `compute`?**
+  _High betweenness centrality (0.037) - this node is a cross-community bridge._
+- **Why does `expect_err()` connect `expect_err` to `warp`, `common/mod.rs`, `fund_with_member`, `math.rs`?**
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Are the 92 inferred relationships involving `expect_err()` (e.g. with `initialize_config_rejects_frozen_program()` and `initialize_config_rejects_non_upgrade_authority()`) actually correct?**
   _`expect_err()` has 92 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 43 inferred relationships involving `trading_fund()` (e.g. with `exit_works_when_paused_frozen_and_stale()` and `half_sol_fund()`) actually correct?**
   _`trading_fund()` has 43 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _326 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _339 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `ApiFault` be split into smaller, more focused modules?**
-  _Cohesion score 0.08019853709508883 - nodes in this community are weakly interconnected._
-## Authentication freshness
+  _Cohesion score 0.06460044809559373 - nodes in this community are weakly interconnected._
+## Freshness notes
 
-Runtime authentication is Privy only and uses cached public keys from the app JWKS endpoint. The manual PEM override has been removed. Older semantic nodes may describe historical adapters or obsolete manual-key settings. This refresh updates AST relationships; consult docs/ui-api-spec-v0.md and docs/privy-auth.md for current contracts.
+This is an AST refresh. Semantic documentation nodes may predate Privy-only authentication and the Captain handle Bloom index. Consult docs/ui-api-spec-v0.md and docs/captain-handle-bloom.md for current contracts.

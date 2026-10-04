@@ -74,6 +74,32 @@
       "source_location": "L8"
     },
     {
+      "id": "apps_api_src_captain_handles_captainhandleindex",
+      "label": "CaptainHandleIndex",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": "captainhandleindex",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L36"
+    },
+    {
+      "id": "apps_api_src_captain_handles_indexstate",
+      "label": "IndexState",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": "indexstate",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L7"
+    },
+    {
       "id": "apps_api_src_crew_crewchange",
       "label": "CrewChange",
       "_callable": true,
@@ -525,7 +551,7 @@
       "file_type": "code",
       "norm_label": "registeraccountroutes()",
       "source_file": "apps/api/src/account-routes.ts",
-      "source_location": "L7"
+      "source_location": "L8"
     },
     {
       "id": "apps_api_src_accounting_beginidempotent",
@@ -634,6 +660,150 @@
       "norm_label": "registerauthroutes()",
       "source_file": "apps/api/src/auth-routes.ts",
       "source_location": "L5"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_added",
+      "label": ".added()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".added()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L85"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_available",
+      "label": ".available()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".available()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L70"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_build",
+      "label": ".build()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".build()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L102"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_close",
+      "label": ".close()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".close()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L131"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_constructor",
+      "label": ".constructor()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".constructor()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L42"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_degraded",
+      "label": ".degraded()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".degraded()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L61"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_exists",
+      "label": ".exists()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".exists()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L66"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_rebuild",
+      "label": ".rebuild()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".rebuild()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L97"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleindex_usable",
+      "label": ".usable()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": ".usable()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L57"
+    },
+    {
+      "id": "apps_api_src_captain_handles_insertcaptain",
+      "label": "insertCaptain()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": "insertcaptain()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L138"
+    },
+    {
+      "id": "apps_api_src_captain_handles_keys",
+      "label": "keys()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": "keys()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L30"
+    },
+    {
+      "id": "apps_api_src_captain_handles_version",
+      "label": "version()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": "version()",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L29"
     },
     {
       "id": "apps_api_src_crew_joinfund",
@@ -1710,6 +1880,28 @@
       "source_location": "L1"
     },
     {
+      "id": "apps_api_src_captain_handles",
+      "label": "captain-handles.ts",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": "captain-handles.ts",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "apps_api_src_captain_handles_captainhandleschema",
+      "label": "captainHandleSchema",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "ApiFault",
+      "file_type": "code",
+      "norm_label": "captainhandleschema",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L6"
+    },
+    {
       "id": "apps_api_src_crew",
       "label": "crew.ts",
       "_origin": "ast",
@@ -1908,6 +2100,105 @@
       "source_location": "L23"
     },
     {
+      "id": "programs_v1_core_src_instructions_captain_log",
+      "label": "captain_log.rs",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "captain_log.rs",
+      "source_file": "programs/v1-core/src/instructions/captain_log.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_captain_log",
+      "label": "captain_log()",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "captain_log()",
+      "source_file": "programs/v1-core/src/instructions/captain_log.rs",
+      "source_location": "L25"
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_rs_account",
+      "label": "Account",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "account",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_rs_box",
+      "label": "Box",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "box",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_rs_context",
+      "label": "Context",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "context",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_rs_option",
+      "label": "Option",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "option",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_rs_result",
+      "label": "Result",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "result",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_rs_signer",
+      "label": "Signer",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "signer",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_captain_log_writelog",
+      "label": "WriteLog",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "writelog",
+      "source_file": "programs/v1-core/src/instructions/captain_log.rs",
+      "source_location": "L14"
+    },
+    {
       "id": "programs_v1_core_src_instructions_delegate",
       "label": "instructions/delegate.rs",
       "_origin": "ast",
@@ -1928,6 +2219,17 @@
       "norm_label": "add_delegate()",
       "source_file": "programs/v1-core/src/instructions/delegate.rs",
       "source_location": "L34"
+    },
+    {
+      "id": "programs_v1_core_src_instructions_delegate_adddelegate",
+      "label": "AddDelegate",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "adddelegate",
+      "source_file": "programs/v1-core/src/instructions/delegate.rs",
+      "source_location": "L14"
     },
     {
       "id": "programs_v1_core_src_instructions_delegate_charge_delegate",
@@ -2007,6 +2309,39 @@
       "source_location": "L98"
     },
     {
+      "id": "programs_v1_core_src_instructions_delegate_revokedelegate",
+      "label": "RevokeDelegate",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "revokedelegate",
+      "source_file": "programs/v1-core/src/instructions/delegate.rs",
+      "source_location": "L80"
+    },
+    {
+      "id": "programs_v1_core_src_instructions_delegate_rs_account",
+      "label": "Account",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "account",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_delegate_rs_box",
+      "label": "Box",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "box",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "programs_v1_core_src_instructions_delegate_rs_context",
       "label": "Context",
       "_origin": "ast",
@@ -2014,6 +2349,17 @@
       "community_name": "instructions/delegate.rs",
       "file_type": "code",
       "norm_label": "context",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_delegate_rs_program",
+      "label": "Program",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "program",
       "source_file": "",
       "source_location": ""
     },
@@ -2040,6 +2386,28 @@
       "source_location": ""
     },
     {
+      "id": "programs_v1_core_src_instructions_delegate_rs_signer",
+      "label": "Signer",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "signer",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_instructions_delegate_rs_system",
+      "label": "System",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "system",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "programs_v1_core_src_instructions_delegate_update_delegate",
       "label": "update_delegate()",
       "_origin": "ast",
@@ -2049,6 +2417,50 @@
       "norm_label": "update_delegate()",
       "source_file": "programs/v1-core/src/instructions/delegate.rs",
       "source_location": "L68"
+    },
+    {
+      "id": "programs_v1_core_src_instructions_delegate_updatedelegate",
+      "label": "UpdateDelegate",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "updatedelegate",
+      "source_file": "programs/v1-core/src/instructions/delegate.rs",
+      "source_location": "L52"
+    },
+    {
+      "id": "programs_v1_core_src_state_delegate",
+      "label": "state/delegate.rs",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "state/delegate.rs",
+      "source_file": "programs/v1-core/src/state/delegate.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "programs_v1_core_src_state_delegate_delegate",
+      "label": "Delegate",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "delegate",
+      "source_file": "programs/v1-core/src/state/delegate.rs",
+      "source_location": "L6"
+    },
+    {
+      "id": "programs_v1_core_src_state_delegate_rs_pubkey",
+      "label": "Pubkey",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "instructions/delegate.rs",
+      "file_type": "code",
+      "norm_label": "pubkey",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "packages_domain_package",
@@ -2819,7 +3231,7 @@
       "node_kind": "heading",
       "norm_label": "10. personal inbox",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L553"
+      "source_location": "L574"
     },
     {
       "id": "docs_ui_api_spec_v0_11_errors_and_recovery",
@@ -2831,7 +3243,7 @@
       "node_kind": "heading",
       "norm_label": "11. errors and recovery",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L567"
+      "source_location": "L588"
     },
     {
       "id": "docs_ui_api_spec_v0_13_current_integration_gaps",
@@ -2843,7 +3255,7 @@
       "node_kind": "heading",
       "norm_label": "13. current integration gaps",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L664"
+      "source_location": "L685"
     },
     {
       "id": "docs_ui_api_spec_v0_14_source_map_and_maintenance",
@@ -2855,7 +3267,7 @@
       "node_kind": "heading",
       "norm_label": "14. source map and maintenance",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L672"
+      "source_location": "L693"
     },
     {
       "id": "docs_ui_api_spec_v0_1_connection_and_authentication",
@@ -2879,7 +3291,7 @@
       "node_kind": "heading",
       "norm_label": "35. `get /v0/me/notifications`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L555"
+      "source_location": "L576"
     },
     {
       "id": "docs_ui_api_spec_v0_36_post_v0_me_notifications_notificationid_read",
@@ -2891,7 +3303,7 @@
       "node_kind": "heading",
       "norm_label": "36. `post /v0/me/notifications/:notificationid/read`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L563"
+      "source_location": "L584"
     },
     {
       "id": "docs_ui_api_spec_v0_3_endpoint_inventory",
@@ -2915,7 +3327,7 @@
       "node_kind": "heading",
       "norm_label": "4. response models",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L108"
+      "source_location": "L109"
     },
     {
       "id": "docs_ui_api_spec_v0_browser_deployment_prerequisite",
@@ -3932,6 +4344,17 @@
       "source_location": "L23"
     },
     {
+      "id": "apps_api_package_dependencies_ioredis",
+      "label": "ioredis",
+      "_origin": "ast",
+      "community": 4,
+      "community_name": "api/package.json",
+      "file_type": "code",
+      "norm_label": "ioredis",
+      "source_file": "apps/api/package.json",
+      "source_location": "L24"
+    },
+    {
       "id": "apps_api_package_dependencies_jose",
       "label": "jose",
       "_origin": "ast",
@@ -3940,7 +4363,7 @@
       "file_type": "code",
       "norm_label": "jose",
       "source_file": "apps/api/package.json",
-      "source_location": "L24"
+      "source_location": "L25"
     },
     {
       "id": "apps_api_package_dependencies_pg",
@@ -3951,7 +4374,7 @@
       "file_type": "code",
       "norm_label": "pg",
       "source_file": "apps/api/package.json",
-      "source_location": "L25"
+      "source_location": "L26"
     },
     {
       "id": "apps_api_package_dependencies_socially_contracts",
@@ -4171,7 +4594,7 @@
       "file_type": "concept",
       "norm_label": "pg",
       "source_file": "apps/api/package.json",
-      "source_location": "L25"
+      "source_location": "L26"
     },
     {
       "id": "apps_api_package_json_ref_socially_db",
@@ -4240,6 +4663,17 @@
       "source_location": "L15"
     },
     {
+      "id": "ref_ioredis",
+      "label": "ioredis",
+      "_origin": "ast",
+      "community": 4,
+      "community_name": "api/package.json",
+      "file_type": "concept",
+      "norm_label": "ioredis",
+      "source_file": "apps/api/package.json",
+      "source_location": "L24"
+    },
+    {
       "id": "ref_jose",
       "label": "jose",
       "_origin": "ast",
@@ -4248,7 +4682,7 @@
       "file_type": "concept",
       "norm_label": "jose",
       "source_file": "apps/api/package.json",
-      "source_location": "L24"
+      "source_location": "L25"
     },
     {
       "id": "ref_socially_contracts",
@@ -4280,6 +4714,17 @@
       "community_name": "nav_snapshots",
       "file_type": "code",
       "norm_label": "nav_snapshots",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "e",
+      "label": "E",
+      "_origin": "ast",
+      "community": 42,
+      "community_name": "common/mod.rs",
+      "file_type": "code",
+      "norm_label": "e",
       "source_file": "",
       "source_location": ""
     },
@@ -4348,6 +4793,17 @@
       "norm_label": "custom_code()",
       "source_file": "programs/v1-core/tests/common/mod.rs",
       "source_location": "L155"
+    },
+    {
+      "id": "programs_v1_core_tests_common_mod_decode_events",
+      "label": "decode_events()",
+      "_origin": "ast",
+      "community": 42,
+      "community_name": "common/mod.rs",
+      "file_type": "code",
+      "norm_label": "decode_events()",
+      "source_file": "programs/v1-core/tests/common/mod.rs",
+      "source_location": "L1413"
     },
     {
       "id": "programs_v1_core_tests_common_mod_env",
@@ -4623,6 +5079,17 @@
       "norm_label": "ix_set_paused()",
       "source_file": "programs/v1-core/tests/common/mod.rs",
       "source_location": "L433"
+    },
+    {
+      "id": "programs_v1_core_tests_common_mod_ix_swap",
+      "label": "ix_swap()",
+      "_origin": "ast",
+      "community": 42,
+      "community_name": "common/mod.rs",
+      "file_type": "code",
+      "norm_label": "ix_swap()",
+      "source_file": "programs/v1-core/tests/common/mod.rs",
+      "source_location": "L1290"
     },
     {
       "id": "programs_v1_core_tests_common_mod_ix_update_delegate",
@@ -5461,37 +5928,26 @@
       "source_location": "L13"
     },
     {
-      "id": "programs_v1_core_tests_test_fund_create_fund_mints_one_to_one_and_records_captain",
-      "label": "create_fund_mints_one_to_one_and_records_captain()",
+      "id": "programs_v1_core_tests_test_fees_member",
+      "label": "member()",
       "_origin": "ast",
       "community": 42,
       "community_name": "common/mod.rs",
       "file_type": "code",
-      "norm_label": "create_fund_mints_one_to_one_and_records_captain()",
-      "source_file": "programs/v1-core/tests/test_fund.rs",
-      "source_location": "L10"
+      "norm_label": "member()",
+      "source_file": "programs/v1-core/tests/test_fees.rs",
+      "source_location": "L60"
     },
     {
-      "id": "programs_v1_core_tests_test_fund_create_fund_rejects_wrong_usdc_mint",
-      "label": "create_fund_rejects_wrong_usdc_mint()",
+      "id": "programs_v1_core_tests_test_fees_rs_pubkey",
+      "label": "Pubkey",
       "_origin": "ast",
       "community": 42,
       "community_name": "common/mod.rs",
       "file_type": "code",
-      "norm_label": "create_fund_rejects_wrong_usdc_mint()",
-      "source_file": "programs/v1-core/tests/test_fund.rs",
-      "source_location": "L134"
-    },
-    {
-      "id": "programs_v1_core_tests_test_fund_create_fund_survives_prefunded_share_mint_pda",
-      "label": "create_fund_survives_prefunded_share_mint_pda()",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "common/mod.rs",
-      "file_type": "code",
-      "norm_label": "create_fund_survives_prefunded_share_mint_pda()",
-      "source_file": "programs/v1-core/tests/test_fund.rs",
-      "source_location": "L173"
+      "norm_label": "pubkey",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "programs_v1_core_tests_test_swap_rs_keypair",
@@ -5547,17 +6003,6 @@
       "norm_label": "create_fund()",
       "source_file": "programs/v1-core/tests/common/mod.rs",
       "source_location": "L564"
-    },
-    {
-      "id": "programs_v1_core_tests_common_mod_delegate_pda",
-      "label": "delegate_pda()",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "fund_with_member",
-      "file_type": "code",
-      "norm_label": "delegate_pda()",
-      "source_file": "programs/v1-core/tests/common/mod.rs",
-      "source_location": "L331"
     },
     {
       "id": "programs_v1_core_tests_common_mod_deposit",
@@ -5657,17 +6102,6 @@
       "norm_label": "inject_holding()",
       "source_file": "programs/v1-core/tests/common/mod.rs",
       "source_location": "L793"
-    },
-    {
-      "id": "programs_v1_core_tests_common_mod_ix_add_delegate",
-      "label": "ix_add_delegate()",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "fund_with_member",
-      "file_type": "code",
-      "norm_label": "ix_add_delegate()",
-      "source_file": "programs/v1-core/tests/common/mod.rs",
-      "source_location": "L933"
     },
     {
       "id": "programs_v1_core_tests_common_mod_ix_create_ata",
@@ -6275,17 +6709,6 @@
       "source_location": "L248"
     },
     {
-      "id": "programs_v1_core_tests_test_fees_captain_log_rejects_stranger",
-      "label": "captain_log_rejects_stranger()",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "fund_with_member",
-      "file_type": "code",
-      "norm_label": "captain_log_rejects_stranger()",
-      "source_file": "programs/v1-core/tests/test_fees.rs",
-      "source_location": "L228"
-    },
-    {
       "id": "programs_v1_core_tests_test_fees_charge",
       "label": "charge()",
       "_origin": "ast",
@@ -6306,17 +6729,6 @@
       "norm_label": "ix_log()",
       "source_file": "programs/v1-core/tests/test_fees.rs",
       "source_location": "L44"
-    },
-    {
-      "id": "programs_v1_core_tests_test_fees_member",
-      "label": "member()",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "fund_with_member",
-      "file_type": "code",
-      "norm_label": "member()",
-      "source_file": "programs/v1-core/tests/test_fees.rs",
-      "source_location": "L60"
     },
     {
       "id": "programs_v1_core_tests_test_fees_rs_failedtransactionmetadata",
@@ -6359,17 +6771,6 @@
       "community_name": "fund_with_member",
       "file_type": "code",
       "norm_label": "option",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_tests_test_fees_rs_pubkey",
-      "label": "Pubkey",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "fund_with_member",
-      "file_type": "code",
-      "norm_label": "pubkey",
       "source_file": "",
       "source_location": ""
     },
@@ -6473,6 +6874,17 @@
       "source_location": "L122"
     },
     {
+      "id": "programs_v1_core_tests_test_fund_create_fund_mints_one_to_one_and_records_captain",
+      "label": "create_fund_mints_one_to_one_and_records_captain()",
+      "_origin": "ast",
+      "community": 43,
+      "community_name": "fund_with_member",
+      "file_type": "code",
+      "norm_label": "create_fund_mints_one_to_one_and_records_captain()",
+      "source_file": "programs/v1-core/tests/test_fund.rs",
+      "source_location": "L10"
+    },
+    {
       "id": "programs_v1_core_tests_test_fund_create_fund_rejects_small_stake",
       "label": "create_fund_rejects_small_stake()",
       "_origin": "ast",
@@ -6484,6 +6896,17 @@
       "source_location": "L81"
     },
     {
+      "id": "programs_v1_core_tests_test_fund_create_fund_rejects_wrong_usdc_mint",
+      "label": "create_fund_rejects_wrong_usdc_mint()",
+      "_origin": "ast",
+      "community": 43,
+      "community_name": "fund_with_member",
+      "file_type": "code",
+      "norm_label": "create_fund_rejects_wrong_usdc_mint()",
+      "source_file": "programs/v1-core/tests/test_fund.rs",
+      "source_location": "L134"
+    },
+    {
       "id": "programs_v1_core_tests_test_fund_create_fund_same_id_twice_fails_other_id_ok",
       "label": "create_fund_same_id_twice_fails_other_id_ok()",
       "_origin": "ast",
@@ -6493,6 +6916,17 @@
       "norm_label": "create_fund_same_id_twice_fails_other_id_ok()",
       "source_file": "programs/v1-core/tests/test_fund.rs",
       "source_location": "L161"
+    },
+    {
+      "id": "programs_v1_core_tests_test_fund_create_fund_survives_prefunded_share_mint_pda",
+      "label": "create_fund_survives_prefunded_share_mint_pda()",
+      "_origin": "ast",
+      "community": 43,
+      "community_name": "fund_with_member",
+      "file_type": "code",
+      "norm_label": "create_fund_survives_prefunded_share_mint_pda()",
+      "source_file": "programs/v1-core/tests/test_fund.rs",
+      "source_location": "L173"
     },
     {
       "id": "programs_v1_core_tests_test_fund_deposit_blocked_when_paused",
@@ -6770,17 +7204,6 @@
       "source_location": "L324"
     },
     {
-      "id": "programs_v1_core_tests_test_swap_revoke_closes_account",
-      "label": "revoke_closes_account()",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "fund_with_member",
-      "file_type": "code",
-      "norm_label": "revoke_closes_account()",
-      "source_file": "programs/v1-core/tests/test_swap.rs",
-      "source_location": "L52"
-    },
-    {
       "id": "t",
       "label": "T",
       "_origin": "ast",
@@ -6803,6 +7226,17 @@
       "source_location": "L491"
     },
     {
+      "id": "programs_v1_core_tests_common_mod_delegate_pda",
+      "label": "delegate_pda()",
+      "_origin": "ast",
+      "community": 44,
+      "community_name": "expect_err",
+      "file_type": "code",
+      "norm_label": "delegate_pda()",
+      "source_file": "programs/v1-core/tests/common/mod.rs",
+      "source_location": "L331"
+    },
+    {
       "id": "programs_v1_core_tests_common_mod_expect_err",
       "label": "expect_err()",
       "_origin": "ast",
@@ -6814,15 +7248,15 @@
       "source_location": "L164"
     },
     {
-      "id": "programs_v1_core_tests_common_mod_ix_swap",
-      "label": "ix_swap()",
+      "id": "programs_v1_core_tests_common_mod_ix_add_delegate",
+      "label": "ix_add_delegate()",
       "_origin": "ast",
       "community": 44,
       "community_name": "expect_err",
       "file_type": "code",
-      "norm_label": "ix_swap()",
+      "norm_label": "ix_add_delegate()",
       "source_file": "programs/v1-core/tests/common/mod.rs",
-      "source_location": "L1290"
+      "source_location": "L933"
     },
     {
       "id": "programs_v1_core_tests_common_mod_register_token",
@@ -6900,6 +7334,17 @@
       "norm_label": "venue_pool_authority()",
       "source_file": "programs/v1-core/tests/common/mod.rs",
       "source_location": "L999"
+    },
+    {
+      "id": "programs_v1_core_tests_test_fees_captain_log_rejects_stranger",
+      "label": "captain_log_rejects_stranger()",
+      "_origin": "ast",
+      "community": 44,
+      "community_name": "expect_err",
+      "file_type": "code",
+      "norm_label": "captain_log_rejects_stranger()",
+      "source_file": "programs/v1-core/tests/test_fees.rs",
+      "source_location": "L228"
     },
     {
       "id": "programs_v1_core_tests_test_swap",
@@ -7153,6 +7598,17 @@
       "norm_label": "paused_blocks_buys_allows_sell_to_usdc()",
       "source_file": "programs/v1-core/tests/test_swap.rs",
       "source_location": "L381"
+    },
+    {
+      "id": "programs_v1_core_tests_test_swap_revoke_closes_account",
+      "label": "revoke_closes_account()",
+      "_origin": "ast",
+      "community": 44,
+      "community_name": "expect_err",
+      "file_type": "code",
+      "norm_label": "revoke_closes_account()",
+      "source_file": "programs/v1-core/tests/test_swap.rs",
+      "source_location": "L52"
     },
     {
       "id": "programs_v1_core_tests_test_swap_rs_failedtransactionmetadata",
@@ -8044,6 +8500,270 @@
       "norm_label": "value_positive_exponent_multiplies()",
       "source_file": "programs/v1-core/src/math.rs",
       "source_location": "L224"
+    },
+    {
+      "id": "programs_v1_core_src_pyth",
+      "label": "pyth.rs",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth.rs",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_enc",
+      "label": "enc()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "enc()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L134"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_encode_price_update",
+      "label": "encode_price_update()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "encode_price_update()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L75"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_encode_price_update_ema",
+      "label": "encode_price_update_ema()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "encode_price_update_ema()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L98"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_parse",
+      "label": "parse()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "parse()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L137"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_parse_price_update",
+      "label": "parse_price_update()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "parse_price_update()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L27"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_conf_exactly_200_bps_ok",
+      "label": "pyth_conf_exactly_200_bps_ok()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_conf_exactly_200_bps_ok()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L217"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_conf_too_wide",
+      "label": "pyth_conf_too_wide()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_conf_too_wide()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L209"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_conf_u64_max_no_overflow",
+      "label": "pyth_conf_u64_max_no_overflow()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_conf_u64_max_no_overflow()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L225"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_discriminator_is_sha256_of_account_name",
+      "label": "pyth_discriminator_is_sha256_of_account_name()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_discriminator_is_sha256_of_account_name()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L157"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_feed_mismatch",
+      "label": "pyth_feed_mismatch()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_feed_mismatch()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L190"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_future_publish_time_ok",
+      "label": "pyth_future_publish_time_ok()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_future_publish_time_ok()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L205"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_negative_and_zero_price",
+      "label": "pyth_negative_and_zero_price()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_negative_and_zero_price()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L232"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_ok",
+      "label": "pyth_ok()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_ok()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L142"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_partial",
+      "label": "pyth_partial()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_partial()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L183"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_reads_ema",
+      "label": "pyth_reads_ema()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_reads_ema()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L169"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_short_data",
+      "label": "pyth_short_data()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_short_data()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L243"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_stale",
+      "label": "pyth_stale()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_stale()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L197"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_wrong_discriminator",
+      "label": "pyth_wrong_discriminator()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_wrong_discriminator()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L162"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pyth_wrong_owner",
+      "label": "pyth_wrong_owner()",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pyth_wrong_owner()",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L175"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_pythprice",
+      "label": "PythPrice",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pythprice",
+      "source_file": "programs/v1-core/src/pyth.rs",
+      "source_location": "L18"
+    },
+    {
+      "id": "programs_v1_core_src_pyth_rs_pubkey",
+      "label": "Pubkey",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "pubkey",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_pyth_rs_result",
+      "label": "Result",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "result",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_pyth_rs_vec",
+      "label": "Vec",
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "math.rs",
+      "file_type": "code",
+      "norm_label": "vec",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "programs_v1_core_src_instructions_proposal",
@@ -9421,22 +10141,11 @@
       "source_location": ""
     },
     {
-      "id": "e",
-      "label": "E",
-      "_origin": "ast",
-      "community": 48,
-      "community_name": "warp",
-      "file_type": "code",
-      "norm_label": "e",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "programs_v1_core_src_instructions_policy",
       "label": "instructions/policy.rs",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "instructions/policy.rs",
       "source_file": "programs/v1-core/src/instructions/policy.rs",
@@ -9447,7 +10156,7 @@
       "label": "apply_policy()",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "apply_policy()",
       "source_file": "programs/v1-core/src/instructions/policy.rs",
@@ -9458,7 +10167,7 @@
       "label": "ApplyPolicy",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "applypolicy",
       "source_file": "programs/v1-core/src/instructions/policy.rs",
@@ -9469,7 +10178,7 @@
       "label": "poke_nav()",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "poke_nav()",
       "source_file": "programs/v1-core/src/instructions/policy.rs",
@@ -9480,7 +10189,7 @@
       "label": "PokeNav",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "pokenav",
       "source_file": "programs/v1-core/src/instructions/policy.rs",
@@ -9491,7 +10200,7 @@
       "label": "Account",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "account",
       "source_file": "",
@@ -9502,7 +10211,7 @@
       "label": "Box",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "box",
       "source_file": "",
@@ -9513,7 +10222,7 @@
       "label": "Context",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "context",
       "source_file": "",
@@ -9524,7 +10233,7 @@
       "label": "Result",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "result",
       "source_file": "",
@@ -9535,7 +10244,7 @@
       "label": "Signer",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "signer",
       "source_file": "",
@@ -9546,7 +10255,7 @@
       "label": "update_policy()",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "update_policy()",
       "source_file": "programs/v1-core/src/instructions/policy.rs",
@@ -9557,50 +10266,50 @@
       "label": "UpdatePolicy",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
       "norm_label": "updatepolicy",
       "source_file": "programs/v1-core/src/instructions/policy.rs",
       "source_location": "L18"
     },
     {
-      "id": "programs_v1_core_src_state_policy",
-      "label": "state/policy.rs",
+      "id": "programs_v1_core_src_state_fund",
+      "label": "fund.rs",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
-      "norm_label": "state/policy.rs",
-      "source_file": "programs/v1-core/src/state/policy.rs",
+      "norm_label": "fund.rs",
+      "source_file": "programs/v1-core/src/state/fund.rs",
       "source_location": "L1"
     },
     {
-      "id": "programs_v1_core_src_state_policy_floor_bounds_are_inclusive",
-      "label": "floor_bounds_are_inclusive()",
+      "id": "programs_v1_core_src_state_fund_fund",
+      "label": "Fund",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
-      "norm_label": "floor_bounds_are_inclusive()",
-      "source_file": "programs/v1-core/src/state/policy.rs",
-      "source_location": "L72"
+      "norm_label": "fund",
+      "source_file": "programs/v1-core/src/state/fund.rs",
+      "source_location": "L7"
     },
     {
-      "id": "programs_v1_core_src_state_policy_policy",
-      "label": "Policy",
+      "id": "programs_v1_core_src_state_fund_rs_pubkey",
+      "label": "Pubkey",
       "_origin": "ast",
       "community": 48,
-      "community_name": "warp",
+      "community_name": "Fund",
       "file_type": "code",
-      "norm_label": "policy",
-      "source_file": "programs/v1-core/src/state/policy.rs",
-      "source_location": "L14"
+      "norm_label": "pubkey",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "programs_v1_core_src_state_policy_policyparams",
       "label": "PolicyParams",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "policyparams",
@@ -9611,7 +10320,7 @@
       "id": "programs_v1_core_src_state_policy_policyparams_stricter_or_equal",
       "label": ".stricter_or_equal()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": ".stricter_or_equal()",
@@ -9622,7 +10331,7 @@
       "id": "programs_v1_core_src_state_policy_policyparams_within_floor",
       "label": ".within_floor()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": ".within_floor()",
@@ -9630,43 +10339,21 @@
       "source_location": "L25"
     },
     {
-      "id": "programs_v1_core_src_state_policy_rs_pubkey",
-      "label": "Pubkey",
+      "id": "programs_v1_core_tests_common_mod_funded",
+      "label": "funded()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
-      "norm_label": "pubkey",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_state_policy_stricter_is_lower_bps_longer_window",
-      "label": "stricter_is_lower_bps_longer_window()",
-      "_origin": "ast",
-      "community": 48,
-      "community_name": "warp",
-      "file_type": "code",
-      "norm_label": "stricter_is_lower_bps_longer_window()",
-      "source_file": "programs/v1-core/src/state/policy.rs",
-      "source_location": "L55"
-    },
-    {
-      "id": "programs_v1_core_tests_common_mod_decode_events",
-      "label": "decode_events()",
-      "_origin": "ast",
-      "community": 48,
-      "community_name": "warp",
-      "file_type": "code",
-      "norm_label": "decode_events()",
+      "norm_label": "funded()",
       "source_file": "programs/v1-core/tests/common/mod.rs",
-      "source_location": "L1413"
+      "source_location": "L215"
     },
     {
       "id": "programs_v1_core_tests_common_mod_read_policy",
       "label": "read_policy()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "read_policy()",
@@ -9674,10 +10361,21 @@
       "source_location": "L1443"
     },
     {
+      "id": "programs_v1_core_tests_common_mod_venue_data",
+      "label": "venue_data()",
+      "_origin": "ast",
+      "community": 49,
+      "community_name": "warp",
+      "file_type": "code",
+      "norm_label": "venue_data()",
+      "source_file": "programs/v1-core/tests/common/mod.rs",
+      "source_location": "L1238"
+    },
+    {
       "id": "programs_v1_core_tests_common_mod_warp",
       "label": "warp()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "warp()",
@@ -9688,7 +10386,7 @@
       "id": "programs_v1_core_tests_test_policy",
       "label": "test_policy.rs",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "test_policy.rs",
@@ -9699,7 +10397,7 @@
       "id": "programs_v1_core_tests_test_policy_apply",
       "label": "apply()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "apply()",
@@ -9710,7 +10408,7 @@
       "id": "programs_v1_core_tests_test_policy_apply_rechecks_floor",
       "label": "apply_rechecks_floor()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "apply_rechecks_floor()",
@@ -9721,7 +10419,7 @@
       "id": "programs_v1_core_tests_test_policy_below_floor_rejected",
       "label": "below_floor_rejected()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "below_floor_rejected()",
@@ -9732,7 +10430,7 @@
       "id": "programs_v1_core_tests_test_policy_breaker_clears_on_recovery",
       "label": "breaker_clears_on_recovery()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "breaker_clears_on_recovery()",
@@ -9743,7 +10441,7 @@
       "id": "programs_v1_core_tests_test_policy_breaker_freezes_after_30pct_drop",
       "label": "breaker_freezes_after_30pct_drop()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "breaker_freezes_after_30pct_drop()",
@@ -9754,7 +10452,7 @@
       "id": "programs_v1_core_tests_test_policy_defaults",
       "label": "defaults()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "defaults()",
@@ -9765,7 +10463,7 @@
       "id": "programs_v1_core_tests_test_policy_half_sol_fund",
       "label": "half_sol_fund()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "half_sol_fund()",
@@ -9776,7 +10474,7 @@
       "id": "programs_v1_core_tests_test_policy_looser_waits_48h",
       "label": "looser_waits_48h()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "looser_waits_48h()",
@@ -9787,7 +10485,7 @@
       "id": "programs_v1_core_tests_test_policy_params",
       "label": "params()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "params()",
@@ -9798,7 +10496,7 @@
       "id": "programs_v1_core_tests_test_policy_poke",
       "label": "poke()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "poke()",
@@ -9809,7 +10507,7 @@
       "id": "programs_v1_core_tests_test_policy_rs_failedtransactionmetadata",
       "label": "FailedTransactionMetadata",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "failedtransactionmetadata",
@@ -9820,7 +10518,7 @@
       "id": "programs_v1_core_tests_test_policy_rs_keypair",
       "label": "Keypair",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "keypair",
@@ -9831,7 +10529,7 @@
       "id": "programs_v1_core_tests_test_policy_rs_result",
       "label": "Result",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "result",
@@ -9842,7 +10540,7 @@
       "id": "programs_v1_core_tests_test_policy_rs_transactionmetadata",
       "label": "TransactionMetadata",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "transactionmetadata",
@@ -9853,7 +10551,7 @@
       "id": "programs_v1_core_tests_test_policy_sell_sol_at",
       "label": "sell_sol_at()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "sell_sol_at()",
@@ -9864,7 +10562,7 @@
       "id": "programs_v1_core_tests_test_policy_stricter_applies_now",
       "label": "stricter_applies_now()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "stricter_applies_now()",
@@ -9875,7 +10573,7 @@
       "id": "programs_v1_core_tests_test_policy_stricter_cancels_pending_loosen",
       "label": "stricter_cancels_pending_loosen()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "stricter_cancels_pending_loosen()",
@@ -9886,7 +10584,7 @@
       "id": "programs_v1_core_tests_test_policy_stricter_drawdown_freezes_on_next_poke",
       "label": "stricter_drawdown_freezes_on_next_poke()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "stricter_drawdown_freezes_on_next_poke()",
@@ -9897,7 +10595,7 @@
       "id": "programs_v1_core_tests_test_policy_update",
       "label": "update()",
       "_origin": "ast",
-      "community": 48,
+      "community": 49,
       "community_name": "warp",
       "file_type": "code",
       "norm_label": "update()",
@@ -9905,33 +10603,11 @@
       "source_location": "L30"
     },
     {
-      "id": "programs_v1_core_tests_common_mod_funded",
-      "label": "funded()",
-      "_origin": "ast",
-      "community": 49,
-      "community_name": "funded",
-      "file_type": "code",
-      "norm_label": "funded()",
-      "source_file": "programs/v1-core/tests/common/mod.rs",
-      "source_location": "L215"
-    },
-    {
-      "id": "programs_v1_core_tests_common_mod_venue_data",
-      "label": "venue_data()",
-      "_origin": "ast",
-      "community": 49,
-      "community_name": "funded",
-      "file_type": "code",
-      "norm_label": "venue_data()",
-      "source_file": "programs/v1-core/tests/common/mod.rs",
-      "source_location": "L1238"
-    },
-    {
       "id": "programs_v1_core_tests_test_vote",
       "label": "test_vote.rs",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "test_vote.rs",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -9942,7 +10618,7 @@
       "label": "big_buy()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "big_buy()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -9953,7 +10629,7 @@
       "label": "big_trade_fails_without_majority()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "big_trade_fails_without_majority()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -9964,7 +10640,7 @@
       "label": "big_trade_passes_with_majority()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "big_trade_passes_with_majority()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -9975,7 +10651,7 @@
       "label": "cancelled_proposal_cannot_execute()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "cancelled_proposal_cannot_execute()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -9986,7 +10662,7 @@
       "label": "crew()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "crew()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -9997,7 +10673,7 @@
       "label": "double_vote_rejected()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "double_vote_rejected()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10008,7 +10684,7 @@
       "label": "exactly_half_is_not_a_majority()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "exactly_half_is_not_a_majority()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10019,7 +10695,7 @@
       "label": "execute()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "execute()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10030,7 +10706,7 @@
       "label": "execute_after_deadline_rejected()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "execute_after_deadline_rejected()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10041,7 +10717,7 @@
       "label": "execute_rejects_other_venue_accounts()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "execute_rejects_other_venue_accounts()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10052,7 +10728,7 @@
       "label": "execute_rejects_tampered_venue_data()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "execute_rejects_tampered_venue_data()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10063,7 +10739,7 @@
       "label": "execute_requires_the_proposal_accounts()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "execute_requires_the_proposal_accounts()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10074,7 +10750,7 @@
       "label": "executed_trade_still_checked_by_balance()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "executed_trade_still_checked_by_balance()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10085,7 +10761,7 @@
       "label": "executed_trade_still_price_guarded()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "executed_trade_still_price_guarded()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10096,7 +10772,7 @@
       "label": "long_venue_data_proposal_executes()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "long_venue_data_proposal_executes()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10107,7 +10783,7 @@
       "label": "non_member_cannot_vote()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "non_member_cannot_vote()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10118,7 +10794,7 @@
       "label": "passed_proposal_executes_with_full_window()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "passed_proposal_executes_with_full_window()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10129,7 +10805,7 @@
       "label": "propose()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "propose()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10140,7 +10816,7 @@
       "label": "propose_checks()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "propose_checks()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10151,7 +10827,7 @@
       "label": "route()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "route()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10162,7 +10838,7 @@
       "label": "route_hash_counts_signer_flag()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "route_hash_counts_signer_flag()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10173,7 +10849,7 @@
       "label": "AccountMeta",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "accountmeta",
       "source_file": "",
@@ -10184,7 +10860,7 @@
       "label": "FailedTransactionMetadata",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "failedtransactionmetadata",
       "source_file": "",
@@ -10195,7 +10871,7 @@
       "label": "Instruction",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "instruction",
       "source_file": "",
@@ -10206,7 +10882,7 @@
       "label": "Keypair",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "keypair",
       "source_file": "",
@@ -10217,7 +10893,7 @@
       "label": "Pubkey",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "pubkey",
       "source_file": "",
@@ -10228,7 +10904,7 @@
       "label": "Result",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "result",
       "source_file": "",
@@ -10239,7 +10915,7 @@
       "label": "TransactionMetadata",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "transactionmetadata",
       "source_file": "",
@@ -10250,7 +10926,7 @@
       "label": "venue_meta()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "venue_meta()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10261,7 +10937,7 @@
       "label": "vote()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "vote()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -10272,7 +10948,7 @@
       "label": "vote_rejected_after_late_deposit()",
       "_origin": "ast",
       "community": 49,
-      "community_name": "funded",
+      "community_name": "warp",
       "file_type": "code",
       "norm_label": "vote_rejected_after_late_deposit()",
       "source_file": "programs/v1-core/tests/test_vote.rs",
@@ -11559,7 +12235,7 @@
       "node_kind": "heading",
       "norm_label": "15. `post /v0/funds/:fundid/orders/preview`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L354"
+      "source_location": "L375"
     },
     {
       "id": "docs_ui_api_spec_v0_16_post_v0_funds_fundid_orders",
@@ -11571,7 +12247,7 @@
       "node_kind": "heading",
       "norm_label": "16. `post /v0/funds/:fundid/orders`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L376"
+      "source_location": "L397"
     },
     {
       "id": "docs_ui_api_spec_v0_17_get_v0_funds_fundid_orders",
@@ -11583,7 +12259,7 @@
       "node_kind": "heading",
       "norm_label": "17. `get /v0/funds/:fundid/orders`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L390"
+      "source_location": "L411"
     },
     {
       "id": "docs_ui_api_spec_v0_18_get_v0_funds_fundid_orders_orderid",
@@ -11595,7 +12271,7 @@
       "node_kind": "heading",
       "norm_label": "18. `get /v0/funds/:fundid/orders/:orderid`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L394"
+      "source_location": "L415"
     },
     {
       "id": "docs_ui_api_spec_v0_19_post_v0_funds_fundid_orders_orderid_cancel",
@@ -11607,7 +12283,7 @@
       "node_kind": "heading",
       "norm_label": "19. `post /v0/funds/:fundid/orders/:orderid/cancel`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L416"
+      "source_location": "L437"
     },
     {
       "id": "docs_ui_api_spec_v0_20_get_v0_captains_captainid_orders",
@@ -11619,7 +12295,7 @@
       "node_kind": "heading",
       "norm_label": "20. `get /v0/captains/:captainid/orders`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L420"
+      "source_location": "L441"
     },
     {
       "id": "docs_ui_api_spec_v0_21_get_v0_captains_captainid_trade_statistics",
@@ -11631,7 +12307,7 @@
       "node_kind": "heading",
       "norm_label": "21. `get /v0/captains/:captainid/trade-statistics`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L424"
+      "source_location": "L445"
     },
     {
       "id": "docs_ui_api_spec_v0_22_get_v0_me_crew_transactions",
@@ -11643,7 +12319,7 @@
       "node_kind": "heading",
       "norm_label": "22. `get /v0/me/crew-transactions`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L430"
+      "source_location": "L451"
     },
     {
       "id": "docs_ui_api_spec_v0_7_paper_orders_and_trade_history",
@@ -11655,7 +12331,19 @@
       "node_kind": "heading",
       "norm_label": "7. paper orders and trade history",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L352"
+      "source_location": "L373"
+    },
+    {
+      "id": "docs_privy_auth",
+      "label": "privy-auth.md",
+      "_origin": "ast",
+      "community": 57,
+      "community_name": "Privy backend authentication",
+      "file_type": "document",
+      "node_kind": "page",
+      "norm_label": "privy-auth.md",
+      "source_file": "docs/privy-auth.md",
+      "source_location": "L1"
     },
     {
       "id": "docs_privy_auth_bootstrap_the_backend_account",
@@ -11900,7 +12588,7 @@
       "label": "nav.rs",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "nav.rs",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -11911,7 +12599,7 @@
       "label": "compute()",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "compute()",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -11922,7 +12610,7 @@
       "label": "NavResult",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "navresult",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -11933,7 +12621,7 @@
       "label": ".valuation()",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": ".valuation()",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -11944,7 +12632,7 @@
       "label": ".value_at()",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": ".value_at()",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -11955,7 +12643,7 @@
       "label": "AccountInfo",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "accountinfo",
       "source_file": "",
@@ -11966,7 +12654,7 @@
       "label": "Option",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "option",
       "source_file": "",
@@ -11977,7 +12665,7 @@
       "label": "Pubkey",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "pubkey",
       "source_file": "",
@@ -11988,7 +12676,7 @@
       "label": "Result",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "result",
       "source_file": "",
@@ -11999,7 +12687,7 @@
       "label": "token_entry()",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "token_entry()",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -12010,7 +12698,7 @@
       "label": "update_breaker()",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "update_breaker()",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -12021,7 +12709,7 @@
       "label": "Valuation",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "valuation",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -12032,7 +12720,7 @@
       "label": "ValuationMode",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "valuationmode",
       "source_file": "programs/v1-core/src/nav.rs",
@@ -12043,275 +12731,11 @@
       "label": "vault_amount()",
       "_origin": "ast",
       "community": 59,
-      "community_name": "pyth.rs",
+      "community_name": "compute",
       "file_type": "code",
       "norm_label": "vault_amount()",
       "source_file": "programs/v1-core/src/nav.rs",
       "source_location": "L127"
-    },
-    {
-      "id": "programs_v1_core_src_pyth",
-      "label": "pyth.rs",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth.rs",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L1"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_enc",
-      "label": "enc()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "enc()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L134"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_encode_price_update",
-      "label": "encode_price_update()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "encode_price_update()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L75"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_encode_price_update_ema",
-      "label": "encode_price_update_ema()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "encode_price_update_ema()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L98"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_parse",
-      "label": "parse()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "parse()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L137"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_parse_price_update",
-      "label": "parse_price_update()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "parse_price_update()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L27"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_conf_exactly_200_bps_ok",
-      "label": "pyth_conf_exactly_200_bps_ok()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_conf_exactly_200_bps_ok()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L217"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_conf_too_wide",
-      "label": "pyth_conf_too_wide()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_conf_too_wide()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L209"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_conf_u64_max_no_overflow",
-      "label": "pyth_conf_u64_max_no_overflow()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_conf_u64_max_no_overflow()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L225"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_discriminator_is_sha256_of_account_name",
-      "label": "pyth_discriminator_is_sha256_of_account_name()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_discriminator_is_sha256_of_account_name()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L157"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_feed_mismatch",
-      "label": "pyth_feed_mismatch()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_feed_mismatch()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L190"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_future_publish_time_ok",
-      "label": "pyth_future_publish_time_ok()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_future_publish_time_ok()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L205"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_negative_and_zero_price",
-      "label": "pyth_negative_and_zero_price()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_negative_and_zero_price()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L232"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_ok",
-      "label": "pyth_ok()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_ok()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L142"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_partial",
-      "label": "pyth_partial()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_partial()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L183"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_reads_ema",
-      "label": "pyth_reads_ema()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_reads_ema()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L169"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_short_data",
-      "label": "pyth_short_data()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_short_data()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L243"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_stale",
-      "label": "pyth_stale()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_stale()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L197"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_wrong_discriminator",
-      "label": "pyth_wrong_discriminator()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_wrong_discriminator()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L162"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pyth_wrong_owner",
-      "label": "pyth_wrong_owner()",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pyth_wrong_owner()",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L175"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_pythprice",
-      "label": "PythPrice",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pythprice",
-      "source_file": "programs/v1-core/src/pyth.rs",
-      "source_location": "L18"
-    },
-    {
-      "id": "programs_v1_core_src_pyth_rs_pubkey",
-      "label": "Pubkey",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "pubkey",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_pyth_rs_result",
-      "label": "Result",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "result",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_pyth_rs_vec",
-      "label": "Vec",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "pyth.rs",
-      "file_type": "code",
-      "norm_label": "vec",
-      "source_file": "",
-      "source_location": ""
     },
     {
       "id": "packages_db_package",
@@ -12805,7 +13229,7 @@
       "node_kind": "heading",
       "norm_label": "10. `get /v0/funds/:fundid`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L306"
+      "source_location": "L327"
     },
     {
       "id": "docs_ui_api_spec_v0_11_get_v0_funds_fundid_policy",
@@ -12817,7 +13241,7 @@
       "node_kind": "heading",
       "norm_label": "11. `get /v0/funds/:fundid/policy`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L310"
+      "source_location": "L331"
     },
     {
       "id": "docs_ui_api_spec_v0_12_get_v0_funds_fundid_holdings",
@@ -12829,7 +13253,7 @@
       "node_kind": "heading",
       "norm_label": "12. `get /v0/funds/:fundid/holdings`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L330"
+      "source_location": "L351"
     },
     {
       "id": "docs_ui_api_spec_v0_13_post_v0_funds_fundid_joins",
@@ -12841,7 +13265,7 @@
       "node_kind": "heading",
       "norm_label": "13. `post /v0/funds/:fundid/joins`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L334"
+      "source_location": "L355"
     },
     {
       "id": "docs_ui_api_spec_v0_14_post_v0_funds_fundid_exits",
@@ -12853,7 +13277,7 @@
       "node_kind": "heading",
       "norm_label": "14. `post /v0/funds/:fundid/exits`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L342"
+      "source_location": "L363"
     },
     {
       "id": "docs_ui_api_spec_v0_6_funds_and_crew_allocation",
@@ -12865,7 +13289,7 @@
       "node_kind": "heading",
       "norm_label": "6. funds and crew allocation",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L286"
+      "source_location": "L307"
     },
     {
       "id": "docs_ui_api_spec_v0_8_post_v0_funds",
@@ -12877,7 +13301,7 @@
       "node_kind": "heading",
       "norm_label": "8. `post /v0/funds`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L288"
+      "source_location": "L309"
     },
     {
       "id": "docs_ui_api_spec_v0_9_get_v0_funds",
@@ -12889,113 +13313,110 @@
       "node_kind": "heading",
       "norm_label": "9. `get /v0/funds`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L302"
+      "source_location": "L323"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log",
-      "label": "captain_log.rs",
+      "id": "docs_captain_handle_bloom",
+      "label": "captain-handle-bloom.md",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "captain_log.rs",
-      "source_file": "programs/v1-core/src/instructions/captain_log.rs",
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "page",
+      "norm_label": "captain-handle-bloom.md",
+      "source_file": "docs/captain-handle-bloom.md",
       "source_location": "L1"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log_captain_log",
-      "label": "captain_log()",
+      "id": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "label": "Captain handle availability and Redis Bloom index",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "captain_log()",
-      "source_file": "programs/v1-core/src/instructions/captain_log.rs",
-      "source_location": "L25"
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "captain handle availability and redis bloom index",
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L1"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log_rs_account",
-      "label": "Account",
+      "id": "docs_captain_handle_bloom_configuration_and_lifecycle",
+      "label": "Configuration and lifecycle",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "account",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "configuration and lifecycle",
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L72"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log_rs_box",
-      "label": "Box",
+      "id": "docs_captain_handle_bloom_read_flow",
+      "label": "Read flow",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "box",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "read flow",
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L33"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log_rs_context",
-      "label": "Context",
+      "id": "docs_captain_handle_bloom_setup",
+      "label": "Setup",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "context",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "setup",
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L3"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log_rs_option",
-      "label": "Option",
+      "id": "docs_captain_handle_bloom_ui_contract",
+      "label": "UI contract",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "option",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "ui contract",
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L17"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log_rs_result",
-      "label": "Result",
+      "id": "docs_captain_handle_bloom_validation_recorded",
+      "label": "Validation recorded",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "result",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "validation recorded",
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L96"
     },
     {
-      "id": "programs_v1_core_src_instructions_captain_log_rs_signer",
-      "label": "Signer",
+      "id": "docs_captain_handle_bloom_write_flow_and_recovery",
+      "label": "Write flow and recovery",
       "_origin": "ast",
       "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "signer",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_instructions_captain_log_writelog",
-      "label": "WriteLog",
-      "_origin": "ast",
-      "community": 66,
-      "community_name": "WriteLog",
-      "file_type": "code",
-      "norm_label": "writelog",
-      "source_file": "programs/v1-core/src/instructions/captain_log.rs",
-      "source_location": "L14"
+      "community_name": "Captain handle availability and Redis Bloom index",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "write flow and recovery",
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L49"
     },
     {
       "id": "docs_captain_flow_v0",
       "label": "captain-flow-v0.md",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "page",
       "norm_label": "captain-flow-v0.md",
@@ -13007,7 +13428,7 @@
       "label": "paper-history-api.md",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "page",
       "norm_label": "paper-history-api.md",
@@ -13019,7 +13440,7 @@
       "label": "Captain history and statistics",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "captain history and statistics",
@@ -13031,7 +13452,7 @@
       "label": "Cursor convention",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "cursor convention",
@@ -13043,7 +13464,7 @@
       "label": "Fund order history",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "fund order history",
@@ -13055,7 +13476,7 @@
       "label": "Paper history API",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "paper history api",
@@ -13067,7 +13488,7 @@
       "label": "Private Crew transaction timeline",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "private crew transaction timeline",
@@ -13079,7 +13500,7 @@
       "label": "Verification",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "verification",
@@ -13087,23 +13508,11 @@
       "source_location": "L77"
     },
     {
-      "id": "docs_privy_auth",
-      "label": "privy-auth.md",
-      "_origin": "ast",
-      "community": 67,
-      "community_name": "Paper history API",
-      "file_type": "document",
-      "node_kind": "page",
-      "norm_label": "privy-auth.md",
-      "source_file": "docs/privy-auth.md",
-      "source_location": "L1"
-    },
-    {
       "id": "docs_ui_api_spec_v0",
       "label": "ui-api-spec-v0.md",
       "_origin": "ast",
       "community": 67,
-      "community_name": "Paper history API",
+      "community_name": "ui-api-spec-v0.md",
       "file_type": "document",
       "node_kind": "page",
       "norm_label": "ui-api-spec-v0.md",
@@ -13111,158 +13520,72 @@
       "source_location": "L1"
     },
     {
-      "id": "programs_v1_core_src_instructions_delegate_adddelegate",
-      "label": "AddDelegate",
+      "id": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia",
+      "label": "query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
       "_origin": "ast",
       "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "adddelegate",
-      "source_file": "programs/v1-core/src/instructions/delegate.rs",
-      "source_location": "L14"
-    },
-    {
-      "id": "programs_v1_core_src_instructions_delegate_revokedelegate",
-      "label": "RevokeDelegate",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "revokedelegate",
-      "source_file": "programs/v1-core/src/instructions/delegate.rs",
-      "source_location": "L80"
-    },
-    {
-      "id": "programs_v1_core_src_instructions_delegate_rs_account",
-      "label": "Account",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "account",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_instructions_delegate_rs_box",
-      "label": "Box",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "box",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_instructions_delegate_rs_program",
-      "label": "Program",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "program",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_instructions_delegate_rs_signer",
-      "label": "Signer",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "signer",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_instructions_delegate_rs_system",
-      "label": "System",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "system",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "programs_v1_core_src_instructions_delegate_updatedelegate",
-      "label": "UpdateDelegate",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "updatedelegate",
-      "source_file": "programs/v1-core/src/instructions/delegate.rs",
-      "source_location": "L52"
-    },
-    {
-      "id": "programs_v1_core_src_state_delegate",
-      "label": "state/delegate.rs",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "state/delegate.rs",
-      "source_file": "programs/v1-core/src/state/delegate.rs",
+      "community_name": "Q: Which Solana Agent Kit integrations can make Socially Trade more useful?",
+      "file_type": "document",
+      "frontmatter": {
+        "type": "query",
+        "date": "2026-10-04T17:02:39.727415+00:00",
+        "question": "Which Solana Agent Kit integrations can make Socially Trade more useful?",
+        "contributor": "graphify",
+        "outcome": "useful",
+        "source_nodes": "[&quot;Fund&quot;, &quot;Policy&quot;, &quot;Privy backend authentication&quot;, &quot;PerformancePoint&quot;]"
+      },
+      "node_kind": "page",
+      "norm_label": "query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
       "source_location": "L1"
     },
     {
-      "id": "programs_v1_core_src_state_delegate_delegate",
-      "label": "Delegate",
+      "id": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_answer",
+      "label": "Answer",
       "_origin": "ast",
       "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "delegate",
-      "source_file": "programs/v1-core/src/state/delegate.rs",
-      "source_location": "L6"
+      "community_name": "Q: Which Solana Agent Kit integrations can make Socially Trade more useful?",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "answer",
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L12"
     },
     {
-      "id": "programs_v1_core_src_state_delegate_rs_pubkey",
-      "label": "Pubkey",
+      "id": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_outcome",
+      "label": "Outcome",
       "_origin": "ast",
       "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "pubkey",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "Q: Which Solana Agent Kit integrations can make Socially Trade more useful?",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "outcome",
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L16"
     },
     {
-      "id": "programs_v1_core_src_state_fund",
-      "label": "fund.rs",
+      "id": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_q_which_solana_agent_kit_integrations_can_make_socially_trade_more_useful",
+      "label": "Q: Which Solana Agent Kit integrations can make Socially Trade more useful?",
       "_origin": "ast",
       "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "fund.rs",
-      "source_file": "programs/v1-core/src/state/fund.rs",
-      "source_location": "L1"
+      "community_name": "Q: Which Solana Agent Kit integrations can make Socially Trade more useful?",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "q: which solana agent kit integrations can make socially trade more useful?",
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L10"
     },
     {
-      "id": "programs_v1_core_src_state_fund_fund",
-      "label": "Fund",
+      "id": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_source_nodes",
+      "label": "Source Nodes",
       "_origin": "ast",
       "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "fund",
-      "source_file": "programs/v1-core/src/state/fund.rs",
-      "source_location": "L7"
-    },
-    {
-      "id": "programs_v1_core_src_state_fund_rs_pubkey",
-      "label": "Pubkey",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "Fund",
-      "file_type": "code",
-      "norm_label": "pubkey",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "Q: Which Solana Agent Kit integrations can make Socially Trade more useful?",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "source nodes",
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L20"
     },
     {
       "id": "scripts_build_programs",
@@ -13490,7 +13813,7 @@
       "node_kind": "heading",
       "norm_label": "1. `get /health`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L232"
+      "source_location": "L233"
     },
     {
       "id": "docs_ui_api_spec_v0_2_post_v0_auth_privy",
@@ -13502,7 +13825,19 @@
       "node_kind": "heading",
       "norm_label": "2. `post /v0/auth/privy`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L237"
+      "source_location": "L238"
+    },
+    {
+      "id": "docs_ui_api_spec_v0_37_get_v0_captains_handle_availability",
+      "label": "37. `GET /v0/captains/handle-availability`",
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "5. Accounts and Captain onboarding",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "37. `get /v0/captains/handle-availability`",
+      "source_file": "docs/ui-api-spec-v0.md",
+      "source_location": "L287"
     },
     {
       "id": "docs_ui_api_spec_v0_3_get_v0_me",
@@ -13514,7 +13849,7 @@
       "node_kind": "heading",
       "norm_label": "3. `get /v0/me`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L256"
+      "source_location": "L257"
     },
     {
       "id": "docs_ui_api_spec_v0_4_get_v0_me_paper_balance",
@@ -13526,7 +13861,7 @@
       "node_kind": "heading",
       "norm_label": "4. `get /v0/me/paper-balance`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L260"
+      "source_location": "L261"
     },
     {
       "id": "docs_ui_api_spec_v0_5_accounts_and_captain_onboarding",
@@ -13538,7 +13873,7 @@
       "node_kind": "heading",
       "norm_label": "5. accounts and captain onboarding",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L230"
+      "source_location": "L231"
     },
     {
       "id": "docs_ui_api_spec_v0_5_get_v0_me_paper_positions",
@@ -13550,7 +13885,7 @@
       "node_kind": "heading",
       "norm_label": "5. `get /v0/me/paper-positions`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L264"
+      "source_location": "L265"
     },
     {
       "id": "docs_ui_api_spec_v0_6_post_v0_captains",
@@ -13562,7 +13897,7 @@
       "node_kind": "heading",
       "norm_label": "6. `post /v0/captains`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L270"
+      "source_location": "L271"
     },
     {
       "id": "docs_ui_api_spec_v0_7_get_v0_captains_captainid",
@@ -13574,7 +13909,7 @@
       "node_kind": "heading",
       "norm_label": "7. `get /v0/captains/:captainid`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L282"
+      "source_location": "L283"
     },
     {
       "id": "docs_ui_api_spec_v0_23_get_v0_funds_fundid_performance",
@@ -13586,7 +13921,7 @@
       "node_kind": "heading",
       "norm_label": "23. `get /v0/funds/:fundid/performance`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L438"
+      "source_location": "L459"
     },
     {
       "id": "docs_ui_api_spec_v0_24_get_v0_funds_fundid_history",
@@ -13598,7 +13933,7 @@
       "node_kind": "heading",
       "norm_label": "24. `get /v0/funds/:fundid/history`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L450"
+      "source_location": "L471"
     },
     {
       "id": "docs_ui_api_spec_v0_25_get_v0_me_funds_fundid_performance",
@@ -13610,7 +13945,7 @@
       "node_kind": "heading",
       "norm_label": "25. `get /v0/me/funds/:fundid/performance`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L456"
+      "source_location": "L477"
     },
     {
       "id": "docs_ui_api_spec_v0_26_get_v0_me_paper_record",
@@ -13622,7 +13957,7 @@
       "node_kind": "heading",
       "norm_label": "26. `get /v0/me/paper-record`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L462"
+      "source_location": "L483"
     },
     {
       "id": "docs_ui_api_spec_v0_27_get_v0_captains_captainid_paper_record",
@@ -13634,7 +13969,7 @@
       "node_kind": "heading",
       "norm_label": "27. `get /v0/captains/:captainid/paper-record`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L472"
+      "source_location": "L493"
     },
     {
       "id": "docs_ui_api_spec_v0_28_get_v0_funds_rankings",
@@ -13646,7 +13981,7 @@
       "node_kind": "heading",
       "norm_label": "28. `get /v0/funds/rankings`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L476"
+      "source_location": "L497"
     },
     {
       "id": "docs_ui_api_spec_v0_8_performance_charts_and_records",
@@ -13658,7 +13993,7 @@
       "node_kind": "heading",
       "norm_label": "8. performance, charts and records",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L436"
+      "source_location": "L457"
     },
     {
       "id": "docs_ui_api_spec_v0_29_get_v0_funds_fundid_events",
@@ -13670,7 +14005,7 @@
       "node_kind": "heading",
       "norm_label": "29. `get /v0/funds/:fundid/events`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L492"
+      "source_location": "L513"
     },
     {
       "id": "docs_ui_api_spec_v0_30_get_v0_funds_fundid_events_stream",
@@ -13682,7 +14017,7 @@
       "node_kind": "heading",
       "norm_label": "30. `get /v0/funds/:fundid/events/stream`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L496"
+      "source_location": "L517"
     },
     {
       "id": "docs_ui_api_spec_v0_31_get_v0_funds_fundid_messages",
@@ -13694,7 +14029,7 @@
       "node_kind": "heading",
       "norm_label": "31. `get /v0/funds/:fundid/messages`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L527"
+      "source_location": "L548"
     },
     {
       "id": "docs_ui_api_spec_v0_32_get_v0_funds_fundid_decisions",
@@ -13706,7 +14041,7 @@
       "node_kind": "heading",
       "norm_label": "32. `get /v0/funds/:fundid/decisions`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L531"
+      "source_location": "L552"
     },
     {
       "id": "docs_ui_api_spec_v0_33_post_v0_funds_fundid_messages",
@@ -13718,7 +14053,7 @@
       "node_kind": "heading",
       "norm_label": "33. `post /v0/funds/:fundid/messages`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L535"
+      "source_location": "L556"
     },
     {
       "id": "docs_ui_api_spec_v0_34_post_v0_funds_fundid_orders_orderid_notes",
@@ -13730,7 +14065,7 @@
       "node_kind": "heading",
       "norm_label": "34. `post /v0/funds/:fundid/orders/:orderid/notes`",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L541"
+      "source_location": "L562"
     },
     {
       "id": "docs_ui_api_spec_v0_9_fund_activity_chat_and_decision_log",
@@ -13742,7 +14077,7 @@
       "node_kind": "heading",
       "norm_label": "9. fund activity, chat and decision log",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L490"
+      "source_location": "L511"
     },
     {
       "id": "docs_ui_api_spec_v0_12_recommended_screen_flows",
@@ -13754,7 +14089,7 @@
       "node_kind": "heading",
       "norm_label": "12. recommended screen flows",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L595"
+      "source_location": "L616"
     },
     {
       "id": "docs_ui_api_spec_v0_captain_dashboard_and_trading",
@@ -13766,7 +14101,7 @@
       "node_kind": "heading",
       "norm_label": "captain dashboard and trading",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L605"
+      "source_location": "L626"
     },
     {
       "id": "docs_ui_api_spec_v0_crew_discovery_and_portfolio",
@@ -13778,7 +14113,7 @@
       "node_kind": "heading",
       "norm_label": "crew discovery and portfolio",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L616"
+      "source_location": "L637"
     },
     {
       "id": "docs_ui_api_spec_v0_minimal_client_request_helper",
@@ -13790,7 +14125,7 @@
       "node_kind": "heading",
       "norm_label": "minimal client request helper",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L625"
+      "source_location": "L646"
     },
     {
       "id": "docs_ui_api_spec_v0_sign_in_and_account",
@@ -13802,7 +14137,7 @@
       "node_kind": "heading",
       "norm_label": "sign-in and account",
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L597"
+      "source_location": "L618"
     },
     {
       "id": "packages_market_data_package",
@@ -14038,6 +14373,105 @@
       "norm_label": "values and identifiers",
       "source_file": "docs/ui-api-spec-v0.md",
       "source_location": "L28"
+    },
+    {
+      "id": "programs_v1_core_src_state_policy",
+      "label": "state/policy.rs",
+      "_origin": "ast",
+      "community": 81,
+      "community_name": "Policy",
+      "file_type": "code",
+      "norm_label": "state/policy.rs",
+      "source_file": "programs/v1-core/src/state/policy.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "programs_v1_core_src_state_policy_floor_bounds_are_inclusive",
+      "label": "floor_bounds_are_inclusive()",
+      "_origin": "ast",
+      "community": 81,
+      "community_name": "Policy",
+      "file_type": "code",
+      "norm_label": "floor_bounds_are_inclusive()",
+      "source_file": "programs/v1-core/src/state/policy.rs",
+      "source_location": "L72"
+    },
+    {
+      "id": "programs_v1_core_src_state_policy_policy",
+      "label": "Policy",
+      "_origin": "ast",
+      "community": 81,
+      "community_name": "Policy",
+      "file_type": "code",
+      "norm_label": "policy",
+      "source_file": "programs/v1-core/src/state/policy.rs",
+      "source_location": "L14"
+    },
+    {
+      "id": "programs_v1_core_src_state_policy_rs_pubkey",
+      "label": "Pubkey",
+      "_origin": "ast",
+      "community": 81,
+      "community_name": "Policy",
+      "file_type": "code",
+      "norm_label": "pubkey",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "programs_v1_core_src_state_policy_stricter_is_lower_bps_longer_window",
+      "label": "stricter_is_lower_bps_longer_window()",
+      "_origin": "ast",
+      "community": 81,
+      "community_name": "Policy",
+      "file_type": "code",
+      "norm_label": "stricter_is_lower_bps_longer_window()",
+      "source_file": "programs/v1-core/src/state/policy.rs",
+      "source_location": "L55"
+    },
+    {
+      "id": "packages_db_migrations_010_captain_handle_index",
+      "label": "010_captain_handle_index.sql",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "010_captain_handle_index.sql",
+      "file_type": "code",
+      "norm_label": "010_captain_handle_index.sql",
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": null
+    },
+    {
+      "id": "packages_db_migrations_010_captain_handle_index_advance_captain_handle_revision",
+      "label": "advance_captain_handle_revision()",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "010_captain_handle_index.sql",
+      "file_type": "code",
+      "norm_label": "advance_captain_handle_revision()",
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": "L9"
+    },
+    {
+      "id": "packages_db_migrations_010_captain_handle_index_captain_handle_index_state",
+      "label": "captain_handle_index_state",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "010_captain_handle_index.sql",
+      "file_type": "code",
+      "norm_label": "captain_handle_index_state",
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": "L2"
+    },
+    {
+      "id": "packages_db_migrations_010_captain_handle_index_captain_handle_revision_changed",
+      "label": "captain_handle_revision_changed",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "010_captain_handle_index.sql",
+      "file_type": "code",
+      "norm_label": "captain_handle_revision_changed",
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": "L15"
     },
     {
       "id": "package",
@@ -15921,26 +16355,14 @@
   "links": [
     {
       "source": "apps_api_src_account_routes_registeraccountroutes",
-      "target": "apps_api_src_crew_mypositions",
+      "target": "apps_api_src_captain_handles_captainhandleindex",
       "relation": "calls",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/account-routes.ts",
-      "source_location": "L25",
-      "weight": 1.0
-    },
-    {
-      "source": "apps_api_src_account_routes_registeraccountroutes",
-      "target": "apps_api_src_errors_apifault",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "apps/api/src/account-routes.ts",
-      "source_location": "L50",
+      "source_location": "L10",
       "weight": 1.0
     },
     {
@@ -15952,7 +16374,43 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/account-routes.ts",
-      "source_location": "L9",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_account_routes_registeraccountroutes",
+      "target": "apps_api_src_crew_mypositions",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/account-routes.ts",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_account_routes_registeraccountroutes",
+      "target": "apps_api_src_errors_apifault",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/account-routes.ts",
+      "source_location": "L62",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_account_routes_registeraccountroutes",
+      "target": "apps_api_src_captain_handles_insertcaptain",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/account-routes.ts",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -16145,6 +16603,210 @@
       "context": "call",
       "source_file": "apps/api/src/auth-routes.ts",
       "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_added",
+      "target": "apps_api_src_captain_handles_captainhandleindex_usable",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L86",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_added",
+      "target": "apps_api_src_captain_handles_keys",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L88",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_added",
+      "target": "apps_api_src_captain_handles_version",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L91",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_added",
+      "target": "apps_api_src_captain_handles_captainhandleindex_rebuild",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L92",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_added",
+      "target": "apps_api_src_captain_handles_captainhandleindex_degraded",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L93",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_available",
+      "target": "apps_api_src_captain_handles_captainhandleindex_usable",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L71",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_available",
+      "target": "apps_api_src_captain_handles_captainhandleindex_exists",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L72",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_available",
+      "target": "apps_api_src_captain_handles_keys",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_available",
+      "target": "apps_api_src_captain_handles_version",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L76",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_available",
+      "target": "apps_api_src_captain_handles_captainhandleindex_rebuild",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L78",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_available",
+      "target": "apps_api_src_captain_handles_captainhandleindex_degraded",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_build",
+      "target": "apps_api_src_captain_handles_captainhandleindex_usable",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L103",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_build",
+      "target": "apps_api_src_captain_handles_keys",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L109",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_build",
+      "target": "apps_api_src_captain_handles_version",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L124",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_rebuild",
+      "target": "apps_api_src_captain_handles_captainhandleindex_usable",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L98",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_rebuild",
+      "target": "apps_api_src_captain_handles_captainhandleindex_build",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L99",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex_rebuild",
+      "target": "apps_api_src_captain_handles_captainhandleindex_degraded",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L99",
       "weight": 1.0
     },
     {
@@ -27274,7 +27936,7 @@
     },
     {
       "source": "apps_api_package",
-      "target": "ref_jose",
+      "target": "ref_ioredis",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -27286,7 +27948,7 @@
     },
     {
       "source": "apps_api_package",
-      "target": "apps_api_package_json_ref_pg",
+      "target": "ref_jose",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -27294,6 +27956,18 @@
       "context": "import",
       "source_file": "apps/api/package.json",
       "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_package",
+      "target": "apps_api_package_json_ref_pg",
+      "relation": "imports",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/api/package.json",
+      "source_location": "L26",
       "weight": 1.0
     },
     {
@@ -27330,6 +28004,42 @@
       "context": "import",
       "source_file": "apps/api/src/account-routes.ts",
       "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_account_routes",
+      "target": "apps_api_src_captain_handles_captainhandleindex",
+      "relation": "imports",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/api/src/account-routes.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_account_routes",
+      "target": "apps_api_src_captain_handles_captainhandleschema",
+      "relation": "imports",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/api/src/account-routes.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_account_routes",
+      "target": "apps_api_src_captain_handles_insertcaptain",
+      "relation": "imports",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/api/src/account-routes.ts",
+      "source_location": "L6",
       "weight": 1.0
     },
     {
@@ -28786,6 +29496,18 @@
       "weight": 1.0
     },
     {
+      "source": "apps_api_src_account_routes",
+      "target": "apps_api_src_captain_handles",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/api/src/account-routes.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
       "source": "apps_api_src_accounting",
       "target": "apps_api_src_errors",
       "relation": "imports_from",
@@ -28989,6 +29711,31 @@
       "context": "import",
       "source_file": "apps/api/src/auth-routes.ts",
       "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "ref_ioredis",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "ref_fastify",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L4",
+      "type_only": true,
       "weight": 1.0
     },
     {
@@ -36531,7 +37278,7 @@
     },
     {
       "source": "apps_api_package_dependencies",
-      "target": "apps_api_package_dependencies_jose",
+      "target": "apps_api_package_dependencies_ioredis",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -36542,13 +37289,24 @@
     },
     {
       "source": "apps_api_package_dependencies",
-      "target": "apps_api_package_dependencies_pg",
+      "target": "apps_api_package_dependencies_jose",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/api/package.json",
       "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_package_dependencies",
+      "target": "apps_api_package_dependencies_pg",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/package.json",
+      "source_location": "L26",
       "weight": 1.0
     },
     {
@@ -36636,7 +37394,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/api/src/account-routes.ts",
-      "source_location": "L7",
+      "source_location": "L8",
       "weight": 1.0
     },
     {
@@ -36769,6 +37527,72 @@
       "confidence_score": 1.0,
       "source_file": "apps/api/src/auth-routes.ts",
       "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "apps_api_src_captain_handles_insertcaptain",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L138",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "apps_api_src_captain_handles_version",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "apps_api_src_captain_handles_keys",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "apps_api_src_captain_handles_captainhandleindex",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "apps_api_src_captain_handles_captainhandleschema",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles",
+      "target": "apps_api_src_captain_handles_indexstate",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L7",
       "weight": 1.0
     },
     {
@@ -38378,6 +39202,83 @@
       "weight": 1.0
     },
     {
+      "source": "docs_captain_handle_bloom",
+      "target": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "target": "docs_captain_handle_bloom_ui_contract",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "target": "docs_captain_handle_bloom_setup",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "target": "docs_captain_handle_bloom_read_flow",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "target": "docs_captain_handle_bloom_write_flow_and_recovery",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L49",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "target": "docs_captain_handle_bloom_configuration_and_lifecycle",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L72",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_captain_handle_bloom_captain_handle_availability_and_redis_bloom_index",
+      "target": "docs_captain_handle_bloom_validation_recorded",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/captain-handle-bloom.md",
+      "source_location": "L96",
+      "weight": 1.0
+    },
+    {
       "source": "docs_paper_history_api",
       "target": "docs_paper_history_api_paper_history_api",
       "relation": "contains",
@@ -38539,7 +39440,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L555",
+      "source_location": "L576",
       "weight": 1.0
     },
     {
@@ -38550,7 +39451,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L563",
+      "source_location": "L584",
       "weight": 1.0
     },
     {
@@ -38561,7 +39462,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L597",
+      "source_location": "L618",
       "weight": 1.0
     },
     {
@@ -38572,7 +39473,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L605",
+      "source_location": "L626",
       "weight": 1.0
     },
     {
@@ -38583,7 +39484,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L616",
+      "source_location": "L637",
       "weight": 1.0
     },
     {
@@ -38594,7 +39495,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L625",
+      "source_location": "L646",
       "weight": 1.0
     },
     {
@@ -38649,7 +39550,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L232",
+      "source_location": "L233",
       "weight": 1.0
     },
     {
@@ -38660,7 +39561,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L237",
+      "source_location": "L238",
       "weight": 1.0
     },
     {
@@ -38671,7 +39572,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L256",
+      "source_location": "L257",
       "weight": 1.0
     },
     {
@@ -38682,7 +39583,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L260",
+      "source_location": "L261",
       "weight": 1.0
     },
     {
@@ -38693,7 +39594,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L264",
+      "source_location": "L265",
       "weight": 1.0
     },
     {
@@ -38704,7 +39605,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L270",
+      "source_location": "L271",
       "weight": 1.0
     },
     {
@@ -38715,7 +39616,18 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L282",
+      "source_location": "L283",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_ui_api_spec_v0_5_accounts_and_captain_onboarding",
+      "target": "docs_ui_api_spec_v0_37_get_v0_captains_handle_availability",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/ui-api-spec-v0.md",
+      "source_location": "L287",
       "weight": 1.0
     },
     {
@@ -38726,7 +39638,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L288",
+      "source_location": "L309",
       "weight": 1.0
     },
     {
@@ -38737,7 +39649,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L302",
+      "source_location": "L323",
       "weight": 1.0
     },
     {
@@ -38748,7 +39660,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L306",
+      "source_location": "L327",
       "weight": 1.0
     },
     {
@@ -38759,7 +39671,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L310",
+      "source_location": "L331",
       "weight": 1.0
     },
     {
@@ -38770,7 +39682,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L330",
+      "source_location": "L351",
       "weight": 1.0
     },
     {
@@ -38781,7 +39693,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L334",
+      "source_location": "L355",
       "weight": 1.0
     },
     {
@@ -38792,7 +39704,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L342",
+      "source_location": "L363",
       "weight": 1.0
     },
     {
@@ -38803,7 +39715,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L354",
+      "source_location": "L375",
       "weight": 1.0
     },
     {
@@ -38814,7 +39726,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L376",
+      "source_location": "L397",
       "weight": 1.0
     },
     {
@@ -38825,7 +39737,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L390",
+      "source_location": "L411",
       "weight": 1.0
     },
     {
@@ -38836,7 +39748,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L394",
+      "source_location": "L415",
       "weight": 1.0
     },
     {
@@ -38847,7 +39759,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L416",
+      "source_location": "L437",
       "weight": 1.0
     },
     {
@@ -38858,7 +39770,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L420",
+      "source_location": "L441",
       "weight": 1.0
     },
     {
@@ -38869,7 +39781,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L424",
+      "source_location": "L445",
       "weight": 1.0
     },
     {
@@ -38880,7 +39792,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L430",
+      "source_location": "L451",
       "weight": 1.0
     },
     {
@@ -38891,7 +39803,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L438",
+      "source_location": "L459",
       "weight": 1.0
     },
     {
@@ -38902,7 +39814,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L450",
+      "source_location": "L471",
       "weight": 1.0
     },
     {
@@ -38913,7 +39825,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L456",
+      "source_location": "L477",
       "weight": 1.0
     },
     {
@@ -38924,7 +39836,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L462",
+      "source_location": "L483",
       "weight": 1.0
     },
     {
@@ -38935,7 +39847,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L472",
+      "source_location": "L493",
       "weight": 1.0
     },
     {
@@ -38946,7 +39858,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L476",
+      "source_location": "L497",
       "weight": 1.0
     },
     {
@@ -38957,7 +39869,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L492",
+      "source_location": "L513",
       "weight": 1.0
     },
     {
@@ -38968,7 +39880,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L496",
+      "source_location": "L517",
       "weight": 1.0
     },
     {
@@ -38979,7 +39891,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L527",
+      "source_location": "L548",
       "weight": 1.0
     },
     {
@@ -38990,7 +39902,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L531",
+      "source_location": "L552",
       "weight": 1.0
     },
     {
@@ -39001,7 +39913,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L535",
+      "source_location": "L556",
       "weight": 1.0
     },
     {
@@ -39012,7 +39924,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L541",
+      "source_location": "L562",
       "weight": 1.0
     },
     {
@@ -39023,7 +39935,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L108",
+      "source_location": "L109",
       "weight": 1.0
     },
     {
@@ -39034,7 +39946,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L230",
+      "source_location": "L231",
       "weight": 1.0
     },
     {
@@ -39056,7 +39968,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L286",
+      "source_location": "L307",
       "weight": 1.0
     },
     {
@@ -39067,7 +39979,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L352",
+      "source_location": "L373",
       "weight": 1.0
     },
     {
@@ -39078,7 +39990,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L436",
+      "source_location": "L457",
       "weight": 1.0
     },
     {
@@ -39089,7 +40001,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L490",
+      "source_location": "L511",
       "weight": 1.0
     },
     {
@@ -39100,7 +40012,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L553",
+      "source_location": "L574",
       "weight": 1.0
     },
     {
@@ -39111,7 +40023,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L567",
+      "source_location": "L588",
       "weight": 1.0
     },
     {
@@ -39122,7 +40034,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L595",
+      "source_location": "L616",
       "weight": 1.0
     },
     {
@@ -39144,7 +40056,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L664",
+      "source_location": "L685",
       "weight": 1.0
     },
     {
@@ -39155,7 +40067,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L672",
+      "source_location": "L693",
       "weight": 1.0
     },
     {
@@ -39167,6 +40079,50 @@
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
       "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia",
+      "target": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_q_which_solana_agent_kit_integrations_can_make_socially_trade_more_useful",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_q_which_solana_agent_kit_integrations_can_make_socially_trade_more_useful",
+      "target": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_answer",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_q_which_solana_agent_kit_integrations_can_make_socially_trade_more_useful",
+      "target": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_outcome",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_q_which_solana_agent_kit_integrations_can_make_socially_trade_more_useful",
+      "target": "graphify_out_memory_query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia_source_nodes",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "graphify-out/memory/query_20261004_170239_4755c063_which_solana_agent_kit_integrations_can_make_socia.md",
+      "source_location": "L20",
       "weight": 1.0
     },
     {
@@ -39651,6 +40607,39 @@
       "confidence_score": 1.0,
       "source_file": "packages/db/migrations/007_notification_inbox.sql",
       "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "packages_db_migrations_010_captain_handle_index",
+      "target": "packages_db_migrations_010_captain_handle_index_captain_handle_revision_changed",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "packages_db_migrations_010_captain_handle_index",
+      "target": "packages_db_migrations_010_captain_handle_index_captain_handle_index_state",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "packages_db_migrations_010_captain_handle_index",
+      "target": "packages_db_migrations_010_captain_handle_index_advance_captain_handle_revision",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": "L9",
       "weight": 1.0
     },
     {
@@ -46250,6 +47239,105 @@
       "source_file": "apps/api/src/orders.ts"
     },
     {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_build",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L102",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_close",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L131",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_constructor",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_usable",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L57",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_degraded",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L61",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_exists",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L66",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_available",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L70",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_added",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L85",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_api_src_captain_handles_captainhandleindex",
+      "target": "apps_api_src_captain_handles_captainhandleindex_rebuild",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/captain-handles.ts",
+      "source_location": "L97",
+      "weight": 1.0
+    },
+    {
       "source": "apps_api_src_errors_apifault",
       "target": "apps_api_src_errors_apifault_constructor",
       "relation": "method",
@@ -46394,13 +47482,24 @@
     },
     {
       "source": "docs_ui_api_spec_v0",
+      "target": "docs_captain_handle_bloom",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/ui-api-spec-v0.md",
+      "source_location": "L305",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_ui_api_spec_v0",
       "target": "docs_captain_flow_v0",
       "relation": "references",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L689",
+      "source_location": "L711",
       "weight": 1.0
     },
     {
@@ -46411,7 +47510,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L689",
+      "source_location": "L711",
       "weight": 1.0
     },
     {
@@ -46422,7 +47521,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L689",
+      "source_location": "L711",
       "weight": 1.0
     },
     {
@@ -46433,7 +47532,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/ui-api-spec-v0.md",
-      "source_location": "L689",
+      "source_location": "L711",
       "weight": 1.0
     },
     {
@@ -46537,6 +47636,17 @@
     },
     {
       "source": "readme_document",
+      "target": "docs_captain_handle_bloom",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_document",
       "target": "docs_paper_history_api",
       "relation": "references",
       "_origin": "ast",
@@ -46577,6 +47687,17 @@
       "confidence_score": 1.0,
       "source_file": "README.md",
       "source_location": "L99",
+      "weight": 1.0
+    },
+    {
+      "source": "packages_db_migrations_010_captain_handle_index_captain_handle_revision_changed",
+      "target": "packages_db_migrations_010_captain_handle_index_advance_captain_handle_revision",
+      "relation": "triggers",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/db/migrations/010_captain_handle_index.sql",
+      "source_location": "L15",
       "weight": 1.0
     },
     {
@@ -56842,5 +57963,5 @@
       "source_file": "socially-trade-whitepaper.pdf"
     }
   ],
-  "built_at_commit": "fb5b581d96b79cd94f7ee8f3732c1c48d8eeaa9a"
+  "built_at_commit": "e20b705eea17c84c098c29df3a2a6ec7e55626e6"
 }

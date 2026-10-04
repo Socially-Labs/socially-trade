@@ -8,7 +8,9 @@ Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SO
 
 The current delivery is backend only, as requested. Verification uses API calls, PostgreSQL simulations and test cases; no frontend or Android application is included.
 
-UI developers: see the [complete v0 API integration specification](docs/ui-api-spec-v0.md) for all 36 operations, request/response contracts, authentication, pagination, errors and screen flows.
+UI developers: see the [complete v0 API integration specification](docs/ui-api-spec-v0.md) for all 37 operations, request/response contracts, authentication, pagination, errors and screen flows.
+
+Captain username checks use `GET /v0/captains/handle-availability?handle=jassbawa`, with an optional Redis Bloom index and PostgreSQL fallback. See [setup and consistency details](docs/captain-handle-bloom.md).
 
 ### Trade and Crew history
 

@@ -1,6 +1,6 @@
 # v0 UI API integration specification
 
-**Scope:** every route currently registered by the paper API (36 operations).
+**Scope:** every route currently registered by the paper API (37 operations).
 **Reviewed:** 4 October 2026, against the current workspace source.
 **Audience:** web/mobile developers integrating Captain, Crew and public discovery screens.
 **Contract:** implemented behavior, including current limitations. Examples are illustrative, not live account data. This document does not claim new runtime test results.
@@ -104,6 +104,7 @@ Do not share cursor state between lists or between signed-in users. UUID history
 | 34 | `POST /v0/funds/:fundId/orders/:orderId/notes` | Captain owner | Yes | Add/correct trade note | 201 |
 | 35 | `GET /v0/me/notifications` | User | — | Inbox | 200 |
 | 36 | `POST /v0/me/notifications/:notificationId/read` | User | — | Mark inbox item read | 200 |
+| 37 | `GET /v0/captains/handle-availability` | Public | — | Check username while onboarding | 200 |
 
 ## 4. Response models
 
@@ -282,6 +283,26 @@ Response: `CaptainProfile`. First create: 201. Repeat with the same handle: 200 
 ### 7. `GET /v0/captains/:captainId`
 
 Public. Path uses local user UUID, not a handle. No query/body. Response: `CaptainProfile`. Missing profile: `404 captain_not_found`.
+
+### 37. `GET /v0/captains/handle-availability`
+
+Public. Required query: `?handle=jassbawa`. The handle follows the same lowercase
+3–24 character pattern as profile creation; additional query fields are rejected.
+Invalid/missing handle: `400 invalid_request`. Response has `Cache-Control: no-store`:
+
+```json
+{ "mode": "PAPER", "handle": "jassbawa", "available": true }
+```
+
+Debounce typing checks (e.g. 300 ms), cancel obsolete requests and apply a response
+only if its `handle` still matches the field. The result is advisory, not a reservation:
+another user may claim the name before submission. POST captains still enforces
+the database unique constraint and can return `409 conflict`.
+
+Redis Bloom filtering skips an indexed handle lookup for synchronized negative
+matches. Possible matches are confirmed in PostgreSQL. Cold/stale/missing Redis
+filters and Redis outages fall back to PostgreSQL, preserving the same response shape.
+No Redis setup details are exposed in the UI. See [handle index operations](captain-handle-bloom.md).
 
 ## 6. Funds and Crew allocation
 
@@ -604,7 +625,7 @@ Some schema checks run before bearer verification; an invalid body can return 40
 
 ### Captain dashboard and trading
 
-1. POST captains if needed; POST funds with a new action key to start trial.
+1. Check handle-availability while choosing a username, then POST captains if needed; POST funds with a new action key to start trial.
 2. Find own funds using Captain paper-record (discovery is capped and cannot be relied on to contain them).
 3. Load summary, policy, holdings, performance, orders and decisions for selected fund.
 4. Preview BUY/SELL → show estimated fees, timestamps and policy result → submit with a new key.
@@ -676,6 +697,7 @@ Fund descriptions are accepted on creation but absent from read responses. Fund 
 | Registration / error envelope / health | `apps/api/src/app.ts` |
 | Privy bootstrap / identity | `apps/api/src/auth-routes.ts`, `auth.ts`, `privy.ts` |
 | Account / Captain profile | `apps/api/src/account-routes.ts` |
+| Handle availability / Redis Bloom index | `apps/api/src/captain-handles.ts`, `packages/db/migrations/010_captain_handle_index.sql` |
 | Funds / policy / holdings / allocation | `apps/api/src/fund-routes.ts`, `funds.ts`, `crew.ts` |
 | Orders / previews / cancellation | `apps/api/src/order-routes.ts`, `orders.ts` |
 | Trade history / statistics / Crew timeline | `apps/api/src/history.ts` |
