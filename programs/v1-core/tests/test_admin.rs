@@ -8,9 +8,6 @@ fn config_initialized() {
     assert_eq!(cfg.admin, env.admin.pubkey());
     assert_eq!(cfg.usdc_mint, env.usdc);
     assert!(!cfg.paused);
-    assert!(cfg.venues.iter().all(|v| *v == Pubkey::default()));
-    assert_eq!(cfg.pending_venue, Pubkey::default());
-    assert_eq!(cfg.pending_venue_eta, 0);
     assert_eq!(
         cfg.bump,
         Pubkey::find_program_address(&[CONFIG_SEED], &v1_core::ID).1
@@ -96,7 +93,7 @@ fn token_apply_waits_7_days() {
         &[ix_queue_token(
             &env.admin.pubkey(),
             sol,
-            SOL_FEED,
+            pyth(SOL_FEED),
             Tier::T1,
             9,
         )],
@@ -122,7 +119,7 @@ fn token_apply_waits_7_days() {
     send(&mut env.svm, &[ix_apply_token(sol)], &[&anyone]).unwrap();
     let e: TokenEntry = read_account(&env.svm, &token_pda(&sol));
     assert!(e.active);
-    assert_eq!(e.feed_id, SOL_FEED);
+    assert_eq!(e.price_source, pyth(SOL_FEED));
     assert_eq!(e.tier, Tier::T1);
     assert_eq!(e.pending_eta, 0);
     expect_err(
@@ -141,7 +138,7 @@ fn token_requeue_keeps_live_entry_until_apply() {
         &[ix_queue_token(
             &env.admin.pubkey(),
             bonk,
-            USDC_FEED,
+            pyth(USDC_FEED),
             Tier::T1,
             5,
         )],
@@ -150,12 +147,12 @@ fn token_requeue_keeps_live_entry_until_apply() {
     .unwrap();
     let e: TokenEntry = read_account(&env.svm, &token_pda(&bonk));
     assert!(e.active);
-    assert_eq!(e.feed_id, BONK_FEED);
+    assert_eq!(e.price_source, pyth(BONK_FEED));
     assert_eq!(e.tier, Tier::T2);
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
     send(&mut env.svm, &[ix_apply_token(bonk)], &[&env.admin]).unwrap();
     let e: TokenEntry = read_account(&env.svm, &token_pda(&bonk));
-    assert_eq!(e.feed_id, USDC_FEED);
+    assert_eq!(e.price_source, pyth(USDC_FEED));
     assert_eq!(e.tier, Tier::T1);
 }
 
@@ -164,7 +161,7 @@ fn token_queue_rejects_non_admin() {
     let mut env = setup();
     let sol = create_mint(&mut env, 9);
     let other = funded(&mut env.svm);
-    let ix = ix_queue_token(&other.pubkey(), sol, SOL_FEED, Tier::T1, 9);
+    let ix = ix_queue_token(&other.pubkey(), sol, pyth(SOL_FEED), Tier::T1, 9);
     expect_err(
         send(&mut env.svm, &[ix], &[&other]),
         ErrorCode::Unauthorized,
@@ -181,7 +178,7 @@ fn token_queue_rejects_wrong_decimals() {
             &[ix_queue_token(
                 &env.admin.pubkey(),
                 sol,
-                SOL_FEED,
+                pyth(SOL_FEED),
                 Tier::T1,
                 6,
             )],
@@ -192,30 +189,42 @@ fn token_queue_rejects_wrong_decimals() {
 }
 
 #[test]
-fn venue_apply_waits_7_days_and_fills_slot() {
+fn venue_apply_waits_7_days_and_activates() {
     let mut env = setup();
     let id = mock_venue::ID;
+    // Nothing is queued yet: no entry account.
+    assert!(env.svm.get_account(&venue_pda(&id)).is_none());
+    let start = now(&env);
     send(
         &mut env.svm,
-        &[ix_queue_venue(&env.admin.pubkey(), 0, id)],
+        &[ix_queue_venue(&env.admin.pubkey(), id, true)],
         &[&env.admin],
     )
     .unwrap();
-    let cfg = read_config(&env);
-    assert_eq!(cfg.pending_venue, id);
-    assert_eq!(cfg.venues[0], Pubkey::default());
+    let e = read_venue(&env, &id);
+    assert_eq!(e.program, id);
+    assert!(!e.active);
+    assert!(e.pending_active);
+    assert_eq!(e.pending_eta, start + ADMIN_TIMELOCK_SECS);
+    assert_eq!(
+        e.bump,
+        Pubkey::find_program_address(&[VENUE_SEED, id.as_ref()], &v1_core::ID).1
+    );
+    // One second before the ETA: too early.
+    warp(&mut env.svm, ADMIN_TIMELOCK_SECS - 1);
     expect_err(
-        send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]),
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
         ErrorCode::TimelockNotElapsed,
     );
-    warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
-    send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]).unwrap();
-    let cfg = read_config(&env);
-    assert_eq!(cfg.venues[0], id);
-    assert_eq!(cfg.pending_venue, Pubkey::default());
-    assert_eq!(cfg.pending_venue_eta, 0);
+    // At the ETA: anyone applies.
+    warp(&mut env.svm, 1);
+    let anyone = funded(&mut env.svm);
+    send(&mut env.svm, &[ix_apply_venue(id)], &[&anyone]).unwrap();
+    let e = read_venue(&env, &id);
+    assert!(e.active);
+    assert_eq!(e.pending_eta, 0);
     expect_err(
-        send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]),
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
         ErrorCode::NothingPending,
     );
 }
@@ -223,69 +232,86 @@ fn venue_apply_waits_7_days_and_fills_slot() {
 #[test]
 fn venue_requeue_overwrites_and_restarts_clock() {
     let mut env = setup();
-    let a = Pubkey::new_unique();
-    let b = Pubkey::new_unique();
+    let id = Pubkey::new_unique();
     send(
         &mut env.svm,
-        &[ix_queue_venue(&env.admin.pubkey(), 1, a)],
+        &[ix_queue_venue(&env.admin.pubkey(), id, true)],
         &[&env.admin],
     )
     .unwrap();
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS - 10);
     send(
         &mut env.svm,
-        &[ix_queue_venue(&env.admin.pubkey(), 2, b)],
+        &[ix_queue_venue(&env.admin.pubkey(), id, false)],
         &[&env.admin],
     )
     .unwrap();
     warp(&mut env.svm, 10);
     expect_err(
-        send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]),
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
         ErrorCode::TimelockNotElapsed,
     );
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
-    send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]).unwrap();
-    let cfg = read_config(&env);
-    assert_eq!(cfg.venues[1], Pubkey::default());
-    assert_eq!(cfg.venues[2], b);
+    send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]).unwrap();
+    // The second queue (a removal) won.
+    assert!(!read_venue(&env, &id).active);
 }
 
 #[test]
-fn venue_remove_and_slot_rules() {
+fn venue_removal_is_timelocked_and_admin_only() {
     let mut env = setup();
     let id = mock_venue::ID;
-    register_venue(&mut env, 3, id);
-    // A taken slot needs a removal first.
-    expect_err(
-        send(
-            &mut env.svm,
-            &[ix_queue_venue(&env.admin.pubkey(), 3, Pubkey::new_unique())],
-            &[&env.admin],
-        ),
-        ErrorCode::VenueSlotTaken,
-    );
-    // Slot out of range.
-    expect_err(
-        send(
-            &mut env.svm,
-            &[ix_queue_venue(&env.admin.pubkey(), 4, Pubkey::new_unique())],
-            &[&env.admin],
-        ),
-        ErrorCode::VenueNotAllowed,
-    );
+    register_venue(&mut env, id);
     // Non-admin.
     let other = funded(&mut env.svm);
     expect_err(
         send(
             &mut env.svm,
-            &[ix_queue_venue(&other.pubkey(), 0, id)],
+            &[ix_queue_venue(&other.pubkey(), id, false)],
             &[&other],
         ),
         ErrorCode::Unauthorized,
     );
-    // Removal (default) is also timelocked.
-    register_venue(&mut env, 3, Pubkey::default());
-    assert_eq!(read_config(&env).venues[3], Pubkey::default());
+    send(
+        &mut env.svm,
+        &[ix_queue_venue(&env.admin.pubkey(), id, false)],
+        &[&env.admin],
+    )
+    .unwrap();
+    // The venue stays active until the removal is applied.
+    let e = read_venue(&env, &id);
+    assert!(e.active && !e.pending_active);
+    warp(&mut env.svm, ADMIN_TIMELOCK_SECS - 1);
+    expect_err(
+        send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]),
+        ErrorCode::TimelockNotElapsed,
+    );
+    assert!(read_venue(&env, &id).active);
+    warp(&mut env.svm, 1);
+    send(&mut env.svm, &[ix_apply_venue(id)], &[&env.admin]).unwrap();
+    assert!(!read_venue(&env, &id).active);
+}
+
+#[test]
+fn more_than_four_venues_active_at_once() {
+    let mut env = setup();
+    let ids: Vec<Pubkey> = (0..6).map(|_| Pubkey::new_unique()).collect();
+    for id in &ids {
+        send(
+            &mut env.svm,
+            &[ix_queue_venue(&env.admin.pubkey(), *id, true)],
+            &[&env.admin],
+        )
+        .unwrap();
+    }
+    warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
+    for id in &ids {
+        send(&mut env.svm, &[ix_apply_venue(*id)], &[&env.admin]).unwrap();
+    }
+    for id in &ids {
+        let e = read_venue(&env, id);
+        assert!(e.active && e.program == *id);
+    }
 }
 
 #[test]
@@ -323,7 +349,13 @@ fn queue(
     mint: Pubkey,
     decimals: u8,
 ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-    let ix = ix_queue_token(&env.admin.pubkey(), mint, SOL_FEED, Tier::T1, decimals);
+    let ix = ix_queue_token(
+        &env.admin.pubkey(),
+        mint,
+        pyth(SOL_FEED),
+        Tier::T1,
+        decimals,
+    );
     send(&mut env.svm, &[ix], &[&env.admin])
 }
 
@@ -353,4 +385,62 @@ fn token_queue_accepts_plain_mints() {
     let t22 = anchor_spl::token_2022::ID;
     let plain_t22 = write_mint(&mut env.svm, &admin, 6, &t22);
     queue(&mut env, plain_t22, 6).unwrap();
+}
+
+/// One of each price source, with distinct field values.
+fn every_source() -> [PriceSource; 3] {
+    [
+        pyth(SOL_FEED),
+        PriceSource::KaminoReserve {
+            reserve: Pubkey::new_unique(),
+            underlying_feed_id: BONK_FEED,
+            underlying_decimals: 6,
+        },
+        PriceSource::Switchboard {
+            feed: Pubkey::new_unique(),
+            feed_hash: [9; 32],
+            queue: Pubkey::new_unique(),
+        },
+    ]
+}
+
+#[test]
+fn token_registry_stores_every_price_source_and_t3() {
+    for source in every_source() {
+        let mut env = setup();
+        let mint = create_mint(&mut env, 9);
+        let ix = ix_queue_token(&env.admin.pubkey(), mint, source, Tier::T3, 9);
+        send(&mut env.svm, &[ix], &[&env.admin]).unwrap();
+        let e: TokenEntry = read_account(&env.svm, &token_pda(&mint));
+        assert_eq!(e.pending_price_source, source);
+        assert_eq!(e.pending_tier, Tier::T3);
+        assert!(!e.active);
+        warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
+        send(&mut env.svm, &[ix_apply_token(mint)], &[&env.admin]).unwrap();
+        let e: TokenEntry = read_account(&env.svm, &token_pda(&mint));
+        assert_eq!(e.price_source, source);
+        assert_eq!(e.tier, Tier::T3);
+        assert!(e.active);
+    }
+}
+
+#[test]
+fn token_queue_screens_unsafe_mints_for_every_source() {
+    for source in every_source() {
+        let mut env = setup();
+        let admin = env.admin.pubkey();
+        let spl = spl_token_interface::ID;
+        let frozen = write_mint_with_freeze(&mut env.svm, &admin, 9, &spl, Some(admin));
+        let ix = ix_queue_token(&admin, frozen, source, Tier::T1, 9);
+        expect_err(
+            send(&mut env.svm, &[ix], &[&env.admin]),
+            ErrorCode::UnsafeMint,
+        );
+        let ext = write_t22_mint_with_extension(&mut env.svm, &admin, 9);
+        let ix = ix_queue_token(&admin, ext, source, Tier::T1, 9);
+        expect_err(
+            send(&mut env.svm, &[ix], &[&env.admin]),
+            ErrorCode::UnsafeMint,
+        );
+    }
 }

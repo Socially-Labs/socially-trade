@@ -85,7 +85,12 @@ pub struct CreateFund<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_fund(ctx: Context<CreateFund>, fund_id: u64, deposit: u64) -> Result<()> {
+pub fn create_fund(
+    ctx: Context<CreateFund>,
+    fund_id: u64,
+    deposit: u64,
+    open_seas: bool,
+) -> Result<()> {
     require!(
         deposit >= CAPTAIN_MIN_DEPOSIT,
         ErrorCode::CaptainDepositTooSmall
@@ -159,6 +164,13 @@ pub fn create_fund(ctx: Context<CreateFund>, fund_id: u64, deposit: u64) -> Resu
         bump: fund_bump,
         window_start: now,
         window_volume_usd: 0,
+        open_seas,
+        t3_cost_basis_usd: 0,
+        t3_window_start: now,
+        t3_window_buys_usd: 0,
+        t3_basis_usd: [0; MAX_HOLDINGS],
+        t3_prev_window_buys_usd: 0,
+        last_pps_slot: Clock::get()?.slot,
     });
     let params = PolicyParams {
         autonomous_bps: DEFAULT_AUTONOMOUS_BPS,

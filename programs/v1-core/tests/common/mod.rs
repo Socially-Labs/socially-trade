@@ -34,7 +34,7 @@ pub use {
     v1_core::{
         constants::*,
         errors::ErrorCode,
-        state::{Config, Tier, TokenEntry},
+        state::{Config, PriceSource, Tier, TokenEntry, VenueEntry},
     },
 };
 
@@ -51,6 +51,15 @@ pub struct Env {
 pub const USDC_FEED: [u8; 32] = [1; 32];
 pub const SOL_FEED: [u8; 32] = [2; 32];
 pub const BONK_FEED: [u8; 32] = [3; 32];
+
+/// A Pyth price source for `feed_id`.
+pub fn pyth(feed_id: [u8; 32]) -> PriceSource {
+    PriceSource::Pyth { feed_id }
+}
+
+/// The key the harness passes for a price slot the source does not read
+/// (Pyth `price_b`). The program never reads it.
+pub const UNUSED_PRICE_ACCOUNT: Pubkey = v1_core::ID;
 
 /// `setup_bare()` plus `initialize_config` sent by the admin.
 pub fn setup() -> Env {
@@ -340,6 +349,9 @@ pub fn proposal_pda(fund: &Pubkey, id: u64) -> Pubkey {
 pub fn vote_pda(proposal: &Pubkey, voter: &Pubkey) -> Pubkey {
     pda(&[VOTE_SEED, proposal.as_ref(), voter.as_ref()])
 }
+pub fn venue_pda(program: &Pubkey) -> Pubkey {
+    pda(&[VENUE_SEED, program.as_ref()])
+}
 
 // ---------------------------------------------------------------------------
 // Instruction builders
@@ -380,7 +392,7 @@ pub fn ix_initialize_config_with(
 pub fn ix_queue_token(
     admin: &Pubkey,
     mint: Pubkey,
-    feed_id: [u8; 32],
+    price_source: PriceSource,
     tier: Tier,
     decimals: u8,
 ) -> Instruction {
@@ -393,7 +405,7 @@ pub fn ix_queue_token(
             system_program: anchor_lang::system_program::ID,
         },
         v1_core::instruction::QueueToken {
-            feed_id,
+            price_source,
             tier,
             decimals,
         },
@@ -410,24 +422,32 @@ pub fn ix_apply_token(mint: Pubkey) -> Instruction {
     )
 }
 
-pub fn ix_queue_venue(admin: &Pubkey, slot: u8, venue: Pubkey) -> Instruction {
+/// Queue `venue` to become `active` (true = approve, false = remove).
+pub fn ix_queue_venue(admin: &Pubkey, venue: Pubkey, active: bool) -> Instruction {
     v1_ix(
         v1_core::accounts::QueueVenue {
             admin: *admin,
             config: config_pda(),
+            venue_program: venue,
+            venue_entry: venue_pda(&venue),
+            system_program: anchor_lang::system_program::ID,
         },
-        v1_core::instruction::QueueVenue { slot, venue },
+        v1_core::instruction::QueueVenue { active },
     )
 }
 
 /// Permissionless: no signer account.
-pub fn ix_apply_venue() -> Instruction {
+pub fn ix_apply_venue(venue: Pubkey) -> Instruction {
     v1_ix(
         v1_core::accounts::ApplyVenue {
-            config: config_pda(),
+            venue_entry: venue_pda(&venue),
         },
         v1_core::instruction::ApplyVenue {},
     )
+}
+
+pub fn read_venue(env: &Env, venue: &Pubkey) -> VenueEntry {
+    read_account(&env.svm, &venue_pda(venue))
 }
 
 pub fn ix_set_paused(admin: &Pubkey, paused: bool) -> Instruction {
@@ -444,23 +464,33 @@ pub fn ix_set_paused(admin: &Pubkey, paused: bool) -> Instruction {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-/// List `mint` (queue, wait out the timelock, apply). Decimals come from the mint.
+/// List `mint` with a Pyth source (queue, wait out the timelock, apply).
 pub fn register_token(env: &mut Env, mint: Pubkey, feed_id: [u8; 32], tier: Tier) {
+    register_token_with(env, mint, pyth(feed_id), tier);
+}
+
+/// List `mint` with any price source. Decimals come from the mint.
+pub fn register_token_with(env: &mut Env, mint: Pubkey, source: PriceSource, tier: Tier) {
     let data = env.svm.get_account(&mint).expect("mint account").data;
     let decimals = SplMint::unpack_from_slice(&data).expect("mint").decimals;
-    let ix = ix_queue_token(&env.admin.pubkey(), mint, feed_id, tier, decimals);
+    let ix = ix_queue_token(&env.admin.pubkey(), mint, source, tier, decimals);
     send(&mut env.svm, &[ix], &[&env.admin]).expect("queue_token");
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
     let ix = ix_apply_token(mint);
     send(&mut env.svm, &[ix], &[&env.admin]).expect("apply_token");
 }
 
-/// Put `venue` into `slot` (queue, wait out the timelock, apply).
-pub fn register_venue(env: &mut Env, slot: u8, venue: Pubkey) {
-    let ix = ix_queue_venue(&env.admin.pubkey(), slot, venue);
+/// Approve `venue` (queue, wait out the timelock, apply).
+pub fn register_venue(env: &mut Env, venue: Pubkey) {
+    set_venue(env, venue, true);
+}
+
+/// Set `venue` to `active` (queue, wait out the timelock, apply).
+pub fn set_venue(env: &mut Env, venue: Pubkey, active: bool) {
+    let ix = ix_queue_venue(&env.admin.pubkey(), venue, active);
     send(&mut env.svm, &[ix], &[&env.admin]).expect("queue_venue");
     warp(&mut env.svm, ADMIN_TIMELOCK_SECS);
-    send(&mut env.svm, &[ix_apply_venue()], &[&env.admin]).expect("apply_venue");
+    send(&mut env.svm, &[ix_apply_venue(venue)], &[&env.admin]).expect("apply_venue");
 }
 
 // ---------------------------------------------------------------------------
@@ -530,12 +560,23 @@ pub fn ix_create_fund(env: &Env, captain: &Pubkey, fund_id: u64, deposit: u64) -
     ix_create_fund_with(captain, fund_id, deposit, env.usdc)
 }
 
-/// `create_fund` with an explicit USDC mint (for negative tests).
+/// `create_fund` with an explicit USDC mint (for negative tests). Not Open Seas.
 pub fn ix_create_fund_with(
     captain: &Pubkey,
     fund_id: u64,
     deposit: u64,
     usdc_mint: Pubkey,
+) -> Instruction {
+    ix_create_fund_full(captain, fund_id, deposit, usdc_mint, false)
+}
+
+/// `create_fund` with every argument.
+pub fn ix_create_fund_full(
+    captain: &Pubkey,
+    fund_id: u64,
+    deposit: u64,
+    usdc_mint: Pubkey,
+    open_seas: bool,
 ) -> Instruction {
     let f = FundHandles::new(captain, fund_id, &usdc_mint);
     v1_ix(
@@ -555,7 +596,11 @@ pub fn ix_create_fund_with(
             associated_token_program: anchor_spl::associated_token::ID,
             system_program: anchor_lang::system_program::ID,
         },
-        v1_core::instruction::CreateFund { fund_id, deposit },
+        v1_core::instruction::CreateFund {
+            fund_id,
+            deposit,
+            open_seas,
+        },
     )
 }
 
@@ -699,18 +744,59 @@ pub fn price_account(mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[b"price", mint.as_ref()], &v1_core::pyth::PYTH_RECEIVER).0
 }
 
+/// `[price_a, price_b]` of `mint`, from its registry entry (test conventions):
+/// - Pyth, or not listed (USDC): `[price_account(mint), UNUSED_PRICE_ACCOUNT]`.
+/// - KaminoReserve: `[reserve, price_account(reserve)]` (the underlying's Pyth account).
+/// - Switchboard: `[feed, UNUSED_PRICE_ACCOUNT]`.
+pub fn price_accounts(env: &Env, mint: &Pubkey) -> [Pubkey; 2] {
+    match listed_source(env, mint) {
+        Some(PriceSource::KaminoReserve { reserve, .. }) => [reserve, price_account(&reserve)],
+        Some(PriceSource::Switchboard { feed, .. }) => [feed, UNUSED_PRICE_ACCOUNT],
+        _ => [price_account(mint), UNUSED_PRICE_ACCOUNT],
+    }
+}
+
+/// The price source in `mint`'s registry entry; None when not listed (USDC).
+pub fn listed_source(env: &Env, mint: &Pubkey) -> Option<PriceSource> {
+    env.svm
+        .get_account(&token_pda(mint))
+        .filter(|a| a.owner == v1_core::ID)
+        .map(|a| {
+            TokenEntry::try_deserialize(&mut &a.data[..])
+                .unwrap()
+                .price_source
+        })
+}
+
+/// The registry entry of `mint`, as a NAV or trade account: writable for a
+/// Switchboard token (the entry holds its mark price), else read only.
+pub fn entry_meta(env: &Env, mint: &Pubkey) -> AccountMeta {
+    match listed_source(env, mint) {
+        Some(PriceSource::Switchboard { .. }) => AccountMeta::new(token_pda(mint), false),
+        _ => AccountMeta::new_readonly(token_pda(mint), false),
+    }
+}
+
+/// The token entry of `mint` (mark price included).
+pub fn read_entry(env: &Env, mint: &Pubkey) -> TokenEntry {
+    read_account(&env.svm, &token_pda(mint))
+}
+
 /// NAV remaining accounts for the fund's current holdings:
-/// `[vault_i, token_entry_i, price_i]` per holding, in order.
+/// `[vault_i, token_entry_i, price_a_i, price_b_i]` per holding, in order
+/// (price accounts from `price_accounts`, entry from `entry_meta`).
 pub fn nav_accounts(env: &Env, f: &FundHandles) -> Vec<AccountMeta> {
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
     fund.holdings[..fund.holdings_len as usize]
         .iter()
         .flat_map(|mint| {
             let token_program = env.svm.get_account(mint).expect("holding mint").owner;
+            let [a, b] = price_accounts(env, mint);
             [
                 AccountMeta::new_readonly(ata(&f.fund, mint, &token_program), false),
-                AccountMeta::new_readonly(token_pda(mint), false),
-                AccountMeta::new_readonly(price_account(mint), false),
+                entry_meta(env, mint),
+                AccountMeta::new_readonly(a, false),
+                AccountMeta::new_readonly(b, false),
             ]
         })
         .collect()
@@ -723,8 +809,19 @@ pub fn ix_deposit(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -> Ins
     ix
 }
 
-/// `deposit` with NO remaining accounts (append your own).
+/// `deposit` with NO remaining accounts (append your own), no share minimum.
 pub fn ix_deposit_bare(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -> Instruction {
+    ix_deposit_min(env, f, user, amount, 0)
+}
+
+/// `deposit` with NO remaining accounts and a `min_shares` limit.
+pub fn ix_deposit_min(
+    env: &Env,
+    f: &FundHandles,
+    user: &Pubkey,
+    amount: u64,
+    min_shares: u64,
+) -> Instruction {
     v1_ix(
         v1_core::accounts::Deposit {
             user: *user,
@@ -742,7 +839,7 @@ pub fn ix_deposit_bare(env: &Env, f: &FundHandles, user: &Pubkey, amount: u64) -
             associated_token_program: anchor_spl::associated_token::ID,
             system_program: anchor_lang::system_program::ID,
         },
-        v1_core::instruction::Deposit { amount },
+        v1_core::instruction::Deposit { amount, min_shares },
     )
 }
 
@@ -831,6 +928,164 @@ pub fn listed_sol(env: &mut Env, usd: i64) -> Pubkey {
     sol
 }
 
+// ---------------------------------------------------------------------------
+// Kamino kTokens
+// ---------------------------------------------------------------------------
+
+pub use v1_core::kamino::{ReserveFields, KAMINO_LEND, MAX_RESERVE_AGE_SLOTS};
+
+/// A kUSDC test token: the kToken mint, its klend reserve and the reserve fields.
+#[derive(Debug, Clone, Copy)]
+pub struct KToken {
+    pub mint: Pubkey,
+    pub reserve: Pubkey,
+    pub fields: ReserveFields,
+}
+
+/// Write a klend `Reserve` account (real layout, owner = Kamino Lend) at `address`.
+pub fn write_reserve(svm: &mut LiteSVM, address: Pubkey, fields: &ReserveFields) {
+    let data = v1_core::kamino::encode_reserve(fields);
+    svm.set_account(
+        address,
+        Account {
+            lamports: svm.minimum_balance_for_rent_exemption(data.len()),
+            data,
+            owner: KAMINO_LEND,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+/// A 6-dp kUSDC mint listed T1 with a `KaminoReserve` source. Its reserve has
+/// rate 1.05 (1,050,000 USDC over 1,000,000 kUSDC), and USDC is $1.00
+/// (`USDC_FEED` at `price_account(reserve)`); both fresh now.
+pub fn listed_kusdc(env: &mut Env) -> KToken {
+    let mint = create_mint(env, 6);
+    let reserve = Pubkey::new_unique();
+    let source = PriceSource::KaminoReserve {
+        reserve,
+        underlying_feed_id: USDC_FEED,
+        underlying_decimals: 6,
+    };
+    register_token_with(env, mint, source, Tier::T1);
+    let k = KToken {
+        mint,
+        reserve,
+        fields: ReserveFields {
+            liquidity_mint: env.usdc,
+            decimals: 6,
+            available: 600_000_000_000,
+            borrowed_sf: 460_000_000_000u128 << 60,
+            protocol_fees_sf: 10_000_000_000u128 << 60,
+            collateral_mint: mint,
+            collateral_supply: 1_000_000_000_000,
+            ..Default::default()
+        },
+    };
+    refresh_kusdc(env, &k);
+    k
+}
+
+/// Re-write `k`'s reserve (refreshed at the current slot, not stale) and the
+/// USDC price ($1.00, conf 0) at the current clock.
+pub fn refresh_kusdc(env: &mut Env, k: &KToken) {
+    let fields = ReserveFields {
+        slot: env.svm.get_sysvar::<Clock>().slot,
+        ..k.fields
+    };
+    write_reserve(&mut env.svm, k.reserve, &fields);
+    let t = now(env);
+    set_price(
+        &mut env.svm,
+        price_account(&k.reserve),
+        &USDC_FEED,
+        100_000_000,
+        0,
+        -8,
+        t,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Switchboard On-Demand feeds
+// ---------------------------------------------------------------------------
+
+pub use v1_core::switchboard::{FeedFields, MAX_RESULT_AGE_SLOTS, SWITCHBOARD_ON_DEMAND};
+
+/// 10^18: Switchboard values are USD with 18 decimals.
+pub const SB_ONE: i128 = 1_000_000_000_000_000_000;
+
+/// A long-tail test token priced by a Switchboard pull feed.
+#[derive(Debug, Clone, Copy)]
+pub struct SbToken {
+    pub mint: Pubkey,
+    pub feed: Pubkey,
+    pub fields: FeedFields,
+}
+
+impl SbToken {
+    /// The registry source that matches the feed's job hash and queue.
+    pub fn source(&self) -> PriceSource {
+        PriceSource::Switchboard {
+            feed: self.feed,
+            feed_hash: self.fields.feed_hash,
+            queue: self.fields.queue,
+        }
+    }
+}
+
+/// Write a `PullFeedAccountData` account (real layout, owner = Switchboard On-Demand).
+pub fn write_feed(svm: &mut LiteSVM, address: Pubkey, fields: &FeedFields) {
+    let data = v1_core::switchboard::encode_feed(fields);
+    svm.set_account(
+        address,
+        Account {
+            lamports: svm.minimum_balance_for_rent_exemption(data.len()),
+            data,
+            owner: SWITCHBOARD_ON_DEMAND,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+/// A 9-dp memecoin listed `tier` with a `Switchboard` source at $0.05
+/// (std_dev 0, 3 samples), feed fresh now.
+pub fn listed_meme(env: &mut Env, tier: Tier) -> SbToken {
+    let mint = create_mint(env, 9);
+    let t = SbToken {
+        mint,
+        feed: Pubkey::new_unique(),
+        fields: FeedFields {
+            value: SB_ONE / 20,
+            std_dev: 0,
+            slot: 0,
+            min_slot: 0,
+            num_samples: v1_core::switchboard::MIN_SAMPLES,
+            max_staleness: 250,
+            feed_hash: [7; 32],
+            queue: Pubkey::new_unique(),
+        },
+    };
+    register_token_with(env, mint, t.source(), tier);
+    refresh_meme(env, &t);
+    t
+}
+
+/// Re-write `t`'s feed with its fields, all samples at the current slot.
+pub fn refresh_meme(env: &mut Env, t: &SbToken) {
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    let fields = FeedFields {
+        slot,
+        min_slot: slot,
+        ..t.fields
+    };
+    write_feed(&mut env.svm, t.feed, &fields);
+}
+
 /// Write SOL's price account: spot and ema in whole dollars, conf in cents.
 pub fn sol_price(env: &mut Env, sol: &Pubkey, spot: i64, conf_cents: u64, ema: i64) {
     let t = now(env);
@@ -907,10 +1162,14 @@ pub fn ix_exit_unpriced(env: &Env, f: &FundHandles, user: &Pubkey, shares: u64) 
     ix
 }
 
-/// `exit` with the exit accounts, then the NAV accounts (fresh fee price).
+/// `exit` with the exit accounts, the NAV accounts (fresh fee price) and
+/// the captain's Member PDA (first-loss burn).
 pub fn ix_exit(env: &Env, f: &FundHandles, user: &Pubkey, shares: u64) -> Instruction {
     let mut ix = ix_exit_unpriced(env, f, user, shares);
     ix.accounts.extend(nav_accounts(env, f));
+    let captain = read_fund(env, f).captain;
+    ix.accounts
+        .push(AccountMeta::new(member_pda(&f.fund, &captain), false));
     ix
 }
 
@@ -1147,7 +1406,7 @@ impl Trading {
     }
 }
 
-/// SOL (T1, 9 dp) and BONK (T2, 5 dp) listed, the mock venue in slot 0 with
+/// SOL (T1, 9 dp) and BONK (T2, 5 dp) listed, the mock venue approved, with
 /// deep pools of USDC, SOL and BONK, prices SOL $150 and BONK $0.00002, and a
 /// fund whose captain deposited 10,000 USDC (the captain keeps 10,000 more).
 pub fn trading_fund() -> Trading {
@@ -1156,7 +1415,7 @@ pub fn trading_fund() -> Trading {
     let bonk = create_mint(&mut env, 5);
     register_token(&mut env, sol, SOL_FEED, Tier::T1);
     register_token(&mut env, bonk, BONK_FEED, Tier::T2);
-    register_venue(&mut env, 0, mock_venue::ID);
+    register_venue(&mut env, mock_venue::ID);
     let usdc = env.usdc;
     setup_venue_pool(&mut env, &usdc, &sol, 1_000_000_000_000, 1_000_000_000_000);
     setup_venue_pool(&mut env, &bonk, &bonk, 1_000_000_000_000_000, 0);
@@ -1222,6 +1481,7 @@ pub fn trade_accounts(env: &Env, f: &FundHandles, a: &SwapArgs) -> v1_core::acco
         fund: f.fund,
         policy: f.policy,
         venue_program: a.venue,
+        venue_entry: venue_pda(&a.venue),
         input_mint: a.input,
         output_mint: a.output,
         input_entry: token_pda(&a.input),
@@ -1245,17 +1505,43 @@ pub fn venue_data(a: &SwapArgs) -> Vec<u8> {
     .data()
 }
 
-/// Remaining accounts of a trade: NAV accounts, then `[output price]` when the
-/// output is new to the fund, then the mock venue's accounts (fund vaults as
-/// user_in / user_out).
+/// Remaining accounts of a trade: NAV accounts, then `[price_a, price_b]` of the output when the
+/// output is new to the fund, then the T3 accounts for a T3 trade (`t3_accounts`),
+/// then the mock venue's accounts (fund vaults as user_in / user_out).
 pub fn trade_remaining(env: &Env, f: &FundHandles, a: &SwapArgs) -> Vec<AccountMeta> {
     let mut metas = nav_accounts(env, f);
     let fund: v1_core::state::Fund = read_account(&env.svm, &f.fund);
-    if !fund.holdings[..fund.holdings_len as usize].contains(&a.output) {
-        metas.push(AccountMeta::new_readonly(price_account(&a.output), false));
+    let held = &fund.holdings[..fund.holdings_len as usize];
+    if !held.contains(&a.output) {
+        let [pa, pb] = price_accounts(env, &a.output);
+        metas.push(AccountMeta::new_readonly(pa, false));
+        metas.push(AccountMeta::new_readonly(pb, false));
+    }
+    let based = |mint: &Pubkey| {
+        held.iter()
+            .position(|m| m == mint)
+            .is_some_and(|i| fund.t3_basis_usd[i] > 0)
+    };
+    let t3_buy = based(&a.output)
+        || env.svm.get_account(&token_pda(&a.output)).is_some_and(|e| {
+            TokenEntry::try_deserialize(&mut &e.data[..]).unwrap().tier == Tier::T3
+        });
+    let t3_sell = based(&a.input);
+    if t3_buy || t3_sell {
+        metas.extend(t3_accounts(f, &fund.captain));
     }
     metas.extend(venue_accounts(env, f, a));
     metas
+}
+
+/// The T3 accounts of a trade: `[captain_member, captain_shares, share_mint, Token-2022]`.
+pub fn t3_accounts(f: &FundHandles, captain: &Pubkey) -> Vec<AccountMeta> {
+    vec![
+        AccountMeta::new(member_pda(&f.fund, captain), false),
+        AccountMeta::new(share_ata(f, captain), false),
+        AccountMeta::new(f.share_mint, false),
+        AccountMeta::new_readonly(TOKEN_2022, false),
+    ]
 }
 
 /// The mock venue's accounts for `a` (10, in `mock_venue::accounts::Swap` order).
@@ -1307,7 +1593,17 @@ pub fn ix_swap(
         },
     );
     ix.accounts.extend(trade_remaining(env, f, a));
+    writable_output_entry(env, a, &mut ix);
     ix
+}
+
+/// A new Switchboard output stores its first mark in its entry: make the
+/// `output_entry` of the trade writable for a Switchboard token.
+pub fn writable_output_entry(env: &Env, a: &SwapArgs, ix: &mut Instruction) {
+    let want = entry_meta(env, &a.output);
+    for m in ix.accounts.iter_mut().filter(|m| m.pubkey == want.pubkey) {
+        m.is_writable |= want.is_writable;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1334,6 +1630,7 @@ pub fn ix_propose(
             policy: f.policy,
             proposal: proposal_pda(&f.fund, id),
             venue_program: a.venue,
+            venue_entry: venue_pda(&a.venue),
             input_mint: a.input,
             output_mint: a.output,
             input_entry: token_pda(&a.input),
@@ -1386,6 +1683,7 @@ pub fn ix_execute_proposal(
         v1_core::instruction::ExecuteProposal { venue_data: data },
     );
     ix.accounts.extend(trade_remaining(env, f, a));
+    writable_output_entry(env, a, &mut ix);
     ix
 }
 
@@ -1487,4 +1785,56 @@ pub fn ix_poke_nav(env: &Env, f: &FundHandles) -> Instruction {
     );
     ix.accounts.extend(nav_accounts(env, f));
     ix
+}
+
+/// Send `poke_nav` for the fund's current holdings, paid by `payer`.
+#[allow(clippy::result_large_err)] // LiteSVM's own error type.
+pub fn poke(
+    env: &mut Env,
+    f: &FundHandles,
+    payer: &Keypair,
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let ix = ix_poke_nav(env, f);
+    send(&mut env.svm, &[ix], &[payer])
+}
+
+/// `charge_annual_fee` for `member_owner`, paid by `payer`, with the NAV accounts.
+pub fn ix_annual_fee(
+    env: &Env,
+    f: &FundHandles,
+    member_owner: &Pubkey,
+    payer: &Pubkey,
+) -> Instruction {
+    let fund = read_fund(env, f);
+    let mut ix = v1_ix(
+        v1_core::accounts::ChargeAnnualFee {
+            payer: *payer,
+            config: config_pda(),
+            fund: f.fund,
+            policy: f.policy,
+            member: member_pda(&f.fund, member_owner),
+            share_mint: f.share_mint,
+            member_shares: share_ata(f, member_owner),
+            captain_shares: share_ata(f, &fund.captain),
+            share_token_program: TOKEN_2022,
+        },
+        v1_core::instruction::ChargeAnnualFee {},
+    );
+    ix.accounts.extend(nav_accounts(env, f));
+    ix
+}
+
+/// Poke once per interval until the recorded pps stops moving (it moves at
+/// most one step per interval). `refresh` re-publishes the fund's prices.
+pub fn settle_pps(env: &mut Env, f: &FundHandles, payer: &Keypair, refresh: impl Fn(&mut Env)) {
+    for _ in 0..64 {
+        let before = read_fund(env, f).last_price_per_share;
+        warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
+        refresh(env);
+        poke(env, f, payer).unwrap();
+        if read_fund(env, f).last_price_per_share == before {
+            return;
+        }
+    }
+    panic!("recorded pps did not settle");
 }

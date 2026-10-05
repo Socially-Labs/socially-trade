@@ -208,19 +208,68 @@ fn swap_rejects_token_program_even_if_allowlisted() {
     // A compromised admin lists the token program: the fund PDA must still
     // never sign a raw token instruction.
     let mut t = trading_fund();
-    register_venue(&mut t.env, 1, spl_token_interface::ID);
-    register_venue(&mut t.env, 2, v1_core::ID);
-    register_venue(&mut t.env, 3, anchor_spl::associated_token::ID);
+    register_venue(&mut t.env, spl_token_interface::ID);
+    register_venue(&mut t.env, v1_core::ID);
+    register_venue(&mut t.env, anchor_spl::associated_token::ID);
+    register_venue(&mut t.env, Pubkey::default());
     t.refresh_prices();
     let mut a = buy_sol(&t, 100 * USDC, 0);
     for venue in [
         spl_token_interface::ID,
         v1_core::ID,
         anchor_spl::associated_token::ID,
+        Pubkey::default(),
     ] {
         a.venue = venue;
         expect_err(t.swap(&a), ErrorCode::VenueNotAllowed);
     }
+}
+
+#[test]
+fn swap_rejects_inactive_venue() {
+    let mut t = trading_fund();
+    let a = buy_sol(&t, 150 * USDC, 990_000_000);
+    // A removal is queued: the venue stays usable until it is applied.
+    send(
+        &mut t.env.svm,
+        &[ix_queue_venue(&t.env.admin.pubkey(), mock_venue::ID, false)],
+        &[&t.env.admin],
+    )
+    .unwrap();
+    t.swap_fresh(&a).unwrap();
+    warp(&mut t.env.svm, ADMIN_TIMELOCK_SECS);
+    send(
+        &mut t.env.svm,
+        &[ix_apply_venue(mock_venue::ID)],
+        &[&t.env.admin],
+    )
+    .unwrap();
+    t.refresh_prices();
+    expect_err(t.swap_fresh(&a), ErrorCode::VenueNotAllowed);
+    // Approved again (also timelocked), it trades again.
+    set_venue(&mut t.env, mock_venue::ID, true);
+    t.refresh_prices();
+    t.swap_fresh(&a).unwrap();
+}
+
+#[test]
+fn swap_rejects_venue_entry_of_another_program() {
+    // The entry account must be the PDA of the venue program itself.
+    let mut t = trading_fund();
+    let mut a = buy_sol(&t, 100 * USDC, 0);
+    a.venue = Keypair::new().pubkey();
+    let mut ix = ix_swap(&t.env, &t.f, &t.cap.pubkey(), None, &a);
+    // An unapproved venue, with the approved mock venue's entry.
+    let entry = ix
+        .accounts
+        .iter_mut()
+        .find(|m| m.pubkey == venue_pda(&a.venue))
+        .unwrap();
+    entry.pubkey = venue_pda(&mock_venue::ID);
+    expect_err(
+        send(&mut t.env.svm, &[ix], &[&t.cap]),
+        ErrorCode::VenueNotAllowed,
+    );
 }
 
 #[test]
@@ -416,6 +465,9 @@ fn swap_breaker_uses_ema_and_size_uses_spot() {
     let mut t = trading_fund();
     t.swap_fresh(&buy_sol(&t, 900 * USDC, 5_940_000_000))
         .unwrap();
+    // Next interval (the recorded pps moves at most once per interval).
+    warp(&mut t.env.svm, MARK_INTERVAL_SLOTS as i64);
+    t.refresh_prices();
     // Spot $150 (trade size, price guard), EMA $50: EMA NAV = 9,100 + 6*50 = 9,400.
     let now_ts = now(&t.env);
     set_price_ema(
@@ -430,7 +482,8 @@ fn swap_breaker_uses_ema_and_size_uses_spot() {
         0,
     );
     t.swap_fresh(&buy_sol(&t, 150 * USDC, 990_000_000)).unwrap();
-    // After: USDC 8,950, SOL 7 -> EMA NAV 8,950 + 350 = 9,300 over 10,000 shares.
+    // After: USDC 8,950, SOL 7 -> EMA NAV 8,950 + 350 = 9,300 over 10,000
+    // shares: 0.93, inside one 10% step of 1.0.
     assert_eq!(fund(&t).last_price_per_share, 930_000);
 }
 
@@ -608,6 +661,45 @@ fn exit_returns_pro_rata_sol_and_usdc() {
         9_100 * USDC
     );
     assert_eq!(token_balance(&t.env.svm, &sol_vault(&t)), 6 * SOL);
+}
+
+#[test]
+fn ktoken_buy_sell_nav_and_exit_pro_rata() {
+    let mut t = trading_fund();
+    let m = funded_user(&mut t.env, 10_000 * USDC);
+    let k = listed_kusdc(&mut t.env);
+    let (usdc, kusdc) = (t.env.usdc, k.mint);
+    setup_venue_pool(&mut t.env, &usdc, &kusdc, 0, 1_000_000 * USDC);
+    t.refresh_prices();
+    refresh_kusdc(&mut t.env, &k);
+    deposit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap(); // NAV 20,000
+                                                           // "Deposit" 1,050 USDC into the reserve: 1,000 kUSDC at rate 1.05.
+                                                           // The guard prices the output through the rate: oracle 1,000 kUSDC.
+    let buy = |min_out| SwapArgs::new(usdc, kusdc, 1_050 * USDC, min_out, 20, 21);
+    expect_err(t.swap(&buy(979 * USDC)), ErrorCode::SlippageTooHigh);
+    t.swap(&buy(990 * USDC)).unwrap();
+    let k_vault = ata(&t.f.fund, &kusdc, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &k_vault), 1_000 * USDC);
+    assert_eq!(fund(&t).holdings[1], kusdc);
+    let ix = ix_poke_nav(&t.env, &t.f);
+    send(&mut t.env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Sell 100 kUSDC for 105 USDC: the input is valued through the rate.
+    t.swap(&SwapArgs::new(kusdc, usdc, 100 * USDC, 102 * USDC, 21, 20))
+        .unwrap();
+    assert_eq!(token_balance(&t.env.svm, &k_vault), 900 * USDC);
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Exit half the shares: half of each vault.
+    let create = ix_create_ata(&m.pubkey(), &m.pubkey(), &kusdc, &spl_token_interface::ID);
+    send(&mut t.env.svm, &[create], &[&m]).unwrap();
+    exit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap();
+    let m_k = ata(&m.pubkey(), &kusdc, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &m_k), 450 * USDC);
+    assert_eq!(token_balance(&t.env.svm, &k_vault), 450 * USDC);
+    assert_eq!(
+        token_balance(&t.env.svm, &usdc_ata(&t.env, &m.pubkey())),
+        9_527_500_000
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1052,4 +1144,102 @@ fn exit_matches_triples_by_mint_after_reorder() {
     assert_eq!(user(&t.sol), sol_v / 2);
     assert_eq!(user(&t.bonk), bonk_v / 2);
     assert_eq!(user(&t.env.usdc), usdc_v / 2);
+}
+
+// ---------------------------------------------------------------------------
+// Price sources
+// ---------------------------------------------------------------------------
+
+#[test]
+fn swap_rejects_t3_buy_in_a_fund_that_is_not_open_seas() {
+    let mut t = trading_fund();
+    assert!(!fund(&t).open_seas);
+    let m = create_mint(&mut t.env, 6);
+    register_token(&mut t.env, m, [40; 32], Tier::T3);
+    t.refresh_prices();
+    set_usd_price(&mut t.env, &m, &[40; 32], 100_000_000);
+    let usdc = t.env.usdc;
+    expect_err(
+        t.swap(&SwapArgs::new(usdc, m, USDC, 0, 1, 1)),
+        ErrorCode::NotOpenSeas,
+    );
+}
+
+#[test]
+fn switchboard_token_buy_sell_nav_and_exit_pro_rata() {
+    const MEME: u64 = 1_000_000_000; // 9 dp
+    let mut t = trading_fund();
+    let m = funded_user(&mut t.env, 10_000 * USDC);
+    let meme = listed_meme(&mut t.env, Tier::T1); // $0.05
+    let usdc = t.env.usdc;
+    setup_venue_pool(&mut t.env, &usdc, &meme.mint, 0, 1_000_000 * MEME);
+    t.refresh_prices();
+    refresh_meme(&mut t.env, &meme);
+    deposit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap(); // NAV 20,000
+                                                           // Buy 500 USDC -> 10,000 MEME (20,000 base units per USDC base unit).
+                                                           // The guard prices the output from the feed: oracle 10,000 MEME.
+    let buy = |min_out| SwapArgs::new(usdc, meme.mint, 500 * USDC, min_out, 20_000, 1);
+    expect_err(t.swap(&buy(9_899 * MEME)), ErrorCode::SlippageTooHigh);
+    t.swap(&buy(9_900 * MEME)).unwrap();
+    let vault = ata(&t.f.fund, &meme.mint, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &vault), 10_000 * MEME);
+    assert_eq!(fund(&t).holdings[1], meme.mint);
+    let ix = ix_poke_nav(&t.env, &t.f);
+    send(&mut t.env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Sell 1,000 MEME for 50 USDC: the input is valued from the feed.
+    t.swap(&SwapArgs::new(
+        meme.mint,
+        usdc,
+        1_000 * MEME,
+        49 * USDC,
+        1,
+        20_000,
+    ))
+    .unwrap();
+    assert_eq!(token_balance(&t.env.svm, &vault), 9_000 * MEME);
+    assert_eq!(fund(&t).last_price_per_share, 1_000_000);
+    // Exit half the shares: half of each vault.
+    let create = ix_create_ata(
+        &m.pubkey(),
+        &m.pubkey(),
+        &meme.mint,
+        &spl_token_interface::ID,
+    );
+    send(&mut t.env.svm, &[create], &[&m]).unwrap();
+    exit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap();
+    let m_meme = ata(&m.pubkey(), &meme.mint, &spl_token_interface::ID);
+    assert_eq!(token_balance(&t.env.svm, &m_meme), 4_500 * MEME);
+    assert_eq!(token_balance(&t.env.svm, &vault), 4_500 * MEME);
+    assert_eq!(
+        token_balance(&t.env.svm, &usdc_ata(&t.env, &m.pubkey())),
+        9_775 * USDC
+    );
+}
+
+#[test]
+fn swap_new_output_takes_two_price_accounts() {
+    let mut t = trading_fund();
+    assert_eq!(fund(&t).holdings_len, 1);
+    let a = buy_sol(&t, 300 * USDC, 1_980_000_000);
+    let mut ix = ix_swap(&t.env, &t.f, &t.cap.pubkey(), None, &a);
+    // ... NAV, then SOL's [price_a, price_b], then the 10 venue accounts.
+    let n = ix.accounts.len();
+    assert_eq!(ix.accounts[n - 12].pubkey, price_account(&t.sol));
+    ix.accounts[n - 11].pubkey = Pubkey::new_unique(); // not read for Pyth
+    t.reset_budget();
+    send(&mut t.env.svm, &[ix], &[&t.cap]).unwrap();
+    assert_eq!(fund(&t).holdings_len, 2);
+}
+
+#[test]
+fn new_output_with_zero_amount_out_is_rejected() {
+    let mut t = trading_fund();
+    t.swap_fresh(&buy_sol(&t, 300 * USDC, 1_980_000_000))
+        .unwrap();
+    // 1 SOL unit is worth 0 USDC units, so min_out 0 passes the price guard;
+    // the venue pays 0 BONK. BONK must not become a holding.
+    let a = SwapArgs::new(t.sol, t.bonk, 1, 0, 0, 1);
+    expect_err(t.swap_fresh(&a), ErrorCode::OutputNotReceived);
+    assert_eq!(fund(&t).holdings_len, 2);
 }

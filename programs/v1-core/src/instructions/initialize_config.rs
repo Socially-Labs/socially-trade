@@ -35,10 +35,6 @@ pub fn handler(ctx: Context<InitializeConfig>) -> Result<()> {
         admin: ctx.accounts.admin.key(),
         usdc_mint: ctx.accounts.usdc_mint.key(),
         paused: false,
-        venues: Default::default(),
-        pending_venue: Pubkey::default(),
-        pending_venue_slot: 0,
-        pending_venue_eta: 0,
         bump: ctx.bumps.config,
     });
     Ok(())

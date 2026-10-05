@@ -7,8 +7,7 @@ use {
         constants::*,
         errors::ErrorCode,
         events::{PolicyApplied, PolicyQueued},
-        math,
-        nav::{self, ValuationMode},
+        nav,
         state::{Config, Fund, Policy, PolicyParams},
     },
     anchor_lang::prelude::*,
@@ -91,7 +90,7 @@ pub struct PokeNav<'info> {
     pub policy: Box<Account<'info, Policy>>,
 }
 
-/// Recompute the EMA pps from the NAV remaining accounts and move the breaker.
+/// Recompute the pps from the NAV remaining accounts and move the breaker.
 pub fn poke_nav(ctx: Context<PokeNav>) -> Result<()> {
     let fund_key = ctx.accounts.fund.key();
     let now = Clock::get()?.unix_timestamp;
@@ -103,7 +102,11 @@ pub fn poke_nav(ctx: Context<PokeNav>) -> Result<()> {
         now,
         ctx.program_id,
     )?;
-    let nav_ema = priced.valuation(ValuationMode::Ema)?.nav;
-    let pps = math::price_per_share(nav_ema, ctx.accounts.fund.total_shares)?;
-    nav::update_breaker(&mut ctx.accounts.fund, &fund_key, &ctx.accounts.policy, pps)
+    let breaker = priced.breaker(ctx.accounts.fund.total_shares)?;
+    nav::update_breaker(
+        &mut ctx.accounts.fund,
+        &fund_key,
+        &ctx.accounts.policy,
+        breaker,
+    )
 }

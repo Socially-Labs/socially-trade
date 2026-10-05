@@ -16,6 +16,7 @@ pub enum ErrorCode {
     NothingPending,
     #[msg("Venue is not on the allowlist")]
     VenueNotAllowed,
+    /// Unused since the venue registry. Kept so later codes do not move.
     #[msg("Venue slot is already taken")]
     VenueSlotTaken,
     #[msg("Token is not listed")]
@@ -102,4 +103,33 @@ pub enum ErrorCode {
     VaultResized,
     #[msg("Exit accounts list the same holding twice")]
     DuplicateHolding,
+    /// Unused since every price source is supported. Kept so later codes do not move.
+    #[msg("Price source not supported yet")]
+    PriceSourceUnsupported,
+    #[msg("Kamino reserve is not a klend Reserve account")]
+    ReserveInvalid,
+    #[msg("Kamino reserve does not match the token entry")]
+    ReserveMismatch,
+    #[msg("Switchboard feed is not a PullFeedAccountData account")]
+    FeedInvalid,
+    #[msg("Switchboard feed does not match the token entry")]
+    FeedMismatch,
+    #[msg("Switchboard result has too few oracle samples")]
+    FeedTooFewSamples,
+    #[msg("T3 buys need an Open Seas fund")]
+    NotOpenSeas,
+    #[msg("T3 buys exceed the captain's stake")]
+    T3CapExceeded,
+    #[msg("T3 buy into a holding that has units without a cost basis")]
+    T3UnbasedHolding,
+    #[msg("Switchboard feed job hash or queue differs from the token entry")]
+    FeedConfigChanged,
+    #[msg("Deposit mints fewer shares than min_shares")]
+    SlippageExceeded,
+    #[msg("A sale of a T3 holding must output USDC or a Pyth or Kamino priced token")]
+    T3ExitRouteNotAllowed,
+    #[msg("A T3 buy must spend USDC or an unbased Pyth or Kamino priced holding")]
+    T3EntryRouteNotAllowed,
+    #[msg("A priced crew exit with a T3 loss needs the captain's Member account after the NAV accounts")]
+    CaptainMemberMissing,
 }

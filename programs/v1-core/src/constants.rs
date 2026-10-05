@@ -1,7 +1,6 @@
 //! Protocol constants. Amounts are USDC base units (6 dp).
 
 pub const MAX_HOLDINGS: usize = 8;
-pub const MAX_VENUES: usize = 4;
 /// Max venue instruction data for `swap` (fits a Jupiter route).
 pub const MAX_VENUE_DATA: usize = 1024;
 pub const CAPTAIN_MIN_DEPOSIT: u64 = 250_000_000;
@@ -35,6 +34,21 @@ pub const MAX_VOTE_WINDOW_SECS: u32 = 604_800;
 // Tier caps after every buy, in bps of NAV.
 pub const T2_TOKEN_CAP_BPS: u16 = 2500;
 pub const T2_TOTAL_CAP_BPS: u16 = 5000;
+/// Length of one T3 buy window (30 days). The cap uses two windows, see `swap`.
+pub const T3_WINDOW_SECS: i64 = 2_592_000;
+
+// Slow mark price of a Switchboard token (see `nav`): it moves toward the
+// feed value at most once per interval, by at most the step.
+pub const MARK_INTERVAL_SLOTS: u64 = 150;
+pub const MARK_MAX_STEP_BPS: u16 = 1000;
+/// After the marks are seeded (first read, a re-listing, or a reseed of idle
+/// marks), NAV reads do not
+/// record the peak or `last_price_per_share` for this many slots (about 10 min).
+pub const MARK_WARMUP_SLOTS: u64 = 1500;
+/// A deposit mark that has not stepped for this many slots (10 intervals,
+/// about 10 min) is stale: the next read reseeds both marks at the feed value
+/// and starts a new warmup.
+pub const MARK_MAX_IDLE_SLOTS: u64 = 10 * MARK_INTERVAL_SLOTS;
 
 // Pyth.
 pub const PYTH_RECEIVER_ID: anchor_lang::prelude::Pubkey =
@@ -45,6 +59,7 @@ pub const MAX_CONF_BPS: u64 = 200;
 // PDA seeds.
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const TOKEN_SEED: &[u8] = b"token";
+pub const VENUE_SEED: &[u8] = b"venue";
 pub const FUND_SEED: &[u8] = b"fund";
 pub const SHARES_SEED: &[u8] = b"shares";
 pub const MEMBER_SEED: &[u8] = b"member";

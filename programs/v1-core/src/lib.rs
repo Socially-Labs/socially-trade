@@ -4,15 +4,17 @@ pub mod constants;
 pub mod errors;
 pub mod events;
 pub mod instructions;
+pub mod kamino;
 pub mod math;
 pub mod nav;
 pub mod pyth;
 pub mod state;
+pub mod switchboard;
 
 use {
     anchor_lang::prelude::*,
     instructions::*,
-    state::{PolicyParams, Tier},
+    state::{PolicyParams, PriceSource, Tier},
 };
 
 declare_id!("HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi");
@@ -29,11 +31,11 @@ pub mod v1_core {
     /// Admin: queue a token listing or change (7-day timelock).
     pub fn queue_token(
         ctx: Context<QueueToken>,
-        feed_id: [u8; 32],
+        price_source: PriceSource,
         tier: Tier,
         decimals: u8,
     ) -> Result<()> {
-        instructions::admin::queue_token(ctx, feed_id, tier, decimals)
+        instructions::admin::queue_token(ctx, price_source, tier, decimals)
     }
 
     /// Anyone: apply a queued token change after the timelock.
@@ -41,9 +43,9 @@ pub mod v1_core {
         instructions::admin::apply_token(ctx)
     }
 
-    /// Admin: queue a venue for a slot, or a removal (7-day timelock).
-    pub fn queue_venue(ctx: Context<QueueVenue>, slot: u8, venue: Pubkey) -> Result<()> {
-        instructions::admin::queue_venue(ctx, slot, venue)
+    /// Admin: queue a venue approval (`active`) or removal (7-day timelock).
+    pub fn queue_venue(ctx: Context<QueueVenue>, active: bool) -> Result<()> {
+        instructions::admin::queue_venue(ctx, active)
     }
 
     /// Anyone: apply the queued venue change after the timelock.
@@ -57,13 +59,20 @@ pub mod v1_core {
     }
 
     /// Captain: open a fund with a USDC stake; mints 1:1 non-transferable shares.
-    pub fn create_fund(ctx: Context<CreateFund>, fund_id: u64, deposit: u64) -> Result<()> {
-        instructions::create_fund::create_fund(ctx, fund_id, deposit)
+    /// `open_seas` lets the fund buy T3 tokens (see `swap`).
+    pub fn create_fund(
+        ctx: Context<CreateFund>,
+        fund_id: u64,
+        deposit: u64,
+        open_seas: bool,
+    ) -> Result<()> {
+        instructions::create_fund::create_fund(ctx, fund_id, deposit, open_seas)
     }
 
-    /// Anyone: buy shares at NAV with USDC. Remaining accounts: NAV layout (see `nav`).
-    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
-        instructions::deposit::deposit(ctx, amount)
+    /// Anyone: buy shares at NAV with USDC; fewer than `min_shares` fails.
+    /// Remaining accounts: NAV layout (see `nav`).
+    pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()> {
+        instructions::deposit::deposit(ctx, amount, min_shares)
     }
 
     /// Member: leave with a pro-rata slice of every holding, in kind. Never

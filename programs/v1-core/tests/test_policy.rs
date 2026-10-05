@@ -216,7 +216,9 @@ fn half_sol_fund() -> Trading {
     sol_price(&mut t.env, &sol, 100, 0, 100);
     inject_holding(&mut t.env, &t.f, sol, 100 * SOL);
     let anyone = funded(&mut t.env.svm);
-    poke(&mut t.env, &t.f, &anyone).unwrap();
+    settle_pps(&mut t.env, &t.f, &anyone, |env| {
+        sol_price(env, &sol, 100, 0, 100)
+    });
     let fd = read_fund(&t.env, &t.f);
     assert_eq!(
         (fd.last_price_per_share, fd.peak_price_per_share),
@@ -248,7 +250,9 @@ fn breaker_freezes_after_30pct_drop() {
     let res = poke(&mut t.env, &t.f, &anyone).unwrap();
     let fd = read_fund(&t.env, &t.f);
     assert!(fd.frozen);
-    assert_eq!(fd.last_price_per_share, 1_300_000);
+    // The trip check reads the fresh pps 1.3; the recorded pps already moved
+    // in this interval (the fixture), so it stays.
+    assert_eq!(fd.last_price_per_share, 2_000_000);
     assert_eq!(fd.peak_price_per_share, 2_000_000);
     let ev: Vec<BreakerChanged> = decode_events(&res);
     assert_eq!(ev.len(), 1);
@@ -295,7 +299,8 @@ fn breaker_clears_on_recovery() {
     let res = poke(&mut t.env, &t.f, &anyone).unwrap();
     let fd = read_fund(&t.env, &t.f);
     assert!(!fd.frozen);
-    assert_eq!(fd.last_price_per_share, 1_400_000);
+    // Recorded pps: same interval as the fixture's last move, so it stays.
+    assert_eq!(fd.last_price_per_share, 2_000_000);
     assert_eq!(fd.peak_price_per_share, 2_000_000, "peak only rises");
     let ev: Vec<BreakerChanged> = decode_events(&res);
     assert_eq!(ev.len(), 1);
@@ -330,15 +335,19 @@ fn exit_works_when_paused_frozen_and_stale() {
     deposit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap();
     sol_price(&mut t.env, &sol, 100, 0, 100);
     inject_holding(&mut t.env, &t.f, sol, 200 * SOL);
-    poke(&mut t.env, &t.f, &anyone).unwrap();
+    settle_pps(&mut t.env, &t.f, &anyone, |env| {
+        sol_price(env, &sol, 100, 0, 100)
+    });
     assert_eq!(read_fund(&t.env, &t.f).last_price_per_share, 2_000_000);
 
-    // EMA crash to $30: 20,000 + 6,000 = 26,000 / 20,000 -> pps 1.3, frozen.
+    // Next interval, EMA crash to $30: 20,000 + 6,000 = 26,000 / 20,000 -> pps 1.3,
+    // frozen. The recorded pps moves one step: 1.8.
+    warp(&mut t.env.svm, MARK_INTERVAL_SLOTS as i64);
     sol_price(&mut t.env, &sol, 30, 0, 30);
     poke(&mut t.env, &t.f, &anyone).unwrap();
     let fd = read_fund(&t.env, &t.f);
     assert!(fd.frozen);
-    assert_eq!(fd.last_price_per_share, 1_300_000);
+    assert_eq!(fd.last_price_per_share, 1_800_000);
 
     // The member's SOL account, then pause and let every price go stale.
     let ix = ix_create_ata(&m.pubkey(), &m.pubkey(), &sol, &spl_token_interface::ID);
@@ -351,9 +360,9 @@ fn exit_works_when_paused_frozen_and_stale() {
 
     exit(&mut t.env, &t.f, &m, 10_000 * USDC).unwrap();
 
-    // Fee at the last pps 1.3: value 13,000, hwm 10,000 -> 300 USDC
-    // = floor(300 / 1.3) = 230.769230 shares to the captain.
-    let fee_shares = 230_769_230;
+    // Fee at the last pps 1.8 (one step down from 2.0): value 18,000, hwm
+    // 10,000 -> 800 USDC = floor(800 / 1.8) = 444.444444 shares to the captain.
+    let fee_shares = 444_444_444;
     assert_eq!(
         token_balance(&t.env.svm, &share_ata(&t.f, &t.cap.pubkey())),
         10_000 * USDC + fee_shares
@@ -366,11 +375,11 @@ fn exit_works_when_paused_frozen_and_stale() {
             &t.env.svm,
             &ata(&m.pubkey(), &sol, &spl_token_interface::ID)
         ),
-        97_692_307_700, // floor(200 SOL * q / 20,000 shares)
+        95_555_555_560, // floor(200 SOL * q / 20,000 shares)
     );
     assert_eq!(token_balance(&t.env.svm, &share_ata(&t.f, &m.pubkey())), 0);
     let fd = read_fund(&t.env, &t.f);
     assert!(fd.frozen, "the stale exit does not move the breaker");
-    assert_eq!(fd.last_price_per_share, 1_300_000);
+    assert_eq!(fd.last_price_per_share, 1_800_000);
     assert_eq!(fd.total_shares, 10_000 * USDC + fee_shares);
 }

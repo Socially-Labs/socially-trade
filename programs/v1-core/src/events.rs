@@ -92,3 +92,17 @@ pub struct CaptainLog {
     pub reason_hash: [u8; 32],
     pub slot: u64,
 }
+
+/// Captain shares were burned for a T3 loss, at most the captain's balance.
+/// A T3 sale: `loss_usd` is the loss realized against the cost basis, the
+/// shares are worth it at the lower of the recorded and the fresh at-cost
+/// price per share (the recorded one when a holding is unpriced). A crew
+/// exit: `loss_usd` is the exiter's part of the unrealized T3 loss, the
+/// shares are worth it at the recorded price per share less the loss, and
+/// the exiter redeemed them.
+#[event]
+pub struct FirstLossApplied {
+    pub fund: Pubkey,
+    pub loss_usd: u64,
+    pub captain_shares_burned: u64,
+}

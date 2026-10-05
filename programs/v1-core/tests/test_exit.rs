@@ -50,10 +50,9 @@ fn exit_charges_fee_on_new_profit_only() {
     assert_eq!(token_balance(&env.svm, &f.usdc_vault), 610_000_000);
     let fund = read_fund(&env, &f);
     assert_eq!(fund.total_shares, 305_000_000);
-    assert_eq!(
-        fund.last_price_per_share, 2_000_000,
-        "breaker saw fresh EMA pps"
-    );
+    // The fresh EMA pps is 2.0, but the fund was created in this interval:
+    // the recorded pps moves at most one step per interval, so it waits.
+    assert_eq!(fund.last_price_per_share, 1_000_000);
     assert_eq!(
         share_mint_state(&env.svm, &f.share_mint).base.supply,
         305_000_000
@@ -178,6 +177,8 @@ fn sol_fund_after_rally() -> (Env, Keypair, Keypair, FundHandles, Pubkey) {
     let (mut env, cap, m, f) = fund_with_member();
     let sol = listed_sol(&mut env, 150);
     inject_holding(&mut env, &f, sol, 2_000_000_000);
+    // The recorded pps reaches 2.0 one step per interval.
+    settle_pps(&mut env, &f, &m, |env| sol_price(env, &sol, 150, 0, 150));
     deposit(&mut env, &f, &m, 200_000_000).unwrap();
     assert_eq!(shares_of(&env, &f, &m.pubkey()), 100_000_000);
     let token = spl_token_interface::ID;
@@ -212,27 +213,32 @@ fn exit_fee_uses_upper_bound_pps_and_breaker_uses_ema() {
     let m_sol = ata(&m.pubkey(), &sol, &spl_token_interface::ID);
     assert_eq!(token_balance(&env.svm, &m_sol), 486_166_370);
     let fund = read_fund(&env, &f);
-    assert_eq!(fund.last_price_per_share, 2_750_000, "EMA NAV 1100 / 400");
+    // EMA NAV 1100 / 400 = 2.75, but the recorded pps already moved in this
+    // interval (the fixture's last poke): it waits for the next interval.
+    assert_eq!(fund.last_price_per_share, 2_000_000);
     assert_eq!(fund.total_shares, 302_766_726);
 }
 
 #[test]
 fn exit_fee_after_price_drop_uses_last_pps() {
     let (mut env, cap, m, f, sol) = sol_fund_after_rally();
-    // Rally recorded: SOL $300, conf 0. The captain's deposit records the EMA
-    // pps 1100 / 400 = 2.75 (and buys floor(11 * 400 / 1100) = 4 shares).
-    sol_price(&mut env, &sol, 300, 0, 300);
+    // Rally recorded: SOL $300, conf 0. The recorded pps reaches the EMA
+    // pps 1100 / 400 = 2.75 one step per interval; the captain's deposit
+    // buys floor(11 * 400 / 1100) = 4 shares.
+    settle_pps(&mut env, &f, &m, |env| sol_price(env, &sol, 300, 0, 300));
     deposit(&mut env, &f, &cap, 11_000_000).unwrap();
     assert_eq!(read_fund(&env, &f).last_price_per_share, 2_750_000);
     assert_eq!(shares_of(&env, &f, &cap.pubkey()), 304_000_000);
-    // Drop: SOL back to $150. Fresh upper pps (511 + 300) / 404 = 2.007 < 2.75.
+    // Next interval, drop: SOL back to $150. Fresh upper pps (511 + 300) / 404 = 2.007 < 2.75.
+    warp(&mut env.svm, MARK_INTERVAL_SLOTS as i64);
     sol_price(&mut env, &sol, 150, 0, 150);
     let res = exit(&mut env, &f, &m, 100_000_000).unwrap();
     assert_eq!(events(&res), 2, "FeeCharged + Exited");
     // Fee at 2.75: value 275, hwm 200 -> 7.5 USDC = floor(7.5 / 2.75) = 2.727272 shares.
     assert_eq!(shares_of(&env, &f, &cap.pubkey()), 306_727_272);
-    // The breaker still moves on the fresh EMA pps: 811 / 404 = 2.007425.
-    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_007_425);
+    // The recorded pps moves toward the fresh EMA pps (811 / 404 = 2.007425)
+    // by one step: 2.75 - 10% = 2.475.
+    assert_eq!(read_fund(&env, &f).last_price_per_share, 2_475_000);
 }
 
 #[test]
@@ -255,12 +261,42 @@ fn exit_with_stale_price_uses_last_pps() {
 fn exit_with_invalid_nav_account_uses_last_pps() {
     let (mut env, cap, m, f, sol) = sol_fund_after_rally();
     let mut ix = ix_exit(&env, &f, &m.pubkey(), 100_000_000);
-    // NAV block starts after 2 holdings * 3 exit accounts; SOL's price is its 6th account.
+    // NAV block starts after 2 holdings * 3 exit accounts; SOL's price_a is its 7th account.
     let nav = 10 + 2 * 3;
-    assert_eq!(ix.accounts[nav + 5].pubkey, price_account(&sol));
-    ix.accounts[nav + 5].pubkey = f.usdc_vault; // not a Pyth account
+    assert_eq!(ix.accounts[nav + 6].pubkey, price_account(&sol));
+    ix.accounts[nav + 6].pubkey = f.usdc_vault; // not a Pyth account
     send(&mut env.svm, &[ix], &[&m]).unwrap();
     assert_paid_at_last_pps(&env, &cap, &m, &f, &sol);
+}
+
+#[test]
+fn exit_with_stale_kamino_reserve_uses_last_pps_and_pays_ktokens() {
+    let (mut env, _cap, m, f) = fund_300_100();
+    let k = listed_kusdc(&mut env);
+    // 400 kUSDC = 420 USDC: a fresh NAV would be 820 for 400 shares (pps 2.05,
+    // above the member's HWM, so a fee would be due).
+    inject_holding(&mut env, &f, k.mint, 400_000_000);
+    let slot = env.svm.get_sysvar::<Clock>().slot;
+    let stale = ReserveFields {
+        slot,
+        stale: true,
+        ..k.fields
+    };
+    write_reserve(&mut env.svm, k.reserve, &stale);
+    let pps_before = read_fund(&env, &f).last_price_per_share;
+    let create = ix_create_ata(&m.pubkey(), &m.pubkey(), &k.mint, &spl_token_interface::ID);
+    send(&mut env.svm, &[create], &[&m]).unwrap();
+    // The NAV accounts include the stale reserve: NAV fails, exit uses last pps.
+    let ix = ix_exit(&env, &f, &m.pubkey(), 100_000_000);
+    assert!(ix.accounts.iter().any(|a| a.pubkey == k.reserve));
+    let res = send(&mut env.svm, &[ix], &[&m]).unwrap();
+    assert_eq!(events(&res), 1, "Exited only, no fee at the last pps");
+    assert_eq!(read_fund(&env, &f).last_price_per_share, pps_before);
+    // 100 of 400 shares: a quarter of each vault.
+    let m_k = ata(&m.pubkey(), &k.mint, &spl_token_interface::ID);
+    assert_eq!(token_balance(&env.svm, &m_k), 100_000_000);
+    assert_eq!(usdc_of(&env, &m.pubkey()), 1_000_000_000);
+    assert_eq!(shares_of(&env, &f, &m.pubkey()), 0);
 }
 
 // ---------------------------------------------------------------------------

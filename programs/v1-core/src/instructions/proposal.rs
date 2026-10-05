@@ -56,6 +56,8 @@ pub struct ProposeTrade<'info> {
     pub proposal: Box<Account<'info, Proposal>>,
     /// CHECK: must be an allowed venue (`venue_allowed`).
     pub venue_program: UncheckedAccount<'info>,
+    /// CHECK: the active VenueEntry PDA of `venue_program` (`venue_allowed`).
+    pub venue_entry: UncheckedAccount<'info>,
     /// CHECK: only the key is used; it must be listed (via `input_entry`).
     pub input_mint: UncheckedAccount<'info>,
     /// CHECK: only the key is used; it must be listed (via `output_entry`).
@@ -90,10 +92,7 @@ pub fn propose_trade<'info>(
     let (input, output) = (a.input_mint.key(), a.output_mint.key());
     require_keys_neq!(input, output, ErrorCode::SameMint);
     require!(amount_in > 0, ErrorCode::ZeroAmount);
-    require!(
-        venue_allowed(&a.config, &a.venue_program.key()),
-        ErrorCode::VenueNotAllowed
-    );
+    venue_allowed(&a.venue_entry, &a.venue_program.key())?;
     listed(&a.input_entry, &input, &a.config)?;
     listed(&a.output_entry, &output, &a.config)?;
 

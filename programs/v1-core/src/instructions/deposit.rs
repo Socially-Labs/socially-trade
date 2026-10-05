@@ -1,4 +1,5 @@
 //! Anyone buys shares at NAV with USDC. Remaining accounts: the NAV layout (see `nav`).
+//! `min_shares` is the depositor's slippage limit: fewer shares fail the call.
 
 use {
     crate::{
@@ -71,7 +72,7 @@ pub struct Deposit<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+pub fn deposit(ctx: Context<Deposit>, amount: u64, min_shares: u64) -> Result<()> {
     require!(amount > 0, ErrorCode::ZeroAmount);
     let now = Clock::get()?.unix_timestamp;
     let a = &ctx.accounts;
@@ -89,13 +90,18 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         now,
         ctx.program_id,
     )?;
-    // Shares from the upper-bound NAV (favor the fund); breaker from the EMA NAV.
-    let nav_upper = priced.valuation(ValuationMode::DepositUpperBound)?.nav;
+    // Shares at the higher of the upper-bound NAV (T3 holdings at no less
+    // than cost) and the recorded pps (it moves one step per interval), so a
+    // dump cannot cheapen shares; favor the fund.
+    let nav_upper = priced.nav_at_least_cost(ValuationMode::DepositUpperBound)?;
     require!(nav_upper > 0, ErrorCode::NavZero);
-    let nav_ema = priced.valuation(ValuationMode::Ema)?.nav;
-    let pps_paid = math::price_per_share(nav_upper, total_before)?;
-    let pps_ema = math::price_per_share(nav_ema, total_before)?;
-    let shares = math::shares_for_deposit(amount, total_before, nav_upper)?;
+    let nav_recorded =
+        (total_before as u128 * a.fund.last_price_per_share as u128).div_ceil(math::ONE);
+    let nav_paid = nav_upper.max(nav_recorded);
+    let breaker = priced.breaker(total_before)?;
+    let pps_paid = math::price_per_share(nav_paid, total_before)?;
+    let shares = math::shares_for_deposit(amount, total_before, nav_paid)?;
+    require!(shares >= min_shares, ErrorCode::SlippageExceeded);
 
     token_interface::transfer_checked(
         CpiContext::new(
@@ -136,7 +142,7 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         .total_shares
         .checked_add(shares)
         .ok_or(ErrorCode::MathOverflow)?;
-    nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, pps_ema)?;
+    nav::update_breaker(fund, &fund_key, &ctx.accounts.policy, breaker)?;
 
     let member = &mut ctx.accounts.member;
     if member.owner == Pubkey::default() {

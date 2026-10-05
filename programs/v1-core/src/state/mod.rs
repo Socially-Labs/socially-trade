@@ -5,5 +5,8 @@ pub mod member;
 pub mod policy;
 pub mod proposal;
 pub mod registry;
+pub mod venue;
 
-pub use {config::*, delegate::*, fund::*, member::*, policy::*, proposal::*, registry::*};
+pub use {
+    config::*, delegate::*, fund::*, member::*, policy::*, proposal::*, registry::*, venue::*,
+};
