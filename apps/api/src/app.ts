@@ -12,12 +12,12 @@ import { registerNotificationRoutes } from "./notifications.js";
 import { registerPerformanceRoutes } from "./performance.js";
 import { registerHistoryRoutes } from "./history.js";
 import { registerAuthRoutes } from "./auth-routes.js";
-import type { TokenChain } from "./token-chain.js";
+import type { TokenLayer } from "./token-flows.js";
 import { registerTokenRoutes } from "./token-routes.js";
 
 export interface AppOptions {
   /** Devnet token layer. Required exactly when USDG_MINT is set. */
-  token?: { chain: TokenChain; signupGrantRaw: bigint } | null;
+  token?: TokenLayer | null;
 }
 
 export function createApp(pool: DbPool | null, options: AppOptions = {}) {

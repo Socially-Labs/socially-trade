@@ -1,9 +1,10 @@
 import {
   address,
   appendTransactionMessageInstructions,
+  createDefaultRpcTransport,
   createKeyPairSignerFromBytes,
   createNoopSigner,
-  createSolanaRpc,
+  createSolanaRpcFromTransport,
   createTransactionMessage,
   getBase58Encoder,
   getBase64EncodedWireTransaction,
@@ -19,6 +20,9 @@ import {
   type Base64EncodedWireTransaction,
   type Instruction,
   type KeyPairSigner,
+  type Rpc,
+  type RpcTransport,
+  type GetTransactionApi,
 } from "@solana/kit";
 import {
   fetchMaybeMint,
@@ -33,7 +37,11 @@ import {
 export const TOKEN_DECIMALS = 6;
 export const TOKEN_LABEL = "USDG (devnet)";
 export const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+export { TOKEN_PROGRAM_ADDRESS };
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
+/** Every RPC call is aborted after this time, so no request waits on a slow node without end. */
+export const RPC_TIMEOUT_MS = 10_000;
+export const COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111";
 
 /** A signed transaction that the backend has not sent yet. */
 export interface SignedTransfer {
@@ -51,8 +59,22 @@ export interface BalanceChange {
   post: bigint;
 }
 
+/** A top-level SPL Token `transfer` or `transferChecked` instruction. */
+export interface TokenTransfer {
+  source: string;
+  destination: string;
+  mint: string | null;
+  authority: string | null;
+  amount: bigint;
+}
+
 export interface ObservedTransaction {
   failed: boolean;
+  /** Top-level instructions as `programId:type` ("unparsed" when the RPC cannot parse one). */
+  instructions: string[];
+  transfers: TokenTransfer[];
+  /** Instructions that ran through a cross-program invocation. */
+  innerInstructions: number;
   balances: BalanceChange[];
 }
 
@@ -62,17 +84,19 @@ export type SignatureState = "confirmed" | "failed" | "processing" | "missing";
 export interface TokenChain {
   readonly mint: string;
   readonly treasuryAta: string;
-  /** A confirmed or finalized transaction, or null when the cluster does not have it yet. */
+  /** A finalized transaction, or null when the cluster has not finalized it yet. */
   observe(signature: string): Promise<ObservedTransaction | null>;
   status(signature: string): Promise<SignatureState>;
   /** Block height at finalized commitment. A missing transaction past its last valid height cannot land. */
   blockHeight(): Promise<bigint>;
-  signMint(owner: string, amountRaw: bigint): Promise<SignedTransfer>;
-  signPayout(owner: string, amountRaw: bigint): Promise<SignedTransfer>;
+  /** With createAta the treasury pays the rent for the owner's token account. */
+  signMint(owner: string, amountRaw: bigint, createAta: boolean): Promise<SignedTransfer>;
+  signPayout(owner: string, amountRaw: bigint, createAta: boolean): Promise<SignedTransfer>;
   send(wire: string): Promise<void>;
   /** Treasury pays the fee and signs; the user wallet signs as the source owner. */
   prepareDeposit(owner: string, amountRaw: bigint): Promise<{ transaction: string; lastValidBlockHeight: bigint }>;
   balance(owner: string): Promise<bigint>;
+  tokenAccountExists(owner: string): Promise<boolean>;
 }
 
 export interface TokenConfig {
@@ -81,6 +105,8 @@ export interface TokenConfig {
   mintAuthority: KeyPairSigner;
   treasury: KeyPairSigner;
   signupGrantRaw: bigint;
+  /** DEV_ALLOW_UNVERIFIED_WALLET=1: bind a client-supplied wallet without Privy. Localhost or devnet RPC only. */
+  allowUnverifiedWallet: boolean;
 }
 
 export function isWalletAddress(value: unknown): value is string {
@@ -141,6 +167,11 @@ export async function parseKeypair(name: string, value: string | undefined): Pro
   catch { throw new Error(`${name} is not a valid ed25519 key pair`); }
 }
 
+function isLocalOrDevnetRpc(rpcUrl: string): boolean {
+  const host = new URL(rpcUrl).hostname;
+  return ["localhost", "127.0.0.1", "[::1]"].includes(host) || /devnet/i.test(host);
+}
+
 /** Null when the token layer is off (USDG_MINT unset). */
 export async function loadTokenConfig(env: NodeJS.ProcessEnv = process.env): Promise<TokenConfig | null> {
   if (!env.USDG_MINT) return null;
@@ -151,12 +182,21 @@ export async function loadTokenConfig(env: NodeJS.ProcessEnv = process.env): Pro
   try { signupGrantRaw = toRaw(env.SIGNUP_GRANT ?? "10000"); }
   catch { throw new Error("SIGNUP_GRANT must be a decimal string with at most 6 places"); }
   if (signupGrantRaw <= 0n) throw new Error("SIGNUP_GRANT must be positive");
+  const allowUnverifiedWallet = env.DEV_ALLOW_UNVERIFIED_WALLET === "1";
+  if (allowUnverifiedWallet) {
+    if (!isLocalOrDevnetRpc(rpcUrl)) {
+      throw new Error("DEV_ALLOW_UNVERIFIED_WALLET=1 is refused: DEVNET_RPC_URL must be localhost or devnet");
+    }
+    console.warn("WARNING: DEV_ALLOW_UNVERIFIED_WALLET=1. Wallet ownership is NOT verified. "
+      + "Any signed-in user can bind any address. Never use this outside local devnet testing.");
+  }
   return {
     rpcUrl,
     mint: address(env.USDG_MINT),
     mintAuthority: await parseKeypair("MINT_AUTHORITY", env.MINT_AUTHORITY),
     treasury: await parseKeypair("TREASURY", env.TREASURY),
     signupGrantRaw,
+    allowUnverifiedWallet,
   };
 }
 
@@ -164,9 +204,57 @@ function optionAddress(value: { __option: "Some"; value: Address } | { __option:
   return value.__option === "Some" ? value.value : null;
 }
 
+/** Adds a hard timeout to every request of a transport. */
+export function withTimeout(transport: RpcTransport, ms = RPC_TIMEOUT_MS): RpcTransport {
+  return <T>(request: Parameters<RpcTransport>[0]) => {
+    const timeout = AbortSignal.timeout(ms);
+    return transport<T>({ ...request, signal: request.signal ? AbortSignal.any([request.signal, timeout]) : timeout });
+  };
+}
+
+type ParsedInstruction = { programId: string; parsed?: { type?: string; info?: Record<string, unknown> } | string };
+
+/** Reads a finalized transaction as instructions, token transfers and token balance changes. */
+export async function observeTransaction(rpc: Rpc<GetTransactionApi>, sig: string): Promise<ObservedTransaction | null> {
+  const tx = await rpc.getTransaction(toSignature(sig), {
+    commitment: "finalized", encoding: "jsonParsed", maxSupportedTransactionVersion: 0,
+  }).send();
+  if (!tx?.meta) return null;
+  const keys = tx.transaction.message.accountKeys.map((key) => key.pubkey as string);
+  const changes = new Map<number, BalanceChange>();
+  const entry = (b: { accountIndex: number; mint: string; owner?: string }) => {
+    const index = Number(b.accountIndex);
+    const found = changes.get(index);
+    if (found) return found;
+    const created = { account: keys[index] ?? "", mint: b.mint, owner: b.owner ?? null, pre: 0n, post: 0n };
+    changes.set(index, created);
+    return created;
+  };
+  for (const b of tx.meta.preTokenBalances ?? []) entry(b).pre = BigInt(b.uiTokenAmount.amount);
+  for (const b of tx.meta.postTokenBalances ?? []) entry(b).post = BigInt(b.uiTokenAmount.amount);
+  const instructions: string[] = [];
+  const transfers: TokenTransfer[] = [];
+  for (const ix of tx.transaction.message.instructions as readonly ParsedInstruction[]) {
+    const parsed = typeof ix.parsed === "object" ? ix.parsed : undefined;
+    const type = parsed?.type ?? "unparsed";
+    instructions.push(`${ix.programId}:${type}`);
+    if (ix.programId !== TOKEN_PROGRAM_ADDRESS || (type !== "transfer" && type !== "transferChecked")) continue;
+    const info = parsed?.info ?? {};
+    const text = (key: string) => (typeof info[key] === "string" ? info[key] as string : null);
+    const tokenAmount = info.tokenAmount as { amount?: string } | undefined;
+    transfers.push({
+      source: text("source") ?? "", destination: text("destination") ?? "", mint: text("mint"),
+      authority: text("authority") ?? text("multisigAuthority"),
+      amount: BigInt(tokenAmount?.amount ?? text("amount") ?? "0"),
+    });
+  }
+  const innerInstructions = (tx.meta.innerInstructions ?? []).reduce((sum, inner) => sum + inner.instructions.length, 0);
+  return { failed: tx.meta.err !== null, instructions, transfers, innerInstructions, balances: [...changes.values()] };
+}
+
 /** Real devnet adapter. It verifies the cluster and the mint before it returns. */
 export async function createDevnetChain(config: TokenConfig): Promise<TokenChain> {
-  const rpc = createSolanaRpc(config.rpcUrl);
+  const rpc = createSolanaRpcFromTransport(withTimeout(createDefaultRpcTransport({ url: config.rpcUrl })));
   assertDevnetGenesis(await rpc.getGenesisHash().send());
   const mintAccount = await fetchMaybeMint(rpc, config.mint);
   assertOwnedMint(mintAccount.exists
@@ -200,24 +288,7 @@ export async function createDevnetChain(config: TokenConfig): Promise<TokenChain
   return {
     mint: config.mint,
     treasuryAta,
-    async observe(sig) {
-      const tx = await rpc.getTransaction(toSignature(sig), {
-        commitment: "confirmed", encoding: "jsonParsed", maxSupportedTransactionVersion: 0,
-      }).send();
-      if (!tx?.meta) return null;
-      const keys = tx.transaction.message.accountKeys.map((key) => key.pubkey as string);
-      const changes = new Map<number, BalanceChange>();
-      const entry = (b: { accountIndex: number; mint: string; owner?: string }) => {
-        const found = changes.get(b.accountIndex);
-        if (found) return found;
-        const created = { account: keys[b.accountIndex] ?? "", mint: b.mint, owner: b.owner ?? null, pre: 0n, post: 0n };
-        changes.set(b.accountIndex, created);
-        return created;
-      };
-      for (const b of tx.meta.preTokenBalances ?? []) entry(b).pre = BigInt(b.uiTokenAmount.amount);
-      for (const b of tx.meta.postTokenBalances ?? []) entry(b).post = BigInt(b.uiTokenAmount.amount);
-      return { failed: tx.meta.err !== null, balances: [...changes.values()] };
-    },
+    observe: (sig) => observeTransaction(rpc, sig),
     async status(sig) {
       const { value } = await rpc.getSignatureStatuses([toSignature(sig)], { searchTransactionHistory: true }).send();
       const state = value[0];
@@ -228,22 +299,22 @@ export async function createDevnetChain(config: TokenConfig): Promise<TokenChain
     async blockHeight() {
       return rpc.getBlockHeight({ commitment: "finalized" }).send();
     },
-    async signMint(owner, amountRaw) {
+    async signMint(owner, amountRaw, withAta) {
       const wallet = address(owner);
       const account = await ata(wallet);
       return sign([
-        createAta(wallet, account),
+        ...(withAta ? [createAta(wallet, account)] : []),
         getMintToCheckedInstruction({
           mint: config.mint, token: account, mintAuthority: config.mintAuthority,
           amount: amountRaw, decimals: TOKEN_DECIMALS,
         }),
       ]);
     },
-    async signPayout(owner, amountRaw) {
+    async signPayout(owner, amountRaw, withAta) {
       const wallet = address(owner);
       const account = await ata(wallet);
       return sign([
-        createAta(wallet, account),
+        ...(withAta ? [createAta(wallet, account)] : []),
         getTransferCheckedInstruction({
           source: treasuryAta, mint: config.mint, destination: account, authority: config.treasury,
           amount: amountRaw, decimals: TOKEN_DECIMALS,
@@ -274,6 +345,9 @@ export async function createDevnetChain(config: TokenConfig): Promise<TokenChain
     async balance(owner) {
       const account = await fetchMaybeToken(rpc, await ata(address(owner)));
       return account.exists ? account.data.amount : 0n;
+    },
+    async tokenAccountExists(owner) {
+      return (await fetchMaybeToken(rpc, await ata(address(owner)))).exists;
     },
   };
 }

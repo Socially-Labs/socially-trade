@@ -1454,7 +1454,7 @@
                 "privy"
               ]
             },
-            "description": "With USDG_MINT set: binds the Solana wallet once and mints the signup grant (SIGNUP_GRANT, default 10,000 USDG devnet) to its token account, once per user. With PRIVY_APP_SECRET the backend takes the wallet from the Privy user record and walletAddress is optional (it must be a linked wallet). Without the secret (development only) walletAddress is required. Paper cash starts at 0.",
+            "description": "With USDG_MINT set: binds the Solana wallet once and mints the signup grant (SIGNUP_GRANT, default 10,000 USDG devnet) to its token account, once per user. With PRIVY_APP_SECRET the backend takes the wallet from the Privy user record and walletAddress is optional (it must be a linked wallet). Without the secret the bind fails closed with 503 wallet_verification_unconfigured, unless the server runs with DEV_ALLOW_UNVERIFIED_WALLET=1 (localhost or devnet RPC only), which accepts walletAddress as sent. A user from before the token layer converts its current paper cash instead: the grant equals that cash and paper cash becomes 0. Paper cash starts at 0.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"walletAddress\": \"{{walletAddress}}\"\n}",
@@ -1527,7 +1527,7 @@
                 "prepare"
               ]
             },
-            "description": "Returns a base64 v0 transaction: TransferChecked of amountUsdc from the user's token account to the treasury token account. The treasury already signed as fee payer, so the user needs no SOL. The wallet signs and sends it, then posts the signature.",
+            "description": "Returns a base64 v0 transaction: TransferChecked of amountUsdc from the user's token account to the treasury token account. The treasury already signed as fee payer, so the user needs no SOL. The wallet signs and sends it, then posts the signature. Rate limited per user (PREPARE_RATE_PER_HOUR, default 20): 429 rate_limited.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"amountUsdc\": \"100.000000\"\n}",
@@ -1570,7 +1570,7 @@
                 "deposits"
               ]
             },
-            "description": "Credits paper cash after the backend fetches the transaction from devnet and checks: success, confirmed, our mint, exact amount, source owner = bound wallet, destination = treasury. 202 PENDING if devnet does not have it yet; then poll the status request. FAILED and EXPIRED are terminal.",
+            "description": "Credits paper cash after the backend fetches the transaction from devnet and checks: finalized, success, exactly one top-level transferChecked and no inner instructions, our mint, exact amount, source owner and authority = bound wallet, destination = treasury. 202 PENDING if devnet does not have it yet; then poll the status request. FAILED and EXPIRED are terminal.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"signature\": \"{{depositSignature}}\",\n  \"amountUsdc\": \"100.000000\"\n}",
@@ -1691,7 +1691,7 @@
                 "withdrawals"
               ]
             },
-            "description": "Debits paper cash and sends the same amount of USDG (devnet) from the treasury to the wallet. One send per Idempotency-Key. 201 CONFIRMED or 202 PENDING.",
+            "description": "Debits paper cash and sends the same amount of USDG (devnet) from the treasury to the wallet. One send per Idempotency-Key. 201 CONFIRMED or 202 PENDING. Minimum WITHDRAW_MIN (default 1 token, else 400 amount_too_small); at most WITHDRAW_RATE_PER_HOUR (default 10) per user (429 rate_limited). The treasury pays for the user's token account at most 3 times; after that, a wallet without the account gets 409 token_account_required.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"amountUsdc\": \"50.000000\"\n}",

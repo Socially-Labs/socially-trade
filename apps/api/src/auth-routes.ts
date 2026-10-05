@@ -2,11 +2,11 @@ import type { FastifyInstance } from "fastify";
 import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
 import { ApiFault } from "./errors.js";
-import { isWalletAddress, type TokenChain } from "./token-chain.js";
-import { bindWallet, ensureSignupGrant, tokenInfo } from "./token-flows.js";
+import { isWalletAddress } from "./token-chain.js";
+import { bindWallet, settleSignupGrant, tokenInfo, type TokenLayer } from "./token-flows.js";
 
 export function registerAuthRoutes(
-  app: FastifyInstance, db: () => DbPool, token: { chain: TokenChain; signupGrantRaw: bigint } | null,
+  app: FastifyInstance, db: () => DbPool, token: TokenLayer | null,
 ): void {
   app.post<{ Body: { walletAddress?: string } }>("/v0/auth/privy", {
     schema: { body: { type: "object", additionalProperties: false,
@@ -26,8 +26,8 @@ export function registerAuthRoutes(
     if (requested !== undefined && !isWalletAddress(requested)) {
       throw new ApiFault(400, "invalid_wallet_address", "walletAddress must be a base58 Solana address");
     }
-    const wallet = await bindWallet(db(), actor, requested);
-    const signupGrant = wallet ? await ensureSignupGrant(db(), token.chain, actor, wallet, token.signupGrantRaw) : null;
+    const wallet = await bindWallet(db(), token, actor, requested);
+    const signupGrant = wallet ? await settleSignupGrant(db(), token.chain, actor.id) : null;
     return { ...response, token: tokenInfo(token.chain), wallet, signupGrant };
   });
 }
