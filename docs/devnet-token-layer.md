@@ -62,13 +62,19 @@ virtual USDC on signup, no chain calls).
    `deposit.join.error` names the reason.
 
 States: `PENDING` -> `CONFIRMED` | `FAILED` | `EXPIRED`. `PENDING` (HTTP 202) means devnet has
-not finalized the transaction yet (about 13 s after it lands). After `DEPOSIT_EXPIRY_SECONDS` (default 300, well past the
-about 60-90 s blockhash lifetime) a still-missing transaction becomes `EXPIRED`. Terminal states
-never change.
+not finalized the transaction yet (about 13 s after it lands). A claim becomes `EXPIRED` only when
+all of these are true: no finalized transaction; `getSignatureStatuses` does not know the
+signature (a processed or confirmed transaction stays `PENDING`); the finalized block height
+passed the claim's expiry height; and `DEPOSIT_EXPIRY_SECONDS` (default 300) passed. The expiry
+height is set the first time the signature is missing: the processed tip then, plus 300 blocks
+(150 for the blockhash lifetime, 150 for an RPC node behind the tip). `EXPIRED` is not final: a
+later `GET` that finds the transaction finalized credits it once (or marks it `FAILED`).
+`CONFIRMED` and `FAILED` never change.
 
 Idempotency and races: a claim is unique per `(signature, user)`. The chain read runs with no
 database transaction open. The credit runs in a short transaction under the claim row lock and
-only while the row is still `PENDING`, so 5 parallel confirms credit once. A second partial unique index allows one
+only while the row still has the status the call read (`PENDING` or `EXPIRED`), so 5 parallel
+confirms credit once. A second partial unique index allows one
 `CONFIRMED` row per signature across all users. A stranger who posts someone else's signature
 gets `FAILED wrong_owner` on their own claim and does not block the owner. The same user
 reposting the signature with another amount or fund gets 409 `deposit_conflict`.
@@ -198,7 +204,7 @@ to the treasury if it runs low.
 - Withdrawals: minimum `WITHDRAW_MIN`, at most `WITHDRAW_RATE_PER_HOUR` per user. The treasury
   pays token account rent at most 3 times per user. A treasury-paid creation is counted when the
   transaction is signed, so a creation that expires unsent also counts.
-- Deposits credit only at `finalized`. A deposit with a wrong amount is `FAILED` and its tokens
+- Deposits credit only at `finalized`. An `EXPIRED` claim is re-checked on each `GET`. A deposit with a wrong amount is `FAILED` and its tokens
   stay in the treasury (no refund flow).
 - Accounts created before the layer was on convert their paper cash once, at wallet bind. Value
   in their fund positions stays paper until they exit; the exit payout is withdrawable as usual.

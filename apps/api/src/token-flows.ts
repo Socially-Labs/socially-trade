@@ -24,6 +24,8 @@ const TREASURY_LEDGER = ["ISSUANCE", "devnet-usdg"] as const;
 const POLL_MS = 500;
 const payoutWaitMs = () => Number(process.env.PAYOUT_CONFIRM_WAIT_MS ?? 20_000);
 const depositExpiryMs = () => Number(process.env.DEPOSIT_EXPIRY_SECONDS ?? 300) * 1000;
+// A blockhash is valid for 150 blocks. The other 150 cover an RPC node behind the cluster tip.
+const DEPOSIT_EXPIRY_BLOCKS = 300n;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** The treasury pays the rent of a user's token account at most this many times, ever. */
 export const MAX_TREASURY_ATA_CREATIONS = 3;
@@ -430,6 +432,7 @@ interface DepositRow {
   event_id: string | null;
   join_event_id: string | null;
   join_error: string | null;
+  expiry_block_height: string | null;
   created_at: Date;
 }
 
@@ -451,7 +454,8 @@ function depositView(row: DepositRow): DepositView {
   };
 }
 
-const depositColumns = `id, signature, amount_raw::text, fund_id, status, failure, event_id, join_event_id, join_error, created_at`;
+const depositColumns = `id, signature, amount_raw::text, fund_id, status, failure, event_id, join_event_id, join_error,
+  expiry_block_height::text, created_at`;
 
 export async function claimDeposit(
   pool: DbPool, chain: TokenChain, actor: Actor,
@@ -483,9 +487,14 @@ async function readDeposit(db: DbPool | DbClient, signature: string, userId: str
 }
 
 /**
- * Verifies a pending claim. The chain read runs with no transaction open. The credit runs in a
- * short transaction under the claim row lock and only while the row is still PENDING, so
- * parallel confirms of one signature credit once. Terminal states never change again.
+ * Verifies a PENDING or EXPIRED claim. The chain reads run with no transaction open. The credit
+ * runs in a short transaction under the claim row lock and only while the row still has the
+ * status this call read, so parallel confirms of one signature credit once.
+ *
+ * Expiry needs all of: no finalized transaction, the signature missing on chain (not processed
+ * or confirmed), the finalized height past the claim's expiry height, and DEPOSIT_EXPIRY_SECONDS.
+ * EXPIRED is not final: a later call that finds the transaction finalized credits it (or fails
+ * it) once. CONFIRMED and FAILED never change.
  */
 export async function verifyDeposit(
   pool: DbPool, chain: TokenChain, actor: Actor, signature: string,
@@ -495,22 +504,32 @@ export async function verifyDeposit(
   if (expected && (BigInt(seen.amount_raw) !== expected.amountRaw || seen.fund_id !== expected.fundId)) {
     throw new ApiFault(409, "deposit_conflict", "This signature was already submitted with another amount or fund");
   }
-  if (seen.status !== "PENDING") return depositView(seen);
+  if (seen.status !== "PENDING" && seen.status !== "EXPIRED") return depositView(seen);
   const tx = await chain.observe(signature);
+  if (!tx && seen.status === "EXPIRED") return depositView(seen);
+  let expire = false;
+  if (!tx) {
+    // Read the height first: a signature still missing after it passed the bound cannot land.
+    const finalized = await chain.blockHeight();
+    if (await chain.status(signature) === "missing") {
+      if (seen.expiry_block_height === null) {
+        const bound = await chain.blockHeight("processed") + DEPOSIT_EXPIRY_BLOCKS;
+        await pool.query("UPDATE token_deposits SET expiry_block_height = $2 WHERE id = $1 AND expiry_block_height IS NULL",
+          [seen.id, bound.toString()]);
+      } else {
+        expire = finalized > BigInt(seen.expiry_block_height) && Date.now() - seen.created_at.getTime() > depositExpiryMs();
+      }
+    }
+  }
   const wallet = (await walletOf(pool, actor.id))!;
   return inTransaction(pool, async (client) => {
     const row = await readDeposit(client, signature, actor.id, true);
-    if (row.status !== "PENDING") return depositView(row);
+    if (row.status !== seen.status) return depositView(row);
     const finish = async (sql: string, params: unknown[]) => depositView((await client.query<DepositRow>(
       `UPDATE token_deposits SET ${sql}, updated_at = now() WHERE id = $1 RETURNING ${depositColumns}`,
       [row.id, ...params])).rows[0]!);
 
-    if (!tx) {
-      if (Date.now() - row.created_at.getTime() > depositExpiryMs()) {
-        return finish("status = 'EXPIRED', failure = 'not_found_before_expiry'", []);
-      }
-      return depositView(row);
-    }
+    if (!tx) return expire ? finish("status = 'EXPIRED', failure = 'not_found_before_expiry'", []) : depositView(row);
     const failure = depositFailure(tx, { mint: chain.mint, treasuryAta: chain.treasuryAta, wallet, amountRaw: BigInt(row.amount_raw) });
     if (failure) return finish("status = 'FAILED', failure = $2", [failure]);
 
@@ -533,7 +552,7 @@ export async function verifyDeposit(
         joinError = error.code;
       }
     }
-    return finish("status = 'CONFIRMED', event_id = $2, join_event_id = $3, join_error = $4",
+    return finish("status = 'CONFIRMED', failure = NULL, event_id = $2, join_event_id = $3, join_error = $4",
       [eventId, joinEventId, joinError]);
   });
 }

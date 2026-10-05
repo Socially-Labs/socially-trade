@@ -87,8 +87,11 @@ export interface TokenChain {
   /** A finalized transaction, or null when the cluster has not finalized it yet. */
   observe(signature: string): Promise<ObservedTransaction | null>;
   status(signature: string): Promise<SignatureState>;
-  /** Block height at finalized commitment. A missing transaction past its last valid height cannot land. */
-  blockHeight(): Promise<bigint>;
+  /**
+   * Block height, finalized by default. A missing transaction past its last valid height (at
+   * finalized) cannot land. "processed" gives the newest tip the node knows.
+   */
+  blockHeight(commitment?: "finalized" | "processed"): Promise<bigint>;
   /** With createAta the treasury pays the rent for the owner's token account. */
   signMint(owner: string, amountRaw: bigint, createAta: boolean): Promise<SignedTransfer>;
   signPayout(owner: string, amountRaw: bigint, createAta: boolean): Promise<SignedTransfer>;
@@ -296,8 +299,8 @@ export async function createDevnetChain(config: TokenConfig): Promise<TokenChain
       if (state.err) return "failed";
       return state.confirmationStatus === "confirmed" || state.confirmationStatus === "finalized" ? "confirmed" : "processing";
     },
-    async blockHeight() {
-      return rpc.getBlockHeight({ commitment: "finalized" }).send();
+    async blockHeight(commitment = "finalized") {
+      return rpc.getBlockHeight({ commitment }).send();
     },
     async signMint(owner, amountRaw, withAta) {
       const wallet = address(owner);

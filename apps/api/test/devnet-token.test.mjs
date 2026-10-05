@@ -215,23 +215,45 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal((await call('GET', `/v0/me/deposits/${fakeSignature()}`, 'bob')).statusCode, 404);
     });
 
-    await t.test('an unseen signature stays pending, then expires and never credits', async () => {
+    await t.test('an unseen signature expires only past its height bound; a late finalized transfer credits once', async () => {
       const signature = fakeSignature();
       const pending = await call('POST', '/v0/me/deposits', 'alice', { signature, amountUsdc: '30' });
       assert.equal(pending.statusCode, 202); assert.equal(pending.json().deposit.status, 'PENDING');
-      assert.equal((await call('GET', `/v0/me/deposits/${signature}`, 'alice')).statusCode, 202);
+      // Wall clock alone does not expire it: the chain has not passed the claim's height bound.
       await pool.query("UPDATE token_deposits SET created_at = now() - interval '10 minutes' WHERE signature = $1", [signature]);
+      const early = await call('GET', `/v0/me/deposits/${signature}`, 'alice');
+      assert.equal(early.statusCode, 202); assert.equal(early.json().deposit.status, 'PENDING');
+      chain.height += 301n;
       const expired = await call('GET', `/v0/me/deposits/${signature}`, 'alice');
       assert.equal(expired.statusCode, 200); assert.equal(expired.json().deposit.status, 'EXPIRED');
-      // The transfer lands after expiry: the terminal state does not change and nothing is credited.
-      chain.txs.set(signature, chain.txs.get(chain.transfer({ owner: wallets.alice, raw: 30n * ONE })));
-      assert.equal((await call('GET', `/v0/me/deposits/${signature}`, 'alice')).json().deposit.status, 'EXPIRED');
+      assert.equal(expired.json().deposit.failure, 'not_found_before_expiry');
       assert.equal(await paperCash('alice'), '500.000000000000000000');
-      const later = fakeSignature();
-      await call('POST', '/v0/me/deposits', 'alice', { signature: later, amountUsdc: '30' });
-      chain.txs.set(later, chain.txs.get(chain.transfer({ owner: wallets.alice, raw: 30n * ONE })));
-      assert.equal((await call('GET', `/v0/me/deposits/${later}`, 'alice')).json().deposit.status, 'CONFIRMED');
+      // The transfer is found finalized after expiry: 5 parallel polls credit it exactly once.
+      chain.txs.set(signature, chain.txs.get(chain.transfer({ owner: wallets.alice, raw: 30n * ONE })));
+      const found = await Promise.all(Array.from({ length: 5 }, () => call('GET', `/v0/me/deposits/${signature}`, 'alice')));
+      for (const r of found) {
+        assert.equal(r.statusCode, 200, r.body);
+        assert.equal(r.json().deposit.status, 'CONFIRMED'); assert.equal(r.json().deposit.failure, null);
+      }
       assert.equal(await paperCash('alice'), '530.000000000000000000');
+      const credits = await pool.query("SELECT 1 FROM fund_events WHERE type = 'devnet_deposit_confirmed' AND payload->>'signature' = $1", [signature]);
+      assert.equal(credits.rowCount, 1);
+      assert.equal((await call('GET', `/v0/me/deposits/${signature}`, 'alice')).json().deposit.status, 'CONFIRMED');
+      assert.equal(await paperCash('alice'), '530.000000000000000000');
+    });
+
+    await t.test('a transfer that landed but is not finalized stays pending past expiry, then credits', async () => {
+      const signature = fakeSignature();
+      chain.landed.set(signature, 'confirmed'); // Seen at confirmed; finalization (or the RPC node) lags.
+      const pending = await call('POST', '/v0/me/deposits', 'bob', { signature, amountUsdc: '15' });
+      assert.equal(pending.statusCode, 202);
+      await pool.query("UPDATE token_deposits SET created_at = now() - interval '10 minutes' WHERE signature = $1", [signature]);
+      chain.height += 1_000n;
+      const lagging = await call('GET', `/v0/me/deposits/${signature}`, 'bob');
+      assert.equal(lagging.statusCode, 202); assert.equal(lagging.json().deposit.status, 'PENDING');
+      chain.txs.set(signature, chain.txs.get(chain.transfer({ owner: wallets.bob, raw: 15n * ONE })));
+      assert.equal((await call('GET', `/v0/me/deposits/${signature}`, 'bob')).json().deposit.status, 'CONFIRMED');
+      assert.equal(await paperCash('bob'), '35.000000000000000000');
     });
 
     let fundId;
