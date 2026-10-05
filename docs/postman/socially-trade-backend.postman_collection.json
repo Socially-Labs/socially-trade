@@ -2,7 +2,7 @@
   "info": {
     "name": "socially.trade backend (v0 paper)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Endpoints exercised in the 2026-10-05 functional check. Set baseUrl, privyToken (Captain) and crewToken (Crew) to Privy access tokens for PRIVY_APP_ID. All amounts are decimal strings. All values are virtual (PAPER)."
+    "description": "Endpoints exercised in the 2026-10-05 functional check. Set baseUrl, privyToken (Captain) and crewToken (Crew) to Privy access tokens for PRIVY_APP_ID. All amounts are decimal strings. All values are virtual (PAPER). The Devnet token layer folder needs USDG_MINT: deposits and withdrawals move the USDG (devnet) test token."
   },
   "auth": {
     "type": "bearer",
@@ -42,6 +42,18 @@
     {
       "key": "notificationId",
       "value": "1"
+    },
+    {
+      "key": "walletAddress",
+      "value": ""
+    },
+    {
+      "key": "depositSignature",
+      "value": ""
+    },
+    {
+      "key": "withdrawalId",
+      "value": ""
     }
   ],
   "item": [
@@ -1403,6 +1415,392 @@
               ]
             },
             "description": "WebSocket: ws://{{baseUrl host}}/v0/ws. Send {\"type\":\"subscribe\",\"channel\":\"market.prices\",\"instruments\":[\"SOL\"]}; reconnect with \"after\":\"<cursor>\". Private inbox: {\"type\":\"authenticate\",\"accessToken\":\"<token>\"} then {\"type\":\"subscribe\",\"channel\":\"account.notifications\",\"after\":\"0\"}."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Devnet token layer",
+      "description": "Requires USDG_MINT and the token layer env vars. Only money in and out touches Solana devnet; trading stays paper.",
+      "item": [
+        {
+          "name": "Bootstrap with a Solana wallet (token layer)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/auth/privy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "auth",
+                "privy"
+              ]
+            },
+            "description": "With USDG_MINT set: binds the Solana wallet once and mints the signup grant (SIGNUP_GRANT, default 10,000 USDG devnet) to its token account, once per user. With PRIVY_APP_SECRET the backend takes the wallet from the Privy user record and walletAddress is optional (it must be a linked wallet). Without the secret (development only) walletAddress is required. Paper cash starts at 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"walletAddress\": \"{{walletAddress}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Token balance",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/token-balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "token-balance"
+              ]
+            },
+            "description": "On-chain USDG (devnet) balance of the bound wallet plus paper cash and fund positions. Also reconciles pending payouts."
+          }
+        },
+        {
+          "name": "Prepare deposit transaction",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits/prepare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits",
+                "prepare"
+              ]
+            },
+            "description": "Returns a base64 v0 transaction: TransferChecked of amountUsdc from the user's token account to the treasury token account. The treasury already signed as fee payer, so the user needs no SOL. The wallet signs and sends it, then posts the signature.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsdc\": \"100.000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit deposit signature",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits"
+              ]
+            },
+            "description": "Credits paper cash after the backend fetches the transaction from devnet and checks: success, confirmed, our mint, exact amount, source owner = bound wallet, destination = treasury. 202 PENDING if devnet does not have it yet; then poll the status request. FAILED and EXPIRED are terminal.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signature\": \"{{depositSignature}}\",\n  \"amountUsdc\": \"100.000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit deposit signature and join fund",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits"
+              ]
+            },
+            "description": "Same checks, then joins the fund with the same amount in the same database transaction. If the join is refused, the credit stays as paper cash and deposit.join.error names the reason.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signature\": \"{{depositSignature}}\",\n  \"amountUsdc\": \"100.000000\",\n  \"fundId\": \"{{fundId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Deposit status",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits/{{depositSignature}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits",
+                "{{depositSignature}}"
+              ]
+            },
+            "description": "Re-verifies a PENDING deposit; returns the stored state otherwise."
+          }
+        },
+        {
+          "name": "Withdraw paper cash",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "withdraw-{{$guid}}",
+                "description": "Reuse the same value when you retry the same withdrawal."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "withdrawals"
+              ]
+            },
+            "description": "Debits paper cash and sends the same amount of USDG (devnet) from the treasury to the wallet. One send per Idempotency-Key. 201 CONFIRMED or 202 PENDING.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsdc\": \"50.000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code < 300) pm.collectionVariables.set('withdrawalId', pm.response.json().withdrawal.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Exit fund and withdraw",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "exit-withdraw-{{$guid}}",
+                "description": "Reuse the same value when you retry the same withdrawal."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "withdrawals"
+              ]
+            },
+            "description": "Burns shares (paper exit) and withdraws the exit payout on chain in one request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fundId\": \"{{fundId}}\",\n  \"shares\": \"10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code < 300) pm.collectionVariables.set('withdrawalId', pm.response.json().withdrawal.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Withdrawal status",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/withdrawals/{{withdrawalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "withdrawals",
+                "{{withdrawalId}}"
+              ]
+            },
+            "description": "Reconciles the payout with devnet (rebroadcast, or re-sign only after the old blockhash expired) and returns its state."
           }
         }
       ]

@@ -5,6 +5,8 @@ import { ApiFault } from "./errors.js";
 import { privyIdentity } from "./privy.js";
 
 const VIRTUAL_ALLOWANCE = "10000.000000";
+// With the devnet token layer on, the signup value is minted on chain, not granted on paper.
+const tokenLayerOn = () => Boolean(process.env.USDG_MINT);
 export interface Actor {
   id: string;
   subject: string;
@@ -28,8 +30,9 @@ export async function requireActor(request: FastifyRequest, pool: DbPool): Promi
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (auth_subject) DO NOTHING
        RETURNING id, auth_subject AS subject, display_name AS "displayName", paper_cash::text AS "paperCash"`,
-      [id, subject, displayName, VIRTUAL_ALLOWANCE],
+      [id, subject, displayName, tokenLayerOn() ? "0" : VIRTUAL_ALLOWANCE],
     );
+    if (inserted.rows[0] && tokenLayerOn()) return inserted.rows[0];
     if (inserted.rows[0]) {
       const eventId = randomUUID();
       await client.query(

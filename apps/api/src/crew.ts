@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { DbPool } from "@socially/db";
+import type { DbClient, DbPool } from "@socially/db";
 import { appendFundEvent, inTransaction, ledgerAccountId } from "@socially/db";
 import { Amount, fixed, MAX_PRICE_AGE_MS, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { type Actor } from "./auth.js";
@@ -15,7 +15,7 @@ interface LockedFund {
   ends_at: Date;
 }
 
-async function lockFund(client: import("@socially/db").DbClient, fundId: string): Promise<LockedFund> {
+async function lockFund(client: DbClient, fundId: string): Promise<LockedFund> {
   // Serialize balance changes while allowing foreign-key references to the unchanged fund ID.
   const result = await client.query<LockedFund>(
     `SELECT f.id, f.captain_id, f.status, f.cash_usdc::text, f.total_shares::text, t.ends_at
@@ -52,56 +52,68 @@ export async function joinFund(
   return inTransaction(pool, async (client) => {
     const prior = await beginIdempotent<CrewChange>(client, actor.id, key, `POST /v0/funds/${fundId}/joins`, { amountUsdc });
     if (prior) return prior;
-    const fund = await lockFund(client, fundId);
-    const user = await client.query<{ paper_cash: string }>(
-      "SELECT paper_cash::text FROM users WHERE id = $1 FOR NO KEY UPDATE",
-      [actor.id],
-    );
-    if (new Amount(user.rows[0]!.paper_cash).lt(amount)) {
-      throw new ApiFault(422, "insufficient_virtual_cash", "Not enough virtual USDC");
-    }
-    if (fund.status !== "ACTIVE" || fund.ends_at.getTime() <= Date.now()) {
-      throw new ApiFault(409, "fund_not_active", "Fund is not accepting joins");
-    }
-    if (fund.captain_id === actor.id) throw new ApiFault(403, "captain_seed_fixed", "Captain stake is fixed for this trial");
-    const valuation = await valueFund(client, fund);
-    const shares = new Amount(fixed(amount.div(valuation.sharePrice), SHARE_DECIMALS));
-    if (shares.lte(0)) throw new ApiFault(422, "shares_too_small", "Deposit would mint no shares");
-    const newSupply = new Amount(fund.total_shares).plus(shares);
-    const newNav = valuation.nav.plus(amount);
-    await client.query("UPDATE users SET paper_cash = paper_cash - $2::numeric WHERE id = $1", [actor.id, amountUsdc]);
-    await client.query(
-      `UPDATE funds SET cash_usdc = cash_usdc + $2::numeric,
-       total_shares = total_shares + $3::numeric WHERE id = $1`,
-      [fundId, amountUsdc, fixed(shares, SHARE_DECIMALS)],
-    );
-    await client.query(
-      `INSERT INTO fund_shares (fund_id, user_id, shares) VALUES ($1, $2, $3)
-       ON CONFLICT (fund_id, user_id) DO UPDATE SET shares = fund_shares.shares + EXCLUDED.shares`,
-      [fundId, actor.id, fixed(shares, SHARE_DECIMALS)],
-    );
-    const eventId = await appendFundEvent(client, fundId, "crew_joined", {
-      userId: actor.id, amountUsdc, shares: fixed(shares, SHARE_DECIMALS),
-    });
-    const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
-    const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");
-    const shareAsset = `SHARE:${fundId}`;
-    const issuance = await ledgerAccountId(client, "ISSUANCE", fundId, shareAsset);
-    const userShares = await ledgerAccountId(client, "USER", actor.id, shareAsset);
-    await client.query(
-      `INSERT INTO ledger_entries (event_id, account_id, amount)
-       VALUES ($1, $2, -$6::numeric), ($1, $3, $6),
-              ($1, $4, -$7::numeric), ($1, $5, $7)`,
-      [eventId, userUsdc, fundUsdc, issuance, userShares, amountUsdc, fixed(shares, SHARE_DECIMALS)],
-    );
-    await saveNav(client, fundId, newNav, newSupply, valuation.pricedAt);
-    const response: CrewChange = {
-      mode: "PAPER", fundId, eventId, shares: fixed(shares, SHARE_DECIMALS),
-      virtualUsdc: amountUsdc, sharePrice: fixed(newNav.div(newSupply), SHARE_DECIMALS),
-    };
+    const response = await joinFundInTransaction(client, actor, fundId, amount);
     await finishIdempotent(client, actor.id, key, response, 201);
     return response;
   });
+}
+
+/** Join inside the caller's transaction. The caller owns idempotency. */
+export async function joinFundInTransaction(
+  client: DbClient,
+  actor: Actor,
+  fundId: string,
+  amount: Amount,
+): Promise<CrewChange> {
+  const amountUsdc = fixed(amount, USDC_DECIMALS);
+  const fund = await lockFund(client, fundId);
+  const user = await client.query<{ paper_cash: string }>(
+    "SELECT paper_cash::text FROM users WHERE id = $1 FOR NO KEY UPDATE",
+    [actor.id],
+  );
+  if (new Amount(user.rows[0]!.paper_cash).lt(amount)) {
+    throw new ApiFault(422, "insufficient_virtual_cash", "Not enough virtual USDC");
+  }
+  if (fund.status !== "ACTIVE" || fund.ends_at.getTime() <= Date.now()) {
+    throw new ApiFault(409, "fund_not_active", "Fund is not accepting joins");
+  }
+  if (fund.captain_id === actor.id) throw new ApiFault(403, "captain_seed_fixed", "Captain stake is fixed for this trial");
+  const valuation = await valueFund(client, fund);
+  const shares = new Amount(fixed(amount.div(valuation.sharePrice), SHARE_DECIMALS));
+  if (shares.lte(0)) throw new ApiFault(422, "shares_too_small", "Deposit would mint no shares");
+  const newSupply = new Amount(fund.total_shares).plus(shares);
+  const newNav = valuation.nav.plus(amount);
+  await client.query("UPDATE users SET paper_cash = paper_cash - $2::numeric WHERE id = $1", [actor.id, amountUsdc]);
+  await client.query(
+    `UPDATE funds SET cash_usdc = cash_usdc + $2::numeric,
+     total_shares = total_shares + $3::numeric WHERE id = $1`,
+    [fundId, amountUsdc, fixed(shares, SHARE_DECIMALS)],
+  );
+  await client.query(
+    `INSERT INTO fund_shares (fund_id, user_id, shares) VALUES ($1, $2, $3)
+     ON CONFLICT (fund_id, user_id) DO UPDATE SET shares = fund_shares.shares + EXCLUDED.shares`,
+    [fundId, actor.id, fixed(shares, SHARE_DECIMALS)],
+  );
+  const eventId = await appendFundEvent(client, fundId, "crew_joined", {
+    userId: actor.id, amountUsdc, shares: fixed(shares, SHARE_DECIMALS),
+  });
+  const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
+  const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");
+  const shareAsset = `SHARE:${fundId}`;
+  const issuance = await ledgerAccountId(client, "ISSUANCE", fundId, shareAsset);
+  const userShares = await ledgerAccountId(client, "USER", actor.id, shareAsset);
+  await client.query(
+    `INSERT INTO ledger_entries (event_id, account_id, amount)
+     VALUES ($1, $2, -$6::numeric), ($1, $3, $6),
+            ($1, $4, -$7::numeric), ($1, $5, $7)`,
+    [eventId, userUsdc, fundUsdc, issuance, userShares, amountUsdc, fixed(shares, SHARE_DECIMALS)],
+  );
+  await saveNav(client, fundId, newNav, newSupply, valuation.pricedAt);
+  const response: CrewChange = {
+    mode: "PAPER", fundId, eventId, shares: fixed(shares, SHARE_DECIMALS),
+    virtualUsdc: amountUsdc, sharePrice: fixed(newNav.div(newSupply), SHARE_DECIMALS),
+  };
+  return response;
 }
 
 export async function leaveFund(
@@ -118,96 +130,108 @@ export async function leaveFund(
   return inTransaction(pool, async (client) => {
     const prior = await beginIdempotent<CrewChange>(client, actor.id, key, `POST /v0/funds/${fundId}/exits`, { shares: sharesText });
     if (prior) return prior;
-    const fund = await lockFund(client, fundId);
-    await client.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [actor.id]);
-    if (fund.captain_id === actor.id) throw new ApiFault(403, "captain_stake_locked", "Captain stake stays in the trial");
-    const held = await client.query<{ shares: string }>(
-      "SELECT shares::text FROM fund_shares WHERE fund_id = $1 AND user_id = $2",
-      [fundId, actor.id],
-    );
-    if (!held.rows[0] || new Amount(held.rows[0].shares).lt(shares)) {
-      throw new ApiFault(422, "insufficient_shares", "Not enough fund shares");
-    }
-    const valuation = await valueFund(client, fund);
-    const supply = new Amount(fund.total_shares);
-    const fraction = shares.div(supply);
-    const cashPart = new Amount(fixed(
-      valuation.positions.length === 0
-        ? shares.mul(valuation.sharePrice)
-        : new Amount(fund.cash_usdc).mul(fraction),
-      USDC_DECIMALS,
-    ));
-    const exitSpread = new Amount("0.002");
-    let proceeds = new Amount(0);
-    let markedAssetsRemoved = new Amount(0);
-    const sales: Array<{ instrumentId: string; quantity: string; proceeds: string; costBasis: string }> = [];
-    for (const position of valuation.positions) {
-      const quantity = new Amount(fixed(position.quantity.mul(fraction), position.decimals));
-      if (quantity.lte(0)) continue;
-      const marked = quantity.mul(position.price);
-      const saleProceeds = new Amount(fixed(marked.mul(new Amount(1).minus(exitSpread)), USDC_DECIMALS));
-      const basis = new Amount(fixed(position.costBasis.mul(quantity).div(position.quantity), SHARE_DECIMALS));
-      markedAssetsRemoved = markedAssetsRemoved.plus(marked);
-      proceeds = proceeds.plus(saleProceeds);
-      sales.push({ instrumentId: position.instrumentId, quantity: fixed(quantity, position.decimals),
-        proceeds: fixed(saleProceeds, USDC_DECIMALS), costBasis: fixed(basis, SHARE_DECIMALS) });
-    }
-    const payout = cashPart.plus(proceeds);
-    if (payout.lte(0)) throw new ApiFault(422, "exit_too_small", "Exit would pay no virtual USDC");
-    const newSupply = supply.minus(shares);
-    if (newSupply.lte(0)) throw new ApiFault(409, "fund_seed_required", "Fund cannot lose all shares");
+    const response = await leaveFundInTransaction(client, actor, fundId, shares);
+    await finishIdempotent(client, actor.id, key, response, 200);
+    return response;
+  });
+}
 
-    const eventId = await appendFundEvent(client, fundId, "crew_left", {
-      userId: actor.id, shares: sharesText, payoutUsdc: fixed(payout, USDC_DECIMALS),
-      exitCostUsdc: fixed(markedAssetsRemoved.minus(proceeds), USDC_DECIMALS), sales,
-    });
-    const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");
-    const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
-    for (const sale of sales) {
-      await client.query(
-        `UPDATE positions SET quantity = quantity - $3::numeric,
-         cost_basis_usdc = cost_basis_usdc - $4::numeric
-         WHERE fund_id = $1 AND instrument_id = $2`,
-        [fundId, sale.instrumentId, sale.quantity, sale.costBasis],
-      );
-      const fundAsset = await ledgerAccountId(client, "FUND", fundId, sale.instrumentId);
-      const marketAsset = await ledgerAccountId(client, "MARKET", "paper-market", sale.instrumentId);
-      const marketUsdc = await ledgerAccountId(client, "MARKET", "paper-market", "USDC");
-      await client.query(
-        `INSERT INTO ledger_entries (event_id, account_id, amount)
-         VALUES ($1, $2, -$5::numeric), ($1, $3, $5),
-                ($1, $4, -$6::numeric), ($1, $7, $6)`,
-        [eventId, fundAsset, marketAsset, marketUsdc, sale.quantity, sale.proceeds, fundUsdc],
-      );
-    }
-    const shareAsset = `SHARE:${fundId}`;
-    const userShares = await ledgerAccountId(client, "USER", actor.id, shareAsset);
-    const issuance = await ledgerAccountId(client, "ISSUANCE", fundId, shareAsset);
+/** Exit inside the caller's transaction. The caller owns idempotency. */
+export async function leaveFundInTransaction(
+  client: DbClient,
+  actor: Actor,
+  fundId: string,
+  shares: Amount,
+): Promise<CrewChange> {
+  const sharesText = fixed(shares, SHARE_DECIMALS);
+  const fund = await lockFund(client, fundId);
+  await client.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [actor.id]);
+  if (fund.captain_id === actor.id) throw new ApiFault(403, "captain_stake_locked", "Captain stake stays in the trial");
+  const held = await client.query<{ shares: string }>(
+    "SELECT shares::text FROM fund_shares WHERE fund_id = $1 AND user_id = $2",
+    [fundId, actor.id],
+  );
+  if (!held.rows[0] || new Amount(held.rows[0].shares).lt(shares)) {
+    throw new ApiFault(422, "insufficient_shares", "Not enough fund shares");
+  }
+  const valuation = await valueFund(client, fund);
+  const supply = new Amount(fund.total_shares);
+  const fraction = shares.div(supply);
+  const cashPart = new Amount(fixed(
+    valuation.positions.length === 0
+      ? shares.mul(valuation.sharePrice)
+      : new Amount(fund.cash_usdc).mul(fraction),
+    USDC_DECIMALS,
+  ));
+  const exitSpread = new Amount("0.002");
+  let proceeds = new Amount(0);
+  let markedAssetsRemoved = new Amount(0);
+  const sales: Array<{ instrumentId: string; quantity: string; proceeds: string; costBasis: string }> = [];
+  for (const position of valuation.positions) {
+    const quantity = new Amount(fixed(position.quantity.mul(fraction), position.decimals));
+    if (quantity.lte(0)) continue;
+    const marked = quantity.mul(position.price);
+    const saleProceeds = new Amount(fixed(marked.mul(new Amount(1).minus(exitSpread)), USDC_DECIMALS));
+    const basis = new Amount(fixed(position.costBasis.mul(quantity).div(position.quantity), SHARE_DECIMALS));
+    markedAssetsRemoved = markedAssetsRemoved.plus(marked);
+    proceeds = proceeds.plus(saleProceeds);
+    sales.push({ instrumentId: position.instrumentId, quantity: fixed(quantity, position.decimals),
+      proceeds: fixed(saleProceeds, USDC_DECIMALS), costBasis: fixed(basis, SHARE_DECIMALS) });
+  }
+  const payout = cashPart.plus(proceeds);
+  if (payout.lte(0)) throw new ApiFault(422, "exit_too_small", "Exit would pay no virtual USDC");
+  const newSupply = supply.minus(shares);
+  if (newSupply.lte(0)) throw new ApiFault(409, "fund_seed_required", "Fund cannot lose all shares");
+
+  const eventId = await appendFundEvent(client, fundId, "crew_left", {
+    userId: actor.id, shares: sharesText, payoutUsdc: fixed(payout, USDC_DECIMALS),
+    exitCostUsdc: fixed(markedAssetsRemoved.minus(proceeds), USDC_DECIMALS), sales,
+  });
+  const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");
+  const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
+  for (const sale of sales) {
+    await client.query(
+      `UPDATE positions SET quantity = quantity - $3::numeric,
+       cost_basis_usdc = cost_basis_usdc - $4::numeric
+       WHERE fund_id = $1 AND instrument_id = $2`,
+      [fundId, sale.instrumentId, sale.quantity, sale.costBasis],
+    );
+    const fundAsset = await ledgerAccountId(client, "FUND", fundId, sale.instrumentId);
+    const marketAsset = await ledgerAccountId(client, "MARKET", "paper-market", sale.instrumentId);
+    const marketUsdc = await ledgerAccountId(client, "MARKET", "paper-market", "USDC");
     await client.query(
       `INSERT INTO ledger_entries (event_id, account_id, amount)
        VALUES ($1, $2, -$5::numeric), ($1, $3, $5),
               ($1, $4, -$6::numeric), ($1, $7, $6)`,
-      [eventId, fundUsdc, userUsdc, userShares, fixed(payout, USDC_DECIMALS), sharesText, issuance],
+      [eventId, fundAsset, marketAsset, marketUsdc, sale.quantity, sale.proceeds, fundUsdc],
     );
-    await client.query(
-      `UPDATE fund_shares SET shares = shares - $3::numeric WHERE fund_id = $1 AND user_id = $2`,
-      [fundId, actor.id, sharesText],
-    );
-    await client.query("UPDATE users SET paper_cash = paper_cash + $2::numeric WHERE id = $1", [actor.id, fixed(payout, USDC_DECIMALS)]);
-    await client.query(
-      `UPDATE funds SET cash_usdc = cash_usdc - $2::numeric,
-       total_shares = total_shares - $3::numeric WHERE id = $1`,
-      [fundId, fixed(cashPart, USDC_DECIMALS), sharesText],
-    );
-    const newNav = valuation.nav.minus(cashPart).minus(markedAssetsRemoved);
-    await saveNav(client, fundId, newNav, newSupply, valuation.pricedAt);
-    const response: CrewChange = {
-      mode: "PAPER", fundId, eventId, shares: sharesText,
-      virtualUsdc: fixed(payout, USDC_DECIMALS), sharePrice: fixed(newNav.div(newSupply), SHARE_DECIMALS),
-    };
-    await finishIdempotent(client, actor.id, key, response, 200);
-    return response;
-  });
+  }
+  const shareAsset = `SHARE:${fundId}`;
+  const userShares = await ledgerAccountId(client, "USER", actor.id, shareAsset);
+  const issuance = await ledgerAccountId(client, "ISSUANCE", fundId, shareAsset);
+  await client.query(
+    `INSERT INTO ledger_entries (event_id, account_id, amount)
+     VALUES ($1, $2, -$5::numeric), ($1, $3, $5),
+            ($1, $4, -$6::numeric), ($1, $7, $6)`,
+    [eventId, fundUsdc, userUsdc, userShares, fixed(payout, USDC_DECIMALS), sharesText, issuance],
+  );
+  await client.query(
+    `UPDATE fund_shares SET shares = shares - $3::numeric WHERE fund_id = $1 AND user_id = $2`,
+    [fundId, actor.id, sharesText],
+  );
+  await client.query("UPDATE users SET paper_cash = paper_cash + $2::numeric WHERE id = $1", [actor.id, fixed(payout, USDC_DECIMALS)]);
+  await client.query(
+    `UPDATE funds SET cash_usdc = cash_usdc - $2::numeric,
+     total_shares = total_shares - $3::numeric WHERE id = $1`,
+    [fundId, fixed(cashPart, USDC_DECIMALS), sharesText],
+  );
+  const newNav = valuation.nav.minus(cashPart).minus(markedAssetsRemoved);
+  await saveNav(client, fundId, newNav, newSupply, valuation.pricedAt);
+  const response: CrewChange = {
+    mode: "PAPER", fundId, eventId, shares: sharesText,
+    virtualUsdc: fixed(payout, USDC_DECIMALS), sharePrice: fixed(newNav.div(newSupply), SHARE_DECIMALS),
+  };
+  return response;
 }
 
 export async function myPositions(pool: DbPool, userId: string) {

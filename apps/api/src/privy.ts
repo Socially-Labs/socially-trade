@@ -39,3 +39,33 @@ export async function privyIdentity(token: string): Promise<{ subject: string; d
     throw new ApiFault(401, "unauthorized", "Invalid or expired Privy access token");
   }
 }
+
+interface PrivyLinkedAccount { type?: string; chain_type?: string; address?: string; wallet_client_type?: string }
+
+/**
+ * Solana wallets linked to a Privy user, embedded wallet first.
+ * Null when PRIVY_APP_SECRET is not set, so the caller cannot check ownership.
+ */
+export async function privySolanaWallets(subject: string): Promise<string[] | null> {
+  const appId = process.env.PRIVY_APP_ID;
+  const secret = process.env.PRIVY_APP_SECRET;
+  if (!appId || !secret) return null;
+  let body: { linked_accounts?: PrivyLinkedAccount[] };
+  try {
+    const response = await fetch(`https://api.privy.io/v1/users/${encodeURIComponent(subject)}`, {
+      headers: {
+        authorization: `Basic ${Buffer.from(`${appId}:${secret}`).toString("base64")}`,
+        "privy-app-id": appId,
+      },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) throw new Error(`Privy user lookup returned ${response.status}`);
+    body = await response.json() as typeof body;
+  } catch {
+    throw new ApiFault(503, "auth_unavailable", "Privy user lookup is unavailable");
+  }
+  return (body.linked_accounts ?? [])
+    .filter((a) => a.type === "wallet" && a.chain_type === "solana" && typeof a.address === "string")
+    .sort((a, b) => Number(b.wallet_client_type === "privy") - Number(a.wallet_client_type === "privy"))
+    .map((a) => a.address!);
+}

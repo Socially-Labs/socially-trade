@@ -46,7 +46,9 @@ Authorization: Bearer <privy-access-token>
 ```
 
 No body is required; an empty JSON object is also accepted. Client-supplied user IDs,
-email, balances or wallet addresses are rejected.
+email or balances are rejected. When the devnet token layer is on (`USDG_MINT`), the body may
+carry `walletAddress`; see [the devnet token layer](devnet-token-layer.md) for how it is bound
+and checked against the Privy user record.
 
 Response:
 
@@ -104,7 +106,9 @@ Privy DIDs identify distinct accounts from former development or other-provider
 subjects. Existing trial balances/history are not automatically linked or migrated.
 Do not link accounts based on a client-supplied email or wallet address.
 
-This integration does not create wallets, sign transactions or call the v1 program.
+This integration does not create wallets or call the v1 program. With the devnet token
+layer on, the backend reads the user's linked Solana wallets with `PRIVY_APP_SECRET`
+(server-only) and signs only its own mint and treasury transfers.
 It requires your actual Privy app configuration for live sign-in validation. The
 previous 80-test report predates this integration. The existing simulation fixtures
 now sign local ES256 tokens and mock JWKS through the production verifier; those changes have

@@ -113,6 +113,19 @@ The worker also delivers fund outbox records to each current Captain and Crew me
 To process orders with local seeded prices, keep `DEV_PRICE_SEED_ENABLED=true`, start the worker with `pnpm --filter @socially/worker start`, submit a Captain order, then seed a fresh price after submission. The worker waits at least three seconds and uses the latest eligible price observation. `pnpm --filter @socially/worker orders:once` processes eligible work once.
 
 All v0 financial values are virtual. The current API does not accept orders or hold assets.
+
+### Devnet token layer
+
+With `USDG_MINT` set, money in and out uses one SPL test token on Solana devnet, "USDG (devnet)" (6 decimals, we hold the mint authority). Signup mints the grant to the user's wallet, deposits are user-signed transfers to the treasury that the backend verifies before it credits paper cash or joins a fund, and withdrawals send tokens from the treasury. Trading stays paper. Create the mint and treasury with `node apps/api/scripts/devnet-setup.mjs`. See [the devnet token layer](docs/devnet-token-layer.md) for flows, endpoints, env vars and the app integration.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/v0/me/token-balance` | On-chain USDG (devnet) balance plus paper balances |
+| POST | `/v0/me/deposits/prepare` | Fee-paid transfer transaction for the wallet to sign |
+| POST | `/v0/me/deposits` | Claim a deposit by signature; optional `fundId` joins a fund |
+| GET | `/v0/me/deposits/:signature` | Deposit state (`PENDING`, `CONFIRMED`, `FAILED`, `EXPIRED`) |
+| POST | `/v0/me/withdrawals` | Withdraw paper cash or a fund exit payout; requires `Idempotency-Key` |
+| GET | `/v0/me/withdrawals/:withdrawalId` | Withdrawal state and signature |
 ## Knowledge graph
 
 See [Graphify setup and refresh instructions](docs/graphify.md) for the backend,
