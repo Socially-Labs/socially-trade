@@ -5,11 +5,13 @@ export function configurePrivyFixture() {
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   process.env.PRIVY_APP_ID = 'local-paper-test';
   const jwk = { ...publicKey.export({ format: 'jwk' }), alg: 'ES256', use: 'sig', kid: 'fixture-key' };
-  globalThis.fetch = async input => {
-    if (String(input) !== 'https://api.privy.io/v1/apps/local-paper-test/jwks.json') {
-      throw new Error('Simulation attempted an unexpected external request');
-    }
-    return Response.json({ keys: [jwk] });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options) => {
+    if (String(input) === 'https://api.privy.io/v1/apps/local-paper-test/jwks.json') return Response.json({ keys: [jwk] });
+    // Loopback requests reach the API under test (for example the SSE test).
+    const { hostname } = new URL(typeof input === 'string' ? input : input.url ?? input);
+    if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(hostname)) return realFetch(input, options);
+    throw new Error('Simulation attempted an unexpected external request');
   };
   return subject => {
     const now = Math.floor(Date.now() / 1000);
