@@ -1,5 +1,7 @@
 import { createPool } from "@socially/db";
 import { createApp } from "./app.js";
+import { createDevnetChain, loadTokenConfig } from "./token-chain.js";
+import { tokenLimits } from "./token-flows.js";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -7,7 +9,16 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 }
 
 const pool = process.env.DATABASE_URL ? createPool() : null;
-const app = createApp(pool);
+const tokenConfig = await loadTokenConfig();
+// Refuses to start against a mainnet RPC, a non-devnet cluster or a mint we do not control.
+if (tokenConfig) tokenLimits(); // Invalid limits stop the server here, not at the first request.
+const token = tokenConfig
+  ? {
+    chain: await createDevnetChain(tokenConfig), signupGrantRaw: tokenConfig.signupGrantRaw,
+    allowUnverifiedWallet: tokenConfig.allowUnverifiedWallet,
+  }
+  : null;
+const app = createApp(pool, { token });
 await app.listen({
   port,
   host: process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1"),

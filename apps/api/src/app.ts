@@ -12,8 +12,19 @@ import { registerNotificationRoutes } from "./notifications.js";
 import { registerPerformanceRoutes } from "./performance.js";
 import { registerHistoryRoutes } from "./history.js";
 import { registerAuthRoutes } from "./auth-routes.js";
+import type { TokenLayer } from "./token-flows.js";
+import { registerTokenRoutes } from "./token-routes.js";
 
-export function createApp(pool: DbPool | null) {
+export interface AppOptions {
+  /** Devnet token layer. Required exactly when USDG_MINT is set. */
+  token?: TokenLayer | null;
+}
+
+export function createApp(pool: DbPool | null, options: AppOptions = {}) {
+  const token = options.token ?? null;
+  if (Boolean(process.env.USDG_MINT) !== Boolean(token) || (token && token.chain.mint !== process.env.USDG_MINT)) {
+    throw new Error("The token layer must run with the configured USDG_MINT and no other mint");
+  }
   const app = Fastify({
     logger: true,
     ajv: { customOptions: { coerceTypes: false, removeAdditional: false } },
@@ -55,7 +66,8 @@ export function createApp(pool: DbPool | null) {
   app.get("/health", async () => ({ status: "ok", mode: "PAPER" }));
 
   registerAccountRoutes(app, db);
-  registerAuthRoutes(app, db);
+  registerAuthRoutes(app, db, token);
+  if (token) registerTokenRoutes(app, db, token.chain);
   registerFundRoutes(app, db);
   registerOrderRoutes(app, db);
   registerFundEventRoutes(app, db);

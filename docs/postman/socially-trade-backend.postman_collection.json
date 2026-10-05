@@ -1,0 +1,1809 @@
+{
+  "info": {
+    "name": "socially.trade backend (v0 paper)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Endpoints exercised in the 2026-10-05 functional check. Set baseUrl, privyToken (Captain) and crewToken (Crew) to Privy access tokens for PRIVY_APP_ID. All amounts are decimal strings. All values are virtual (PAPER). The Devnet token layer folder needs USDG_MINT: deposits and withdrawals move the USDG (devnet) test token."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{privyToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:3000"
+    },
+    {
+      "key": "privyToken",
+      "value": ""
+    },
+    {
+      "key": "crewToken",
+      "value": ""
+    },
+    {
+      "key": "captainId",
+      "value": ""
+    },
+    {
+      "key": "fundId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "notificationId",
+      "value": "1"
+    },
+    {
+      "key": "walletAddress",
+      "value": ""
+    },
+    {
+      "key": "depositSignature",
+      "value": ""
+    },
+    {
+      "key": "withdrawalId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health and auth",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bootstrap Captain account (Privy)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/auth/privy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "auth",
+                "privy"
+              ]
+            },
+            "description": "Creates the user and the one-time 10,000 virtual USDC grant. Body is optional."
+          }
+        },
+        {
+          "name": "Bootstrap Crew account (Privy)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/auth/privy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "auth",
+                "privy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Bootstrap rejects client-supplied fields (400)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/auth/privy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "auth",
+                "privy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"x@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Me without token (401)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Paper balance",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/paper-balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "paper-balance"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Captain",
+      "item": [
+        {
+          "name": "Handle availability",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/captains/handle-availability?handle=checkcap1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "captains",
+                "handle-availability"
+              ],
+              "query": [
+                {
+                  "key": "handle",
+                  "value": "checkcap1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Captain profile",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/captains",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "captains"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"handle\": \"checkcap1\",\n  \"bio\": \"SOL momentum\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code < 300) pm.collectionVariables.set('captainId', pm.response.json().userId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Captain profile",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/captains/{{captainId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "captains",
+                "{{captainId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start fund",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "fund-{{$guid}}",
+                "description": "Reuse the same value when you retry the same action."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Check Fund\",\n  \"description\": \"functional check\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code < 300) pm.collectionVariables.set('fundId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preview order",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/orders/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "orders",
+                "preview"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"side\": \"BUY\",\n  \"instrumentId\": \"SOL\",\n  \"notionalUsdc\": \"500\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit order",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "order-{{$guid}}",
+                "description": "Reuse the same value when you retry the same action."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"side\": \"BUY\",\n  \"instrumentId\": \"SOL\",\n  \"notionalUsdc\": \"500\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code < 300) pm.collectionVariables.set('orderId', pm.response.json().orderId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order status",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "orders",
+                "{{orderId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel pending order",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/orders/{{orderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Post order note",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{privyToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "note-{{$guid}}",
+                "description": "Reuse the same value when you retry the same action."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/orders/{{orderId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "orders",
+                "{{orderId}}",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Bought SOL on breakout\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Captain orders",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/captains/{{captainId}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "captains",
+                "{{captainId}}",
+                "orders"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Captain trade statistics",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/captains/{{captainId}}/trade-statistics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "captains",
+                "{{captainId}}",
+                "trade-statistics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Captain paper record",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/captains/{{captainId}}/paper-record",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "captains",
+                "{{captainId}}",
+                "paper-record"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Funds (public)",
+      "item": [
+        {
+          "name": "List funds",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Rankings",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/rankings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "rankings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund summary",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund policy",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "policy"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund holdings",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/holdings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "holdings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund orders",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/orders?limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund performance",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/performance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "performance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund NAV history (chart)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/history?after=0&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "after",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund events",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/events?after=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "after",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund events SSE stream",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/events/stream?after=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "events",
+                "stream"
+              ],
+              "query": [
+                {
+                  "key": "after",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Server-sent events. Resume with after or Last-Event-ID."
+          }
+        },
+        {
+          "name": "Fund messages",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/messages?after=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "after",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund decisions",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/decisions?after=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "decisions"
+              ],
+              "query": [
+                {
+                  "key": "after",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Crew",
+      "item": [
+        {
+          "name": "Join fund",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "join-{{$guid}}",
+                "description": "Reuse the same value when you retry the same action."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/joins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "joins"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsdc\": \"100.000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Join below minimum (400)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "join-{{$guid}}",
+                "description": "Reuse the same value when you retry the same action."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/joins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "joins"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsdc\": \"0.5\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Positions",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/paper-positions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "paper-positions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Post chat",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "msg-{{$guid}}",
+                "description": "Reuse the same value when you retry the same action."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"gm captain\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Exit fund",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "exit-{{$guid}}",
+                "description": "Reuse the same value when you retry the same action."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/funds/{{fundId}}/exits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "funds",
+                "{{fundId}}",
+                "exits"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shares\": \"40\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Personal fund performance",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/funds/{{fundId}}/performance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "funds",
+                "{{fundId}}",
+                "performance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Crew transactions",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/crew-transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "crew-transactions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Paper record",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/paper-record",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "paper-record"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Notifications",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/notifications?after=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "after",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark notification read",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/notifications/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Market",
+      "item": [
+        {
+          "name": "Latest SOL price",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/market/prices?instruments=SOL",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "market",
+                "prices"
+              ],
+              "query": [
+                {
+                  "key": "instruments",
+                  "value": "SOL"
+                }
+              ]
+            },
+            "description": "WebSocket: ws://{{baseUrl host}}/v0/ws. Send {\"type\":\"subscribe\",\"channel\":\"market.prices\",\"instruments\":[\"SOL\"]}; reconnect with \"after\":\"<cursor>\". Private inbox: {\"type\":\"authenticate\",\"accessToken\":\"<token>\"} then {\"type\":\"subscribe\",\"channel\":\"account.notifications\",\"after\":\"0\"}."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Devnet token layer",
+      "description": "Requires USDG_MINT and the token layer env vars. Only money in and out touches Solana devnet; trading stays paper.",
+      "item": [
+        {
+          "name": "Bootstrap with a Solana wallet (token layer)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/auth/privy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "auth",
+                "privy"
+              ]
+            },
+            "description": "With USDG_MINT set: binds the Solana wallet once and mints the signup grant (SIGNUP_GRANT, default 10,000 USDG devnet) to its token account, once per user. With PRIVY_APP_SECRET the backend takes the wallet from the Privy user record and walletAddress is optional (it must be a linked wallet). Without the secret the bind fails closed with 503 wallet_verification_unconfigured, unless the server runs with DEV_ALLOW_UNVERIFIED_WALLET=1 (localhost or devnet RPC only), which accepts walletAddress as sent. A user from before the token layer converts its current paper cash instead: the grant equals that cash and paper cash becomes 0. Paper cash starts at 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"walletAddress\": \"{{walletAddress}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Token balance",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/token-balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "token-balance"
+              ]
+            },
+            "description": "On-chain USDG (devnet) balance of the bound wallet plus paper cash and fund positions. Also reconciles pending payouts."
+          }
+        },
+        {
+          "name": "Prepare deposit transaction",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits/prepare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits",
+                "prepare"
+              ]
+            },
+            "description": "Returns a base64 v0 transaction: TransferChecked of amountUsdc from the user's token account to the treasury token account. The treasury already signed as fee payer, so the user needs no SOL. The wallet signs and sends it, then posts the signature. Rate limited per user (PREPARE_RATE_PER_HOUR, default 20): 429 rate_limited.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsdc\": \"100.000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit deposit signature",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits"
+              ]
+            },
+            "description": "Credits paper cash after the backend fetches the transaction from devnet and checks: finalized, success, exactly one top-level transferChecked and no inner instructions, our mint, exact amount, source owner and authority = bound wallet, destination = treasury. 202 PENDING if devnet does not have it yet; then poll the status request. CONFIRMED and FAILED are terminal. EXPIRED needs the signature missing on chain past its block height bound and DEPOSIT_EXPIRY_SECONDS; a later status poll that finds the transaction finalized still credits it once.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signature\": \"{{depositSignature}}\",\n  \"amountUsdc\": \"100.000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit deposit signature and join fund",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits"
+              ]
+            },
+            "description": "Same checks, then joins the fund with the same amount in the same database transaction. If the join is refused, the credit stays as paper cash and deposit.join.error names the reason.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signature\": \"{{depositSignature}}\",\n  \"amountUsdc\": \"100.000000\",\n  \"fundId\": \"{{fundId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Deposit status",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/deposits/{{depositSignature}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "deposits",
+                "{{depositSignature}}"
+              ]
+            },
+            "description": "Re-verifies a PENDING or EXPIRED deposit; returns the stored state otherwise."
+          }
+        },
+        {
+          "name": "Withdraw paper cash",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "withdraw-{{$guid}}",
+                "description": "Reuse the same value when you retry the same withdrawal."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "withdrawals"
+              ]
+            },
+            "description": "Debits paper cash and sends the same amount of USDG (devnet) from the treasury to the wallet. One send per Idempotency-Key. 201 CONFIRMED or 202 PENDING. Minimum WITHDRAW_MIN (default 1 token, else 400 amount_too_small); at most WITHDRAW_RATE_PER_HOUR (default 10) per user (429 rate_limited). The treasury pays for the user's token account at most 3 times; after that, a wallet without the account gets 409 token_account_required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountUsdc\": \"50.000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code < 300) pm.collectionVariables.set('withdrawalId', pm.response.json().withdrawal.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Exit fund and withdraw",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "exit-withdraw-{{$guid}}",
+                "description": "Reuse the same value when you retry the same withdrawal."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "withdrawals"
+              ]
+            },
+            "description": "Burns shares (paper exit) and withdraws the exit payout on chain in one request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fundId\": \"{{fundId}}\",\n  \"shares\": \"10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code < 300) pm.collectionVariables.set('withdrawalId', pm.response.json().withdrawal.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Withdrawal status",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{crewToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v0/me/withdrawals/{{withdrawalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v0",
+                "me",
+                "withdrawals",
+                "{{withdrawalId}}"
+              ]
+            },
+            "description": "Reconciles the payout with devnet (rebroadcast, or re-sign only after the old blockhash expired) and returns its state."
+          }
+        }
+      ]
+    }
+  ]
+}

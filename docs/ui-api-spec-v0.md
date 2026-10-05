@@ -689,7 +689,7 @@ This helper is illustrative; add cancellation, timeout, runtime validation and c
 
 ## 13. Current integration gaps
 
-The following have no implemented v0 UI endpoint: price ticker/candles or instrument search, Captain directory/search, profile/fund editing, policy mutation, extra Captain deposits, order amendment, limit/stop/leverage trades, exit preview/queue, private chat, unread count, push-device registration, real deposits/withdrawals, wallet signing, or v1 onchain operations.
+The following have no implemented v0 UI endpoint: price ticker/candles or instrument search, Captain directory/search, profile/fund editing, policy mutation, extra Captain deposits, order amendment, limit/stop/leverage trades, exit preview/queue, private chat, unread count, push-device registration, real-money deposits/withdrawals, or v1 onchain operations. Devnet test-token deposits and withdrawals are in [the devnet token layer](devnet-token-layer.md).
 
 The trade screen can use the SOL order preview for a current estimate, but there is no standalone live price endpoint. Limits currently permit SOL spot only. Do not wire proposed whitepaper features to invented routes.
 
