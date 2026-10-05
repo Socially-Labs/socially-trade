@@ -230,8 +230,12 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       try {
         assert.equal(await processOrder(pool, id), false);
         assert.equal(await markActiveFunds(pool), 0);
-        const response = await app.inject({ method: 'GET', url: '/v0/me', headers: headers('captain') });
-        assert.notEqual(response.statusCode, 200);
+        // Privy is the only provider in every environment: a former development token fails, a Privy token works.
+        const legacy = await app.inject({ method: 'GET', url: '/v0/me', headers: { authorization: 'Bearer old-development-token', 'x-dev-subject': 'dev:captain' } });
+        assert.equal(legacy.statusCode, 401, legacy.body);
+        const privy = await app.inject({ method: 'GET', url: '/v0/me', headers: headers('captain') });
+        assert.equal(privy.statusCode, 200, privy.body);
+        assert.equal(privy.json().id, ids.captain);
       } finally { process.env.NODE_ENV = 'development'; }
       await request('POST', route(`/orders/${id}/cancel`), 'captain');
     });
