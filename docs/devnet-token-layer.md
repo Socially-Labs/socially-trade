@@ -1,7 +1,7 @@
 # Devnet token layer
 
 The product is paper trading. Only money in and out touches Solana devnet, with one SPL
-test token that we create and control: **USDG (devnet)**, 6 decimals. One token equals one
+test token that we create and control: **Test USDC (devnet)** (previously labeled USDG; `USDG_MINT` remains the configuration key), 6 decimals. One token equals one
 paper USDC. Trades, P&L, fees and Captains stay in the paper ledger. No Anchor program is used.
 
 The layer is on when `USDG_MINT` is set. Without it the API behaves as before (10,000
@@ -14,6 +14,71 @@ virtual USDC on signup, no chain calls).
 | Signup grant | backend (mint authority; treasury pays the fee) | none, paper cash starts at 0 (a legacy account converts its cash, see below) | `MintToChecked` of `SIGNUP_GRANT` to the user's token account (created if missing) |
 | Deposit | user wallet (treasury pays the fee) | paper cash + X, optionally a fund join of X | `TransferChecked` of X from the user's token account to the treasury token account |
 | Withdraw | backend (treasury) | paper cash - X (or a fund exit, then its payout) | `TransferChecked` of X from the treasury to the user's token account (created if missing) |
+
+### External-wallet QR funding
+
+The mobile Deposit and Receive actions create Solana Pay SPL transfer requests. Funds go to
+our treasury owner; the transfer lands in its associated token account. The backend credits
+`users.paper_cash`, the same ledger projection Captain joins/exits already use. This is one
+available trading balance, with Captain allocations shown separately. The token is our controlled
+6-decimal devnet test mint, not Circle-issued mainnet USDC. The trading engine remains simulated.
+
+Endpoints (Privy bearer authentication; `Cache-Control: no-store`):
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /v0/me/wallet` | Enabled flag, devnet token, available USDC, Captain positions and latest 50 QR requests; one repeatable-read snapshot. |
+| `POST /v0/me/qr-deposits` | Body `{ "amount": "12.345678" }`, required `Idempotency-Key`; creates/replays one owned payment request. |
+| `GET /v0/me/qr-deposits/:id` | Owned request status; another account receives 404. Does not wait on RPC. |
+
+Requests accept 1–1,000,000 tokens, at most six fractional digits, with at most 20 requests
+per user/hour. Decimal strings stay exact. Each request has a new random public-key reference,
+pinned mint/treasury and a 30-minute display lifetime. `canPay` disables an expired request or
+one from another token configuration. Scan the QR with a Solana Pay compatible wallet set to
+devnet. A plain address transfer without the reference cannot be attributed safely.
+
+The API process starts a background reconciler. It discovers confirmed signatures by reference,
+pages through results in batches of 100, then checks each finalized transaction using both
+`jsonParsed` and compiled `json` account data. The reference must be read-only, non-signing and
+attached to the token transfer instruction, not just present elsewhere in the transaction.
+It checks success, configured token/program/destination, exactly one token transfer, exact
+amount and matching source/treasury balance deltas. Sender ownership of a Privy wallet is not
+required. Arbitrary instructions, multi-reference transfers and mismatched amounts are rejected.
+
+`WAITING → CONFIRMING → CONFIRMED` describes a matching payment. An invalid attempt does not
+consume the request: a later valid payment can succeed. Failed or wrong-amount payments are
+recorded without credit; retain their signatures for support, as there is no automatic refund
+flow. Each distinct valid payment is credited, including two actual payments to one request;
+reprocessing the same signature never credits again. `creditedAmount` reports the total received.
+
+`token_deposit_receipts` prevents duplicate credit across QR and existing deposit APIs. Legacy
+claims cannot redirect a referenced QR payment to the sender's own account, even before the
+background worker runs. Linking a personal wallet after a verified deposit preserves the trading
+balance and does not convert it into another mint grant.
+
+Requests, cursors, attempts and credits persist in Postgres. Multiple workers claim bounded work
+with database leases and `SKIP LOCKED`; a crash is retried after five minutes. Chain reads hold
+no database transaction open. Successful credit, receipt and balanced ledger event commit
+atomically. RPC failures retain pending work and retry after 15 seconds. Active requests scan
+about every five seconds; expired requests remain monitored hourly so late finalized payments
+can still credit. Lease/queue load can increase those timings. Pending confirmations rotate to
+prevent an old unresolved signature blocking later payments.
+
+Local setup: apply migrations with `pnpm db:migrate`, run `node apps/api/scripts/devnet-setup.mjs`,
+load its `DEVNET_RPC_URL`, `USDG_MINT`, `MINT_AUTHORITY` and `TREASURY` into the server environment,
+and restart `pnpm dev:api`. Generated secrets stay in ignored `.env.devnet.local`; never put them
+in Expo public variables. The sender needs this exact test mint and devnet SOL for fees. Android
+uses the configured local API origin (`adb reverse tcp:3000 tcp:3000` for USB localhost).
+Rebuild the development client after adding the native `expo-clipboard` module.
+
+Verification: QR integration tests cover amount/network validation, ownership, replay, concurrent
+credits, rejected attempts, pagination, late finalization, outages, wallet linking and cross-API
+credit protection. Recorded transactions test reference account decoding. A real devnet transfer
+of 12.345678 test tokens was detected/finalized/credited once, and browser UI checks at 320/393/430
+pixels covered QR rendering, invalid amounts, reload recovery and balance updates. Physical
+Android scanning and real Privy login remain separate device acceptance checks.
+
+Protocol reference: [Solana Pay specification](https://docs.solanapay.com/spec).
 
 ### Signup grant
 `POST /v0/auth/privy` binds one Solana wallet to the user and mints the grant.
