@@ -3,7 +3,7 @@ import type { DbPool } from "@socially/db";
 import { appendFundEvent, inTransaction } from "@socially/db";
 import { Amount, evaluateSpotOrder, fixed, MAX_PRICE_AGE_MS, MAX_SIMULATED_ORDER_USDC,
   parsePositiveAmount, USDC_DECIMALS } from "@socially/domain";
-import { simulateFill } from "@socially/market-data";
+import { simulateFill, simulateQuantitySell } from "@socially/market-data";
 import type { Actor } from "./auth.js";
 import { beginIdempotent, finishIdempotent, valueFund } from "./accounting.js";
 import { ApiFault } from "./errors.js";
@@ -11,9 +11,16 @@ import { ApiFault } from "./errors.js";
 export interface OrderInput {
   side: "BUY" | "SELL";
   instrumentId: string;
-  notionalUsdc: string;
+  notionalUsdc?: string;
+  quantity?: string;
 }
 
+function quantityIntent(input: OrderInput): string | null {
+  if (input.quantity === undefined) return null;
+  if (input.side !== "SELL" || input.notionalUsdc !== undefined) throw new ApiFault(400, "invalid_order", "Quantity is exclusive to SELL intents");
+  try { return fixed(parsePositiveAmount(input.quantity, 18), 18); }
+  catch { throw new ApiFault(400, "invalid_quantity", "quantity must be a positive decimal string"); }
+}
 function amount(input: OrderInput): string {
   let parsed: Amount;
   try { parsed = parsePositiveAmount(input.notionalUsdc, USDC_DECIMALS); }
@@ -62,7 +69,8 @@ function authorize(actor: Actor, fund: OrderContext, side: string): void {
 }
 
 export async function previewOrder(pool: DbPool, actor: Actor, fundId: string, input: OrderInput) {
-  const notionalUsdc = amount(input);
+  const requestedQuantity = quantityIntent(input);
+  let notionalUsdc = requestedQuantity ? "0" : amount(input);
   return inTransaction(pool, async (client) => {
     const fund = await context(client, fundId);
     authorize(actor, fund, input.side);
@@ -84,7 +92,14 @@ export async function previewOrder(pool: DbPool, actor: Actor, fundId: string, i
       throw new ApiFault(503, "price_unavailable", "Fresh market price unavailable");
     }
     const valuation = await valueFund(client, fund);
-    const fill = simulateFill(input.side, notionalUsdc, observation.price_usdc, instrument.rows[0].decimals);
+    let fill;
+    try {
+      fill = requestedQuantity ? simulateQuantitySell(requestedQuantity, observation.price_usdc, instrument.rows[0].decimals)
+        : simulateFill(input.side, notionalUsdc, observation.price_usdc, instrument.rows[0].decimals);
+      if ("notionalUsdc" in fill && typeof fill.notionalUsdc === "string") notionalUsdc = fill.notionalUsdc;
+    } catch { throw requestedQuantity
+      ? new ApiFault(422, "invalid_quantity", "Sell quantity must match token precision and the 1-1000 USDC order range")
+      : new ApiFault(422, "invalid_order_amount", "Order amount is too small for this token's precision"); }
     const position = valuation.positions.find((item) => item.instrumentId === input.instrumentId);
     const reason = evaluateSpotOrder({
       side: input.side, instrumentId: input.instrumentId,
@@ -103,23 +118,36 @@ export async function previewOrder(pool: DbPool, actor: Actor, fundId: string, i
 export async function submitOrder(
   pool: DbPool, actor: Actor, fundId: string, input: OrderInput, key: string,
 ) {
-  const notionalUsdc = amount(input);
+  const requestedQuantity = quantityIntent(input);
+  let notionalUsdc = requestedQuantity ? "0" : amount(input);
   return inTransaction(pool, async (client) => {
     const prior = await beginIdempotent<{ mode: "PAPER"; orderId: string; status: "PENDING" }>(
-      client, actor.id, key, `POST /v0/funds/${fundId}/orders`, { ...input, notionalUsdc },
+      client, actor.id, key, `POST /v0/funds/${fundId}/orders`, requestedQuantity
+        ? { side: input.side, instrumentId: input.instrumentId, quantity: requestedQuantity }
+        : { side: input.side, instrumentId: input.instrumentId, notionalUsdc },
     );
     if (prior) return prior;
     const fund = await context(client, fundId);
     authorize(actor, fund, input.side);
-    const instrument = await client.query<{ active: boolean }>(
-      "SELECT active FROM instruments WHERE id = $1", [input.instrumentId],
+    const instrument = await client.query<{ active: boolean; decimals: number }>(
+      "SELECT active,decimals FROM instruments WHERE id = $1", [input.instrumentId],
     );
     if (!instrument.rows[0]?.active) throw new ApiFault(422, "asset_not_allowed", "Asset is not active");
+    if (requestedQuantity) {
+      if (!fund.allowed_instruments.includes(input.instrumentId)) throw new ApiFault(422, "asset_not_allowed", "Asset is not allowed by fund policy");
+      const observation = (await client.query<{ price_usdc: string; source_at: Date }>(`SELECT price_usdc::text,source_at FROM price_observations
+        WHERE instrument_id=$1 AND (source='JUPITER_PRICE_V3' OR ($2::boolean AND source='DEV_SEED')) ORDER BY source_at DESC,received_at DESC LIMIT 1`,
+        [input.instrumentId, process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true"])).rows[0];
+      if (!observation || Date.now()-observation.source_at.getTime()>MAX_PRICE_AGE_MS || observation.source_at.getTime()>Date.now()+5000)
+        throw new ApiFault(503, "price_unavailable", "Fresh market price unavailable");
+      try { notionalUsdc = simulateQuantitySell(requestedQuantity, observation.price_usdc, instrument.rows[0]!.decimals).notionalUsdc; }
+      catch { throw new ApiFault(422, "invalid_quantity", "Sell quantity must match token precision and the 1-1000 USDC order range"); }
+    }
     const orderId = randomUUID();
     await client.query(
-      `INSERT INTO orders (id, fund_id, captain_id, idempotency_key, side, instrument_id, notional_usdc)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [orderId, fundId, actor.id, key, input.side, input.instrumentId, notionalUsdc],
+      `INSERT INTO orders (id, fund_id, captain_id, idempotency_key, side, instrument_id, notional_usdc, requested_quantity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [orderId, fundId, actor.id, key, input.side, input.instrumentId, notionalUsdc, requestedQuantity],
     );
     await appendFundEvent(client, fundId, "order_submitted", {
       orderId, side: input.side, instrumentId: input.instrumentId, notionalUsdc,
@@ -132,7 +160,7 @@ export async function submitOrder(
 
 export async function getOrder(pool: DbPool, fundId: string, orderId: string) {
   const result = await pool.query(
-    `SELECT o.id, o.side, o.instrument_id, o.notional_usdc::text, o.status,
+    `SELECT o.id, o.side, o.instrument_id, o.notional_usdc::text, o.requested_quantity::text, o.status,
             o.reject_reason, o.submitted_at, o.processed_at,
             f.quantity::text, f.market_price_usdc::text, f.fill_price_usdc::text,
             f.fee_usdc::text, f.model_version, f.observation_id

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { tradableInstrumentIds } from "@socially/market-data/catalog";
 import { appendFundEvent, inTransaction, ledgerAccountId, type DbPool } from "@socially/db";
 import { PAPER_MODE, type FundSummary } from "@socially/contracts";
 import { Amount, MAX_PRICE_AGE_MS } from "@socially/domain";
@@ -82,8 +83,8 @@ export async function createFund(
     }
     if (prior.response) return prior.response;
 
-    const captain = await client.query("SELECT 1 FROM captain_profiles WHERE user_id = $1", [actor.id]);
-    if (!captain.rowCount) throw new ApiFault(403, "captain_required", "Create a Captain profile first");
+    const captain = await client.query("SELECT 1 FROM users WHERE id = $1 AND role='captain'", [actor.id]);
+    if (!captain.rowCount) throw new ApiFault(403, "captain_required", "Choose the Captain role first");
     const user = await client.query<{ paper_cash: string }>(
       "SELECT paper_cash::text FROM users WHERE id = $1 FOR NO KEY UPDATE",
       [actor.id],
@@ -109,8 +110,8 @@ export async function createFund(
       `INSERT INTO fund_policy_versions
        (fund_id, version, max_order_bps, max_position_bps, drawdown_breaker_bps,
         allowed_instruments, effective_at)
-       VALUES ($1, 1, 1000, 2500, 3000, ARRAY['SOL'], $2)`,
-      [fundId, startsAt],
+       VALUES ($1, 1, 1000, 2500, 3000, $3::text[], $2)`,
+      [fundId, startsAt, tradableInstrumentIds],
     );
     await client.query(
       `INSERT INTO trials (fund_id, starts_at, ends_at, seed_usdc)

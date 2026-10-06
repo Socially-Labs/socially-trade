@@ -8,15 +8,18 @@ import { historySchema, orderHistory, type HistoryQuery } from "./history.js";
 
 export function registerOrderRoutes(app: FastifyInstance, db: () => DbPool): void {
   const orderBody = {
-    type: "object", required: ["side", "instrumentId", "notionalUsdc"], additionalProperties: false,
+    type: "object", required: ["side", "instrumentId"], additionalProperties: false,
     properties: {
       side: { type: "string", enum: ["BUY", "SELL"] },
       instrumentId: { type: "string", minLength: 1, maxLength: 32 },
-      notionalUsdc: { type: "string" },
+      notionalUsdc: { type: "string", maxLength: 40 },
+      quantity: { type: "string", maxLength: 40 },
     },
+    oneOf: [ { required: ["notionalUsdc"], not: { required: ["quantity"] } },
+      { required: ["quantity"], not: { required: ["notionalUsdc"] }, properties: { side: { const: "SELL" } } } ],
   } as const;
 
-  type PaperOrderBody = { side: "BUY" | "SELL"; instrumentId: string; notionalUsdc: string };
+  type PaperOrderBody = import("./orders.js").OrderInput;
 
   app.post<{ Params: { fundId: string }; Body: PaperOrderBody }>(
     "/v0/funds/:fundId/orders/preview", { schema: { body: orderBody } },
