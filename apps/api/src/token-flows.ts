@@ -119,6 +119,10 @@ export async function bindWallet(pool: DbPool, layer: TokenLayer, actor: Actor, 
 async function createSignupGrant(
   client: DbClient, userId: string, wallet: string, cash: { paper_cash: string; convertible: string }, signupGrantRaw: bigint,
 ): Promise<void> {
+  // External deposits already back this trading balance with tokens in the treasury.
+  // Linking a personal wallet later must not convert or mint that balance again.
+  const funded = await client.query("SELECT 1 FROM token_deposit_receipts WHERE user_id=$1 LIMIT 1", [userId]);
+  if (funded.rowCount) return;
   let amountRaw = toRaw(cash.convertible);
   let eventId: string | null = null;
   if (amountRaw > 0n) {
@@ -308,7 +312,7 @@ export async function reconcilePayouts(pool: DbPool, chain: TokenChain, userId: 
 interface WithdrawalRequest { amountUsdc?: string; fundId?: string; shares?: string }
 interface WithdrawalRecord { withdrawalId: string; amountUsdc: string; exit: CrewChange | null }
 
-async function moveTreasuryLedger(client: DbClient, userId: string, type: string, payload: object, userDelta: string) {
+export async function moveTreasuryLedger(client: DbClient, userId: string, type: string, payload: object, userDelta: string) {
   const eventId = randomUUID();
   await client.query("INSERT INTO fund_events (id, type, payload) VALUES ($1, $2, $3)", [eventId, type, payload]);
   const user = await ledgerAccountId(client, "USER", userId, "USDC");
@@ -505,7 +509,9 @@ export async function verifyDeposit(
     throw new ApiFault(409, "deposit_conflict", "This signature was already submitted with another amount or fund");
   }
   if (seen.status !== "PENDING" && seen.status !== "EXPIRED") return depositView(seen);
-  const tx = await chain.observe(signature);
+  const tx = chain.observePayment ? await chain.observePayment(signature) : await chain.observe(signature);
+  const references = tx?.transfers.flatMap(transfer => transfer.references ?? []) ?? [];
+  const qrReference = references.length ? (await pool.query("SELECT 1 FROM qr_deposits WHERE reference=ANY($1::text[]) LIMIT 1", [references])).rowCount : 0;
   if (!tx && seen.status === "EXPIRED") return depositView(seen);
   let expire = false;
   if (!tx) {
@@ -532,7 +538,13 @@ export async function verifyDeposit(
     if (!tx) return expire ? finish("status = 'EXPIRED', failure = 'not_found_before_expiry'", []) : depositView(row);
     const failure = depositFailure(tx, { mint: chain.mint, treasuryAta: chain.treasuryAta, wallet, amountRaw: BigInt(row.amount_raw) });
     if (failure) return finish("status = 'FAILED', failure = $2", [failure]);
+    if (qrReference) return finish("status = 'FAILED', failure = 'qr_reference_required'", []);
 
+    // Share the receipt key with QR deposits. A signature cannot credit through both APIs.
+    const receipt = await client.query(
+      "INSERT INTO token_deposit_receipts (signature, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING signature",
+      [signature, actor.id]);
+    if (!receipt.rowCount) return finish("status = 'FAILED', failure = 'already_credited'", []);
     const amountUsdc = fromRaw(row.amount_raw);
     await client.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [actor.id]);
     await client.query("UPDATE users SET paper_cash = paper_cash + $2::numeric WHERE id = $1", [actor.id, amountUsdc]);

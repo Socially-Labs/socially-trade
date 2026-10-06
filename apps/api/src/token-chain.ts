@@ -35,7 +35,7 @@ import {
 } from "@solana-program/token";
 
 export const TOKEN_DECIMALS = 6;
-export const TOKEN_LABEL = "USDG (devnet)";
+export const TOKEN_LABEL = "Test USDC (devnet)";
 export const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 export { TOKEN_PROGRAM_ADDRESS };
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
@@ -66,6 +66,7 @@ export interface TokenTransfer {
   mint: string | null;
   authority: string | null;
   amount: bigint;
+  references?: string[];
 }
 
 export interface ObservedTransaction {
@@ -83,6 +84,9 @@ export type SignatureState = "confirmed" | "failed" | "processing" | "missing";
 /** The only seam to Solana. Tests use an in-memory fake with the same contract. */
 export interface TokenChain {
   readonly mint: string;
+  readonly treasuryOwner?: string;
+  signaturesForReference?(reference: string, before?: string, until?: string): Promise<{ signature: string; failed: boolean }[]>;
+  observePayment?(signature: string): Promise<ObservedTransaction | null>;
   readonly treasuryAta: string;
   /** A finalized transaction, or null when the cluster has not finalized it yet. */
   observe(signature: string): Promise<ObservedTransaction | null>;
@@ -255,6 +259,36 @@ export async function observeTransaction(rpc: Rpc<GetTransactionApi>, sig: strin
   return { failed: tx.meta.err !== null, instructions, transfers, innerInstructions, balances: [...changes.values()] };
 }
 
+/** Finalized parsed transfers plus read-only references on the compiled transfer instruction. */
+export async function observePaymentTransaction(rpc: Rpc<GetTransactionApi>, sig: string): Promise<ObservedTransaction | null> {
+  const observed = await observeTransaction(rpc, sig);
+  if (!observed) return null;
+  // jsonParsed omits extra SPL instruction accounts. Read the compiled message too so
+  // reference ownership is proven on the transfer instruction, not merely in accountKeys.
+  const raw = await rpc.getTransaction(toSignature(sig), {
+    commitment: "finalized", encoding: "json", maxSupportedTransactionVersion: 0,
+  }).send();
+  if (!raw?.meta) return null;
+  const keys = [...raw.transaction.message.accountKeys,
+    ...(raw.meta.loadedAddresses?.writable ?? []), ...(raw.meta.loadedAddresses?.readonly ?? [])];
+  const h = raw.transaction.message.header;
+  const staticCount = raw.transaction.message.accountKeys.length;
+  const readonly = (index: number) => index >= Number(h.numRequiredSignatures) &&
+    (index < staticCount ? index >= staticCount - Number(h.numReadonlyUnsignedAccounts)
+      : index >= staticCount + (raw.meta?.loadedAddresses?.writable.length ?? 0));
+  let transferIndex = 0;
+  for (let i = 0; i < observed.instructions.length; i++) {
+    const kind = observed.instructions[i];
+    if (kind !== `${TOKEN_PROGRAM_ADDRESS}:transferChecked` && kind !== `${TOKEN_PROGRAM_ADDRESS}:transfer`) continue;
+    const ix = raw.transaction.message.instructions[i];
+    const transfer = observed.transfers[transferIndex++];
+    if (!ix || !transfer || keys[Number(ix.programIdIndex)] !== TOKEN_PROGRAM_ADDRESS) return null;
+    const extra = ix.accounts.slice(kind.endsWith(":transferChecked") ? 4 : 3).map(Number);
+    transfer.references = extra.filter(readonly).map(index => keys[index] as string);
+  }
+  return observed;
+}
+
 /** Real devnet adapter. It verifies the cluster and the mint before it returns. */
 export async function createDevnetChain(config: TokenConfig): Promise<TokenChain> {
   const rpc = createSolanaRpcFromTransport(withTimeout(createDefaultRpcTransport({ url: config.rpcUrl })));
@@ -290,7 +324,16 @@ export async function createDevnetChain(config: TokenConfig): Promise<TokenChain
 
   return {
     mint: config.mint,
+    treasuryOwner: config.treasury.address,
     treasuryAta,
+    async signaturesForReference(reference, before, until) {
+      const rows = await rpc.getSignaturesForAddress(address(reference), {
+        commitment: "confirmed", limit: 100, ...(before ? { before: toSignature(before) } : {}),
+        ...(until ? { until: toSignature(until) } : {}),
+      }).send();
+      return rows.map(row => ({ signature: row.signature, failed: row.err !== null }));
+    },
+    observePayment: (sig) => observePaymentTransaction(rpc, sig),
     observe: (sig) => observeTransaction(rpc, sig),
     async status(sig) {
       const { value } = await rpc.getSignatureStatuses([toSignature(sig)], { searchTransactionHistory: true }).send();

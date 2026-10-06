@@ -234,7 +234,7 @@ export async function leaveFundInTransaction(
   return response;
 }
 
-export async function myPositions(pool: DbPool, userId: string) {
+export async function myPositions(pool: DbPool | DbClient, userId: string) {
   const result = await pool.query<{
     fund_id: string; name: string; shares: string; share_price_usdc: string | null;
     valuation_status: string | null; priced_at: Date | null; has_positions: boolean;
