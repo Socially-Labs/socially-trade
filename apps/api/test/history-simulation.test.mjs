@@ -25,7 +25,7 @@ test('paper history pagination and privacy', async t => {
     const captain=(await get('/v0/me','captain')).id;
     const other=(await get('/v0/me','other')).id;
     const crew=(await get('/v0/me','crew')).id;
-    await pool.query("INSERT INTO captain_profiles(user_id,handle) VALUES($1,'history_captain'),($2,'history_other')",[captain,other]);
+    await pool.query("UPDATE users SET role='captain', username=CASE WHEN id=$1 THEN 'history_captain' ELSE 'history_other' END WHERE id IN ($1,$2)",[captain,other]);
     const f1=randomUUID(),f2=randomUUID(),foreign=randomUUID();
     await pool.query("INSERT INTO funds(id,captain_id,name,status) VALUES($1,$4,'prior','COMPLETED'),($2,$4,'active','ACTIVE'),($3,$5,'foreign','ACTIVE')",[f1,f2,foreign,captain,other]);
     await pool.query("INSERT INTO trials(fund_id,starts_at,ends_at,seed_usdc)SELECT unnest($1::uuid[]),now(),now()+interval '30 days',1000",[[f1,f2,foreign]]);
