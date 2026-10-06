@@ -1,6 +1,6 @@
 # Jupiter ingestion and WebSocket integration — v0
 
-Implemented 4 October 2026. Backend only. Build/type validation is separate from provider and integration testing; this checkpoint has not exercised live Jupiter credentials or simulated WebSocket reconnects.
+Implemented 4 October 2026; account-aware Jupiter client added 6 October 2026. Backend only. Client failure handling and distributed quotas have local automated coverage; live Jupiter credentials and end-to-end WebSocket reconnects still need deployment validation.
 
 ## Flow
 
@@ -8,7 +8,7 @@ Implemented 4 October 2026. Backend only. Build/type validation is separate from
 flowchart LR
   J[Jupiter Price V3] --> I[Ingestor: poll every 5 seconds]
   R[Solana RPC: source block times] --> I
-  B[Redis organisation request budget] --> I
+  B[Redis per-organisation budgets and cooldowns] --> I
   I --> D[(PostgreSQL observations + market outbox)]
   D --> P[Outbox publisher]
   P --> C[(Redis snapshot + replay stream)]
@@ -26,11 +26,19 @@ The five-second interval is a polling target. Successful observations publish im
 ### Provider and rate budget
 
 - [Jupiter Price V3](https://developers.jup.ag/docs/price): server-side `x-api-key`, maximum 50 mint addresses per request. v0 requests only wrapped SOL and USDC and exposes SOL trading.
-- [Jupiter free limits](https://developers.jup.ag/docs/portal/rate-limits): 1 request/second, 60/minute, organisation scope across keys/teams. Rotation improves credential failover; it does **not** multiply capacity.
-- `JUPITER_API_KEYS` contains comma-separated keys from the same organisation. All replicas must share `JUPITER_ORGANISATION_ID` and Redis. Do not combine keys from different organisations in this scheduler.
-- Keys rotate round robin. A shared Redis sliding window allows at most 48 calls per minute and spaces calls by at least one second. Normal five-second polling is about 12 calls per minute. Other Jupiter integrations must use this scheduler or be budgeted separately; calls made outside it are not counted locally.
-- A 429 pauses the whole organisation until the returned reset time, with a minimum one-second wait; missing reset and other failures apply a five-second delay plus jitter. 401/403 temporarily disable that credential for one hour. All-disabled keys cause periodic recovery checks.
+- [Jupiter free limits](https://developers.jup.ag/docs/portal/rate-limits): 1 request/second, 60/minute, organisation scope across keys/teams. Multiple keys belonging to one organisation still share one quota.
+- `JUP_ACC_1` through `JUP_ACC_10` each contain one server-only key from a **different** organisation. At least one is required; empty slots are ignored. All replicas sharing Redis must use the same organisation-to-slot mapping. Keep a slot assigned to its organisation when rotating its secret so its consumed quota and cooldown remain intact. Never put two keys from the same organisation into different numbered slots.
+- Legacy `JUPITER_API_KEYS` plus `JUPITER_ORGANISATION_ID` remains supported as an alternative for one organisation; those keys share one quota. Mixing legacy and numbered configuration, or repeating a credential, fails startup with a secret-free error.
+- Healthy accounts rotate round robin. Each organisation has a Redis-backed 60-second sliding window capped at 48 calls and spaced by at least 1,250 ms, including retries. A short Redis lease prevents overlapping requests for the same organisation across replicas. Ten independent organisations therefore have a configured combined ceiling of 480 requests/minute; this is capacity, not a promised provider throughput.
+- Normal SOL/USDC polling stays at a five-second target (about 12 calls/minute). More keys provide fallback and room for future batches; they do not automatically increase polling or add tokens. Other Jupiter integrations must use the shared scheduler or be budgeted separately; calls made outside it are not counted locally.
+- HTTP 429 cools only its organisation until the absolute `x-ratelimit-reset` time plus 250 ms, with a minimum one-second wait. Missing reset uses five seconds plus jitter. HTTP 401/403 disables only that credential for an hour. Network errors, per-request timeouts and HTTP 408/5xx apply a short organisation cooldown and try another eligible account.
+- Each logical fetch tries at most three distinct accounts, with a four-second per-request timeout and an eight-second request budget including queue time. The client allows two active logical fetches and a bounded queue. Caller cancellation stops fallback; Redis lease cleanup may finish after the request budget expires.
+- Transient failures across three distinct organisations within 20 seconds pause the shared Price V3 client for ten seconds (with fewer configured organisations, the threshold is their count). Rate limits and invalid credentials do not open this provider breaker. Cooldowns expire automatically; a successful request clears the transient-failure streak.
+- Malformed JSON, missing token rows and invalid price fields do not trigger credential rotation. The ingestion layer still validates SOL/USDC prices and source times. A successful fallback produces one accepted ingestion result without first publishing an unavailable event.
+- When every account is blocked the scheduler returns the earliest eligible retry delay. The leader observes that delay and the normal polling interval, avoiding a busy loop. Diagnostics contain account slot, failure category and HTTP status; never keys or raw provider responses.
 - Redis failure blocks new upstream requests. Requests never bypass the shared budget during an outage.
+
+Implementation details, test commands and operational assumptions: [Jupiter account client](jupiter-account-client.md).
 
 ### Price and paper execution semantics
 
@@ -38,7 +46,7 @@ Jupiter returns USD prices. `priceUsdc = SOL priceUsd / USDC priceUsd`; USDC is 
 
 The ingestor resolves both `blockId` values with Solana RPC [getBlockTime](https://solana.com/docs/rpc/http/getblocktime). `sourceAt` is the older of the SOL and USDC block times. PostgreSQL records the SOL block ID, USD prices, USDC block ID/time and actual fetch receipt time. Missing tokens, invalid decimals, unknown block times, future source times beyond five seconds and source age over 90 seconds do not create executable observations. Older observations cannot replace a newer accepted mark. Repeated observations do not reset their original receipt time.
 
-Display marks are `CURRENT` only while both source and receipt ages are at most 15 seconds; otherwise `STALE`. Provider failures produce `UNAVAILABLE`. The gateway also derives stale status when no new event arrives. A client should apply the same age check locally if its connection stops.
+Display marks are `CURRENT` only while both source and receipt ages are at most 15 seconds; otherwise `STALE`. Exhausted provider fallback or ingestion validation failures produce `UNAVAILABLE`, retaining the last known price and its original provenance/timestamps when one exists. This does not create a new executable observation or make an old price fresh. The gateway also derives stale status when no new event arrives. Clients must check status and apply the same age check locally if their connection stops.
 
 Paper consumers accept `JUPITER_PRICE_V3`, plus explicitly enabled local-only `DEV_SEED`. Pyth ingestion is removed from the worker's runtime and CLI. Existing historical Pyth records remain in the database. The paper worker runs independently every two seconds, retains the three-second minimum order delay, and requires observation source **and** receipt times at or after `submittedAt + 3 seconds`. Orders wait for a qualifying observation or reach the existing 120-second timeout. A displayed price is not a guaranteed fill. Execution/valuation freshness remains 90 seconds, while UI display freshness is 15 seconds; a recent stored observation can still be used during a short provider outage.
 
@@ -71,8 +79,8 @@ The latest price endpoint falls back to PostgreSQL if Redis is unavailable. It r
 | --- | --- | --- |
 | `DATABASE_URL` | All | Shared PostgreSQL database |
 | `REDIS_URL` | API, ingestor | Shared Redis instance |
-| `JUPITER_API_KEYS` | Ingestor | Comma-separated server-only keys |
-| `JUPITER_ORGANISATION_ID` | Ingestor | Stable common identifier for the keys' actual Jupiter organisation |
+| `JUP_ACC_1` … `JUP_ACC_10` | Ingestor | At least one populated server-only key; one different organisation per numbered slot, identical mapping on every replica |
+| `JUPITER_API_KEYS`, `JUPITER_ORGANISATION_ID` | Ingestor | Legacy alternative for keys belonging to one organisation; omit when using numbered slots |
 | `SOLANA_RPC_URL` | Ingestor | Mainnet RPC supporting `getBlockTime`; budget RPC calls separately |
 | `PRIVY_APP_ID` | API | App ID for private notification authentication |
 | `WS_ALLOWED_ORIGINS` | API | Exact comma-separated browser origins, e.g. `https://app.example.com` |
@@ -112,7 +120,7 @@ Ingestor restarts are safe: leadership is reacquired and pending market events a
 }
 ```
 
-An uninitialized feed returns `prices: []`. Unavailable entries contain null prices/provenance and a reason. Database fallback returns `transport: "database"`, `cursor: null` and no `firstCursor`.
+An uninitialized feed returns `prices: []`. Unavailable entries carry a reason and preserve the last known prices/provenance if available; otherwise these fields are null. An unavailable price must not be treated as a current quote. Database fallback returns `transport: "database"`, `cursor: null` and no `firstCursor`.
 
 ## WebSocket protocol
 
@@ -172,4 +180,4 @@ Unsubscribe either channel with `{type:"unsubscribe",channel}`. There is one sub
 
 ## Rollout checks still required
 
-Before production, exercise migrations on a fresh and existing database, real configured Jupiter/RPC responses, multi-replica leadership, shared quota/backoff, Redis restart recovery, slow clients, token expiry and reconnect cursor boundaries. Load-test gateway/account fanout and add metrics/alerts for observation age, ingestion failures, quota waits and outbox backlog. Those runtime and load checks have not been performed in this implementation checkpoint.
+Before production, exercise migrations on a fresh and existing database, real configured Jupiter/RPC responses, PostgreSQL multi-replica leadership, Redis restart recovery, slow clients, token expiry and reconnect cursor boundaries. Shared quota/backoff and provider-breaker recovery are covered with isolated local Redis; live provider behavior and gateway/account load remain unverified. Add metrics/alerts for observation age, ingestion failures, quota waits and outbox backlog.
