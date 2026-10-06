@@ -1,5 +1,7 @@
 # Privy backend authentication
 
+> Migration 017 unifies user profiles and usernames for Crew and Captains. See [current account schema and API](unified-user-accounts.md). Legacy Captain routes remain compatibility aliases.
+
 The client signs in with Privy and sends its access token as a bearer token.
 The backend verifies that token and maps its `did:privy:...` subject to the local
 PostgreSQL user. Tokens and Privy secrets are not saved in the database.

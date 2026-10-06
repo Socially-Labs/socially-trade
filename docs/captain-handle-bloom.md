@@ -1,10 +1,10 @@
-# Captain handle availability and Redis Bloom index
+# Shared username availability and Redis Bloom index
 
 ## Setup
 
 1. Start dependencies: `docker compose up -d postgres redis`.
 2. Load `DATABASE_URL` and `REDIS_URL=redis://127.0.0.1:6379` into the API environment.
-3. Run database migrations: `pnpm --filter @socially/db migrate` (includes migration 010).
+3. Run database migrations: `pnpm --filter @socially/db migrate` (includes migration 017).
 4. Start the API. The Redis filter initializes lazily on availability reads/profile creation.
 
 The Compose service uses Redis 8.2.2, whose standard distribution includes Bloom
@@ -17,18 +17,18 @@ The application does not automatically load `.env`; configure actual runtime var
 ## UI contract
 
 ```http
-GET /v0/captains/handle-availability?handle=jassbawa
+GET /v0/users/username-availability?username=jassbawa
 ```
 
 Anonymous, no idempotency key. Response:
 
 ```json
-{ "mode": "PAPER", "handle": "jassbawa", "available": true }
+{ "mode": "PAPER", "username": "jassbawa", "available": true }
 ```
 
-`Cache-Control: no-store`. Validation: `^[a-z0-9_]{3,24}$`; no extra query fields.
+`Cache-Control: no-store`. Validation: `^[a-z][a-z0-9_]{2,23}$`; no extra query fields.
 Invalid input returns `400 invalid_request`. Availability does not reserve a handle.
-`POST /v0/captains` remains the claim operation and uses the database unique constraint.
+`POST /v0/me/onboarding` is the shared claim operation and uses the database unique constraint.
 
 ## Read flow
 
@@ -48,12 +48,12 @@ so creation always relies on database uniqueness.
 
 ## Write flow and recovery
 
-Migration 010 adds a singleton revision and database instance UUID. A PostgreSQL
-statement trigger advances the revision transactionally on INSERT, DELETE,
-UPDATE OF handle and TRUNCATE of captain_profiles. Normal direct SQL writes are
+Migration 017 adds a singleton revision and database instance UUID. A PostgreSQL
+row triggers (plus a statement trigger for TRUNCATE) advances the revision transactionally on INSERT, DELETE,
+actual username updates and TRUNCATE of users. Normal direct SQL writes are
 therefore detected too, provided triggers remain enabled.
 
-Profile creation inserts within a transaction and captures its exact revision.
+Signup updates the user within a transaction and captures its exact revision.
 After commit, Redis adds the handle and advances its readiness revision in one
 script **only when** the old revision is the immediate predecessor. An outage or
 out-of-order write leaves the filter stale, so subsequent reads use PostgreSQL
@@ -86,17 +86,16 @@ cold starts may duplicate rebuild work. There is no distributed rebuild queue.
   an ioredis Cluster client or Sentinel discovery.
 - Application close waits for any rebuild and disconnects Redis.
 
-There is no username delete/rename API today. Database changes to handles invalidate
+`PATCH /v0/me` supports username rename; there is no account deletion API today. Database changes to handles invalidate
 readiness; rebuilds remove obsolete entries. Never manually set a readiness marker.
 After restoring a database backup, clear the two published Redis keys for its instance
 (or use a fresh isolated Redis database) so the index is rebuilt from the restored data.
 Database clones from the same backup must use separate Redis databases or reset
-`captain_handle_index_state.instance_id` before sharing Redis.
+`username_index_state.instance_id` before sharing Redis.
 
 ## Validation recorded
 
-API type checking and the monorepo build passed during implementation. Runtime Redis, SQL trigger and
-endpoint simulations have not been run for this feature; no frontend was created.
+The unified-account implementation passed monorepo build/typechecks and runtime Redis, SQL trigger and endpoint simulations. Both native and web account flows are wired in `apk/`; real Privy login still requires device/dashboard verification.
 
 Sources: [Redis Bloom filter](https://redis.io/docs/latest/develop/data-types/probabilistic/bloom-filter/),
 [BF.RESERVE](https://redis.io/docs/latest/commands/bf.reserve/).

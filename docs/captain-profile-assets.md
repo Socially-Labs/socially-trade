@@ -1,5 +1,7 @@
 # Captain profile image uploads
 
+> Migration 017 unifies user profiles and usernames for Crew and Captains. See [current account schema and API](unified-user-accounts.md). Legacy Captain routes remain compatibility aliases.
+
 ## Status
 
 The backend implements authenticated upload reservations, presigned direct uploads to a private AWS S3 staging bucket, image validation/processing, publication to a separate private processed bucket served publicly through CloudFront and automatic profile attachment. No frontend is included.

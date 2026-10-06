@@ -1,5 +1,7 @@
 # v0 UI API integration specification
 
+> Migration 017 unifies user profiles and usernames for Crew and Captains. See [current account schema and API](unified-user-accounts.md). Legacy Captain routes remain compatibility aliases.
+
 **Scope:** every route currently registered by the paper API (42 operations).
 **Reviewed:** 4 October 2026, against the current workspace source.
 **Audience:** web/mobile developers integrating Captain, Crew and public discovery screens.
