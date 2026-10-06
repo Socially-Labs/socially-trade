@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
+import { accountView } from "./user-profiles.js";
 import { ApiFault } from "./errors.js";
 import { isWalletAddress } from "./token-chain.js";
 import { bindWallet, settleSignupGrant, tokenInfo, type TokenLayer } from "./token-flows.js";
@@ -18,8 +19,7 @@ export function registerAuthRoutes(
     reply.header("cache-control", "no-store");
     const response = {
       mode: "PAPER", provider: "privy", privyUserId: actor.subject,
-      user: { id: actor.id, displayName: actor.displayName,
-        paperCash: { value: actor.paperCash, asset: "USDC" } },
+      user: accountView(actor),
     };
     if (!token) return response;
     const requested = request.body.walletAddress;

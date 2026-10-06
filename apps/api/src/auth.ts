@@ -12,6 +12,13 @@ export interface Actor {
   subject: string;
   displayName: string;
   paperCash: string;
+  username: string | null;
+  role: "crew" | "captain" | null;
+  bio: string;
+  avatarUrl: string | null;
+  bannerUrl: string | null;
+  hideBalances: boolean;
+  avatarKind: "captain" | "initials";
 }
 
 async function identity(request: FastifyRequest): Promise<{ subject: string; displayName: string }> {
@@ -29,7 +36,7 @@ export async function requireActor(request: FastifyRequest, pool: DbPool): Promi
       `INSERT INTO users (id, auth_subject, display_name, paper_cash)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (auth_subject) DO NOTHING
-       RETURNING id, auth_subject AS subject, display_name AS "displayName", paper_cash::text AS "paperCash"`,
+       RETURNING id, auth_subject AS subject, display_name AS "displayName", paper_cash::text AS "paperCash", username, role, bio, avatar_url AS "avatarUrl", banner_url AS "bannerUrl", hide_balances AS "hideBalances", avatar_kind AS "avatarKind"`,
       [id, subject, displayName, tokenLayerOn() ? "0" : VIRTUAL_ALLOWANCE],
     );
     if (inserted.rows[0] && tokenLayerOn()) return inserted.rows[0];
@@ -49,7 +56,7 @@ export async function requireActor(request: FastifyRequest, pool: DbPool): Promi
       return inserted.rows[0];
     }
     const existing = await client.query<Actor>(
-      `SELECT id, auth_subject AS subject, display_name AS "displayName", paper_cash::text AS "paperCash"
+      `SELECT id, auth_subject AS subject, display_name AS "displayName", paper_cash::text AS "paperCash", username, role, bio, avatar_url AS "avatarUrl", banner_url AS "bannerUrl", hide_balances AS "hideBalances", avatar_kind AS "avatarKind"
        FROM users WHERE auth_subject = $1`,
       [subject],
     );
