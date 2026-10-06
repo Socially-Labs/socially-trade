@@ -6,7 +6,7 @@ export interface MarketPrice {
   source: "JUPITER_PRICE_V3"; sourceBlockId: string | null; sourceAt: string | null;
   quoteSourceBlockId: string | null; quoteSourceAt: string | null;
   receivedAt: string; observationId: string | null; status: "CURRENT" | "STALE" | "UNAVAILABLE";
-  reason: string | null;
+  reason: string | null; change24h?: string | null;
 }
 export interface MarketEvent { type: "price_update" | "market_status"; eventId: string; price: MarketPrice }
 export type StreamEntry = [string, string[]];
@@ -19,7 +19,7 @@ export function currentPrice(price: MarketPrice, now = Date.now()): MarketPrice 
   if (price.status === "UNAVAILABLE") return price;
   const source = price.sourceAt ? Date.parse(price.sourceAt) : NaN;
   const received = Date.parse(price.receivedAt);
-  return Number.isFinite(source) && source <= now + 5_000 && now - source <= 15_000 && now - received <= 15_000
+  return Number.isFinite(source) && source <= now + 5_000 && now - source <= 15_000 && received <= now + 5_000 && now - received <= 15_000
     ? { ...price, status: "CURRENT", reason: null }
     : { ...price, status: "STALE", reason: "observation_stale" };
 }
@@ -55,6 +55,17 @@ export class MarketBus {
   readonly redis: Redis;
   private prefix: string | undefined;
   constructor(private readonly pool: DbPool, url: string) { this.redis = marketRedis(url); }
+  private async ready(): Promise<void> {
+    if (this.redis.status === "ready") return;
+    if (this.redis.status === "end") throw new Error("Market stream closed");
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => { clearTimeout(timer); this.redis.off("ready", connected); this.redis.off("end", ended); };
+      const connected = () => { cleanup(); resolve(); };
+      const ended = () => { cleanup(); reject(new Error("Market stream unavailable")); };
+      const timer = setTimeout(ended, 1_500);
+      this.redis.once("ready", connected); this.redis.once("end", ended);
+    });
+  }
   private async names() {
     if (!this.prefix) {
       const state = await this.pool.query<{ instance_id: string }>("SELECT instance_id::text FROM market_feed_state WHERE singleton");
@@ -64,6 +75,7 @@ export class MarketBus {
   }
   /** Recover snapshots after Redis loss; old cursors must resync at the new stream boundary. */
   async initialize(): Promise<void> {
+    await this.ready();
     const names = await this.names();
     const [last, stream, latest] = await Promise.all([this.redis.get(names[2]), this.redis.exists(names[0]), this.redis.exists(names[1])]);
     if (last === "0" || (last && stream && latest)) return;
