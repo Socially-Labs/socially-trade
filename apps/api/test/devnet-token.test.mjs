@@ -475,7 +475,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       const r = await call('GET', '/v0/me/token-balance', 'alice');
       assert.equal(r.statusCode, 200, r.body);
       const body = r.json();
-      assert.equal(body.wallet, wallets.alice); assert.equal(body.token.label, 'USDG (devnet)');
+      assert.equal(body.wallet, wallets.alice); assert.equal(body.token.label, 'Test USDC (devnet)');
       // Fake wallet balance counts only backend sends: grant 10000 + withdrawals 200 + 30 + 1 + 40.
       assert.equal(body.onchain.amount, '10271.000000');
       assert.equal(body.paper.cash.value, '299.000000000000000000');
