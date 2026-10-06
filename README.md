@@ -6,11 +6,11 @@ Paper trading is the first implementation of the Captain and Crew experience des
 
 Phases 0-5 establish the paper backend: accounts, Captain funds, Crew shares, SOL/USD price observations, order endpoints, and an order-processing worker. Backend checkpoints add a resumable event stream, fund chat, Captain order notes, an in-app inbox, performance records, simulated fees, and trial settlement. The mobile app, external push delivery, risk-adjusted rankings, and operational hardening remain in [the implementation phases](./docs/v0-implementation-phases.md). The detailed design is in [the v0 architecture](./docs/v0-paper-trading-architecture.md).
 
-The current delivery is backend only, as requested. Verification uses API calls, PostgreSQL simulations and test cases; no frontend or Android application is included.
+Captain Markets is connected to the sibling Expo mobile client: canonical token discovery, shared Jupiter ingestion, recorded token charts, owned-fund context, watchlists and multi-asset paper orders. See the [market API, architecture and operations handoff](../docs/market-integration.md) and [delivery checklist](../docs/plan.md). Onchain fund swaps remain a separate implementation.
 
 UI developers: see the [complete v0 API integration specification](docs/ui-api-spec-v0.md) for all 42 operations, request/response contracts, authentication, pagination, errors and screen flows.
 
-Captain username checks use `GET /v0/captains/handle-availability?handle=jassbawa`, with an optional Redis Bloom index and PostgreSQL fallback. See [setup and consistency details](docs/captain-handle-bloom.md).
+Shared Crew/Captain usernames use `GET /v0/users/username-availability?username=jassbawa`, with an optional Redis Bloom index and PostgreSQL fallback. Identity and profiles now live in one `users` table. See [account schema, endpoints and local setup](docs/unified-user-accounts.md).
 
 Captain profile images: owners can use `PATCH /v0/captains/:captainId` to update bio, `avatarUrl` and `bannerUrl`. The upload reservation and completion endpoints validate/process images through private AWS S3 staging/processed buckets, with CloudFront delivery and save their URLs in PostgreSQL. Run the documented AWS setup with your account credentials. See [API and asset setup](docs/captain-profile-assets.md).
 
@@ -57,6 +57,8 @@ pnpm dev
 ```
 
 The API defaults to `http://localhost:3000`. `GET /health` returns `{ "status": "ok", "mode": "PAPER" }`. Set `PORT` to use another port.
+
+Open **http://localhost:3000/admin/logs** for live API, worker, and ingestor logs with service/severity/time filters, search, structured details, and JSON export. Set the same `REDIS_URL` for all three services. Remote/production access requires `ADMIN_LOGS_TOKEN`. See [service log setup and access controls](docs/admin-logs.md).
 
 ```sh
 pnpm check-types
