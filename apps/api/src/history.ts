@@ -52,14 +52,14 @@ export function registerHistoryRoutes(app: FastifyInstance, db: () => DbPool): v
   app.get<{ Params: { captainId: string }; Querystring: HistoryQuery }>(
     "/v0/captains/:captainId/orders", { schema: historySchema }, async request => {
       const captainId = request.params.captainId;
-      if (!(await db().query("SELECT 1 FROM captain_profiles WHERE user_id=$1", [captainId])).rowCount)
+      if (!(await db().query("SELECT 1 FROM users u WHERE u.id=$1 AND (u.role='captain' OR EXISTS(SELECT 1 FROM funds f WHERE f.captain_id=u.id))", [captainId])).rowCount)
         throw new ApiFault(404, "captain_not_found", "Captain not found");
       return { mode: "PAPER", captainId, ...await orderHistory(db(), "captain", captainId, request.query) };
     });
   app.get<{ Params: { captainId: string } }>("/v0/captains/:captainId/trade-statistics", async request => {
     const captainId = request.params.captainId;
-    const result = await db().query(`SELECT c.user_id,
-      (SELECT count(*)::integer FROM funds WHERE captain_id=c.user_id) AS fund_count,
+    const result = await db().query(`SELECT c.id AS user_id,
+      (SELECT count(*)::integer FROM funds WHERE captain_id=c.id) AS fund_count,
       count(o.id)::integer AS submitted_orders,
       count(o.id) FILTER(WHERE o.status IN ('FILLED','PARTIALLY_FILLED'))::integer AS completed_trades,
       count(o.id) FILTER(WHERE o.status='PENDING')::integer AS pending,
@@ -73,8 +73,8 @@ export function registerHistoryRoutes(app: FastifyInstance, db: () => DbPool): v
       coalesce(sum(fl.fee_usdc),0)::text AS trading_fee_usdc,
       min(o.processed_at) FILTER(WHERE fl.order_id IS NOT NULL) AS first_trade_at,
       max(o.processed_at) FILTER(WHERE fl.order_id IS NOT NULL) AS last_trade_at
-      FROM captain_profiles c LEFT JOIN orders o ON o.captain_id=c.user_id
-      LEFT JOIN fills fl ON fl.order_id=o.id WHERE c.user_id=$1 GROUP BY c.user_id`, [captainId]);
+      FROM users c LEFT JOIN orders o ON o.captain_id=c.id
+      LEFT JOIN fills fl ON fl.order_id=o.id WHERE c.id=$1 AND (c.role='captain' OR EXISTS(SELECT 1 FROM funds f WHERE f.captain_id=c.id)) GROUP BY c.id`, [captainId]);
     if (!result.rows[0]) throw new ApiFault(404, "captain_not_found", "Captain not found");
     return { mode: "PAPER", captainId, statistics: result.rows[0],
       methodology: "All Captain funds, including completed trials. Completed trades are filled or partially filled orders. Executed value is fill quantity times fill price, excluding fees; independent fund returns are not combined." };

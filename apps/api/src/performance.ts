@@ -167,7 +167,7 @@ export function registerPerformanceRoutes(app: FastifyInstance, db: () => DbPool
 
   app.get<{ Params: { captainId: string } }>("/v0/captains/:captainId/paper-record", async (request) =>
     readConsistently(db(), async (client) => {
-      if (!(await client.query("SELECT 1 FROM captain_profiles WHERE user_id=$1", [request.params.captainId])).rowCount) throw new ApiFault(404, "captain_not_found", "Captain not found");
+      if (!(await client.query("SELECT 1 FROM users u WHERE u.id=$1 AND (u.role='captain' OR EXISTS(SELECT 1 FROM funds f WHERE f.captain_id=u.id))", [request.params.captainId])).rowCount) throw new ApiFault(404, "captain_not_found", "Captain not found");
       const funds = await client.query<{ id: string }>("SELECT id FROM funds WHERE captain_id=$1 ORDER BY created_at DESC", [request.params.captainId]);
       const records = [];
       for (const fund of funds.rows) records.push((await readPerformance(client, fund.id, new Date())).response);

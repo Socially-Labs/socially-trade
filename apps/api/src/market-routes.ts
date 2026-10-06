@@ -2,10 +2,11 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import type { DbPool } from "@socially/db";
 import { MarketBus, currentPrice, compareCursor, cursorPattern, type MarketEvent } from "@socially/market-stream";
+import { instrumentSubset } from "@socially/market-data/catalog";
 import { ApiFault } from "./errors.js";
 import { privyIdentity } from "./privy.js";
 
-type Client = { socket: WebSocket; cursor?: string; actor?: string; expiresAt: number; notifications?: string;
+type Client = { instruments?: string[]; socket: WebSocket; cursor?: string; actor?: string; expiresAt: number; notifications?: string;
   alive: boolean; messages: number; window: number; pending: number; chain: Promise<void>; freshness?: string };
 const sequence = /^(0|[1-9][0-9]{0,18})$/;
 const validSequence = (value: string) => sequence.test(value) && BigInt(value) <= 9223372036854775807n;
@@ -26,23 +27,24 @@ export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): vo
     if (client.socket.bufferedAmount > 256 * 1024) { client.socket.close(1013, "Reconnect and resync"); return; }
     client.socket.send(JSON.stringify(value));
   };
+  const selected = (client: Client, prices: import("@socially/market-stream").MarketPrice[]) => prices.filter(p => client.instruments?.includes(p.instrumentId));
   const resync = async (client: Client) => {
     const snapshot = await market().snapshot();
     send(client, { type: "resync_required", channel: "market.prices" });
-    send(client, { type: "snapshot", channel: "market.prices", cursor: snapshot.cursor, prices: snapshot.prices });
+    send(client, { type: "snapshot", channel: "market.prices", cursor: snapshot.cursor, prices: selected(client, snapshot.prices) });
     client.cursor = snapshot.cursor;
-    client.freshness = JSON.stringify(snapshot.prices.map(p => [p.instrumentId, p.status]));
+    client.freshness = JSON.stringify(selected(client, snapshot.prices).map(p => [p.instrumentId, p.status]));
   };
   app.get<{ Querystring: { instruments?: string } }>("/v0/market/prices", async (request, reply) => {
-    if (request.query.instruments && request.query.instruments !== "SOL") {
-      throw new ApiFault(400, "unsupported_instrument", "v0 supports SOL");
-    }
+    let instruments: string[];
+    try { instruments = instrumentSubset(request.query.instruments?.split(",")); }
+    catch { throw new ApiFault(400, "unsupported_instrument", "Choose supported instruments"); }
     reply.header("cache-control", "no-store");
-    try { return { mode: "PAPER", transport: "redis", ...await market().snapshot() }; }
+    try { const snapshot = await market().snapshot(); return { mode: "PAPER", transport: "redis", ...snapshot, prices: snapshot.prices.filter(p => instruments.includes(p.instrumentId)) }; }
     catch {
       const rows = await db().query<{ payload: MarketEvent }>("SELECT payload FROM market_latest ORDER BY instrument_id");
       return { mode: "PAPER", transport: "database", cursor: null,
-        prices: rows.rows.map(row => currentPrice(row.payload.price)) };
+        prices: rows.rows.map(row => currentPrice(row.payload.price)).filter(p => instruments.includes(p.instrumentId)) };
     }
   });
 
@@ -78,15 +80,19 @@ export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): vo
           client.actor = actor.id; client.expiresAt = identity.expiresAt * 1000;
           send(client, { type: "authenticated", expiresAt: new Date(client.expiresAt).toISOString() });
         } else if (message.type === "subscribe" && message.channel === "market.prices") {
-          if (JSON.stringify(message.instruments ?? ["SOL"]) !== '["SOL"]') throw new Error("unsupported_instrument");
+          if (message.instruments !== undefined && (!Array.isArray(message.instruments) || message.instruments.some(id => typeof id !== "string"))) throw new Error("unsupported_instrument");
+          const instruments = instrumentSubset(message.instruments as string[] | undefined);
+          const changed = !!client.instruments && (client.instruments.length !== instruments.length || instruments.some(id => !client.instruments!.includes(id)));
+          client.freshness = undefined;
           const snapshot = await market().snapshot();
           const after = message.after;
           if (after !== undefined && (typeof after !== "string" || !cursorPattern.test(after))) throw new Error("invalid_cursor");
-          if (typeof after === "string" && compareCursor(after, snapshot.firstCursor) >= 0 && compareCursor(after, snapshot.cursor) <= 0) {
+          client.instruments = instruments;
+          if (!changed && typeof after === "string" && compareCursor(after, snapshot.firstCursor) >= 0 && compareCursor(after, snapshot.cursor) <= 0) {
             client.cursor = after; send(client, { type: "subscribed", channel: "market.prices", cursor: after });
           } else {
             if (after !== undefined) send(client, { type: "resync_required", channel: "market.prices" });
-            send(client, { type: "snapshot", channel: "market.prices", cursor: snapshot.cursor, prices: snapshot.prices });
+            send(client, { type: "snapshot", channel: "market.prices", cursor: snapshot.cursor, prices: selected(client, snapshot.prices) });
             client.cursor = snapshot.cursor;
           }
         } else if (message.type === "subscribe" && message.channel === "account.notifications") {
@@ -131,14 +137,16 @@ export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): vo
           const event = JSON.parse(fields[fields.indexOf("data") + 1]!) as MarketEvent;
           for (const client of active) if (client.cursor !== undefined && client.pending === 0 && compareCursor(cursor, client.cursor) > 0) {
             if (event.type === "price_update" || event.type === "market_status") {
-              send(client, { ...event, channel: "market.prices", cursor, price: currentPrice(event.price) }); client.cursor = cursor;
+              if (client.instruments?.includes(event.price.instrumentId)) send(client, { ...event, channel: "market.prices", cursor, price: currentPrice(event.price) });
+              else send(client, { type: "cursor", channel: "market.prices", cursor });
+              client.cursor = cursor;
             } else await resync(client);
           }
         }
         for (const client of active) {
-          const freshness = JSON.stringify(snapshot.prices.map(p => [p.instrumentId, p.status]));
+          const freshness = JSON.stringify(selected(client, snapshot.prices).map(p => [p.instrumentId, p.status]));
           if (client.cursor === snapshot.cursor && client.freshness !== freshness) {
-            send(client, { type: "market_status", channel: "market.prices", cursor: snapshot.cursor, prices: snapshot.prices });
+            send(client, { type: "market_status", channel: "market.prices", cursor: snapshot.cursor, prices: selected(client, snapshot.prices) });
             client.freshness = freshness;
           }
         }
