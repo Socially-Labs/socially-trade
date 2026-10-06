@@ -9,7 +9,9 @@
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "check-types": "turbo run check-types",
-    "test:backend": "pnpm build && node --test apps/api/test/*.test.mjs"
+    "test:backend": "pnpm build && node --test apps/api/test/*.test.mjs",
+    "dev:api": "pnpm --filter @socially/api dev",
+    "db:migrate": "pnpm --filter @socially/db exec node --env-file-if-exists=../../.env --import tsx src/migrate.ts"
   },
   "devDependencies": {
     "turbo": "^2.11.5",
