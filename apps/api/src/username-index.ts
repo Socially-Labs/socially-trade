@@ -136,4 +136,3 @@ export class UsernameIndex {
     this.redis?.disconnect();
   }
 }
-
