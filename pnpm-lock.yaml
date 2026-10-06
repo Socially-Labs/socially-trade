@@ -35,6 +35,9 @@ importers:
       '@socially/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@socially/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@socially/market-data':
         specifier: workspace:*
         version: link:../../packages/market-data
@@ -90,6 +93,9 @@ importers:
       '@socially/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@socially/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@socially/market-data':
         specifier: workspace:*
         version: link:../../packages/market-data
@@ -118,6 +124,9 @@ importers:
       '@socially/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@socially/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@socially/market-data':
         specifier: workspace:*
         version: link:../../packages/market-data
@@ -167,11 +176,27 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/logging:
+    dependencies:
+      ioredis:
+        specifier: ^6.0.0
+        version: 6.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.3
+        version: 26.6.3
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/market-data:
     dependencies:
       '@socially/domain':
         specifier: workspace:*
         version: link:../domain
+      ioredis:
+        specifier: ^6.0.0
+        version: 6.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.6.3
