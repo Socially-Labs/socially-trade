@@ -36,13 +36,13 @@ export class AssetStorage {
       { expiresIn: 300, signableHeaders: new Set(["content-type", "content-length"]) });
     } catch { throw new ApiFault(503, "asset_storage_unavailable", "Unable to prepare image upload"); }
   }
-  async publish(file: UploadFile, kind: AssetKind, captainId: string, uploadId: string): Promise<string> {
+  async publish(file: UploadFile, kind: AssetKind, captainId: string, uploadId: string, ownerPrefix: "captains" | "vaults" = "captains"): Promise<string> {
     if (this.processing >= 4) throw new ApiFault(503, "image_processing_busy", "Retry image completion shortly");
     this.processing++;
-    try { return await this.publishImage(file, kind, captainId, uploadId); }
+    try { return await this.publishImage(file, kind, captainId, uploadId, ownerPrefix); }
     finally { this.processing--; }
   }
-  private async publishImage(file: UploadFile, kind: AssetKind, captainId: string, uploadId: string): Promise<string> {
+  private async publishImage(file: UploadFile, kind: AssetKind, captainId: string, uploadId: string, ownerPrefix: "captains" | "vaults"): Promise<string> {
     let bytes: Buffer;
     try {
       const head = await this.client.send(new HeadObjectCommand({ Bucket: this.stagingBucket, Key: file.staging_key }), { abortSignal: AbortSignal.timeout(10_000) });
@@ -79,7 +79,7 @@ export class AssetStorage {
       }
       processed = await image.timeout({ seconds: 5 }).rotate().resize(kind === "avatar" ? 512 : 1600, kind === "avatar" ? 512 : 600, { fit: "cover" }).webp({ quality: 85 }).toBuffer();
     } catch { throw new ApiFault(400, "invalid_image", "Use a valid single-frame JPEG, PNG or WebP image within the dimension limits"); }
-    const key = `captains/${captainId}/${kind}/${uploadId}.webp`;
+    const key = `${ownerPrefix}/${captainId}/${kind}/${uploadId}.webp`;
     try {
       await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: processed,
         ContentType: "image/webp", CacheControl: "public, max-age=31536000, immutable" }), { abortSignal: AbortSignal.timeout(10_000) });
