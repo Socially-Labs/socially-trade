@@ -1,4 +1,8 @@
+import { registerVaultUploadRoutes } from './vault-uploads.js';
 import Fastify from "fastify";
+import { registerVaultRateLimit } from "./vault-rate-limit.js";
+import { registerVaultRoutes } from "./vault-routes.js";
+import { registerVaultStream } from "./vault-stream.js";
 import { LogCollector } from "@socially/logging";
 import { registerAdminLogs } from "./admin-logs.js";
 import { registerCors } from "./cors.js";
@@ -71,9 +75,15 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
     reply.code(500).send({ error: "internal_error", message: "Internal server error" });
   });
 
+  app.addHook('onReady',async () => {
+    if (token && pool && (await pool.query('SELECT 1 FROM vault_rounds LIMIT 1')).rowCount) {
+      throw new Error('Paper vault rounds require an isolated paper environment; do not enable treasury token redemption on this database');
+    }
+  });
   registerCors(app);
   app.register(websocket, { options: { maxPayload: 8192 } });
-  app.register(async scope => { registerMarketRoutes(scope, db); });
+  app.register(async scope => { registerMarketRoutes(scope, db); registerVaultStream(scope, db); });
+  app.register(async scope => { registerVaultRateLimit(scope); registerVaultRoutes(scope, db); registerVaultUploadRoutes(scope, db); });
 
   app.get("/health", async () => ({ status: "ok", mode: "PAPER" }));
   registerAdminLogs(app, logs);
