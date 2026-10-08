@@ -1,3 +1,4 @@
+import { advanceDueVaultRounds } from "./vault-rounds.js";
 import type { DbPool } from "@socially/db";
 import { markActiveFunds, processPendingOrders } from "./orders.js";
 import { deliverOutbox } from "./notifications.js";
@@ -12,6 +13,9 @@ export async function runWorkerCycle(pool: DbPool, ingestPrice?: () => Promise<u
   let delivered = 0;
   let feesAssessed = 0;
   let trialsCompleted = 0;
+  let roundsAdvanced = 0;
+  try { roundsAdvanced = await advanceDueVaultRounds(pool); }
+  catch (error) { failures.push({ job: "vault_rounds", error }); }
   if (ingestPrice) {
     try { await ingestPrice(); }
     catch (error) { failures.push({ job: "price_ingestion", error }); }
@@ -26,5 +30,5 @@ export async function runWorkerCycle(pool: DbPool, ingestPrice?: () => Promise<u
   catch (error) { failures.push({ job: "performance_fees", error }); }
   try { delivered = await deliverOutbox(pool); }
   catch (error) { failures.push({ job: "notification_delivery", error }); }
-  return { marked, processed, delivered, feesAssessed, trialsCompleted, failures };
+  return { roundsAdvanced, marked, processed, delivered, feesAssessed, trialsCompleted, failures };
 }
