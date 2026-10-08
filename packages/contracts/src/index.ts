@@ -28,3 +28,4 @@ export interface FundSummary {
   valuationStatus: ValuationStatus;
   trialEndsAt: string;
 }
+export * from './vaults.js';
