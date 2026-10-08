@@ -14,13 +14,13 @@ export function registerTradingContextRoutes(app: FastifyInstance, db: () => DbP
       ORDER BY f.created_at DESC LIMIT 100`, [actor.id])).rows;
     return { mode: "PAPER", funds };
   });
-  app.get<{ Params: { fundId: string } }>("/v0/funds/:fundId/trading-context", async (request, reply) => {
+  for (const version of [0,1]) app.get<{ Params: { fundId: string } }>(version === 0 ? "/v0/funds/:fundId/trading-context" : "/v1/vaults/:fundId/trading-context", async (request, reply) => {
     const actor = await requireActor(request, db()); reply.header("cache-control", "no-store");
     return inTransaction(db(), async client => {
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-      const fund = (await client.query<{ id: string; captain_id: string; name: string; status: string; cash_usdc: string; ends_at: Date }>(`
-        SELECT f.id,f.captain_id,f.name,f.status,f.cash_usdc::text,t.ends_at FROM funds f
-        JOIN trials t ON t.fund_id=f.id WHERE f.id=$1`, [request.params.fundId])).rows[0];
+      const fund = (await client.query<{ id: string; captain_id: string; name: string; status: string; cash_usdc: string; ends_at: Date; round_phase: string | null }>(`
+        SELECT f.id,f.captain_id,f.name,f.status,f.cash_usdc::text,COALESCE(t.ends_at,r.trading_ends_at) AS ends_at,r.phase AS round_phase FROM funds f
+        LEFT JOIN trials t ON t.fund_id=f.id LEFT JOIN vault_rounds r ON r.fund_id=f.id WHERE f.id=$1 AND f.round_model_version=$2`, [request.params.fundId,version === 0 ? 1 : 2])).rows[0];
       if (!fund) throw new ApiFault(404, "fund_not_found", "Fund not found");
       if (fund.captain_id !== actor.id) throw new ApiFault(403, "captain_required", "Only this fund's captain can view trading context");
       const policy = (await client.query<{ max_order_bps: number; max_position_bps: number; allowed_instruments: string[] }>(
@@ -37,7 +37,7 @@ export function registerTradingContextRoutes(app: FastifyInstance, db: () => DbP
         return { instrumentId: position.instrument_id, mint: token?.mint ?? null, symbol: token?.symbol ?? position.instrument_id,
           quantity: position.quantity, costBasisUsdc: position.cost_basis_usdc, valueUsdc: value ? fixed(value, 18) : null };
       });
-      const usable = fund.status !== "COMPLETED" && fund.ends_at.getTime() > Date.now();
+      const usable = ["ACTIVE","FROZEN"].includes(fund.status) && (fund.round_phase === null || fund.round_phase === "ACTIVE") && fund.ends_at.getTime() > Date.now();
       const pending = (await client.query("SELECT id,side,instrument_id AS \"instrumentId\",notional_usdc::text AS \"notionalUsdc\" FROM orders WHERE fund_id=$1 AND status='PENDING' ORDER BY submitted_at LIMIT 100", [fund.id])).rows;
       const limits = [...supportedById.values()].map(token => {
         const mark = marks.get(token.id), allowed = token.tradable && active.get(token.id) === true && policy.allowed_instruments.includes(token.id);

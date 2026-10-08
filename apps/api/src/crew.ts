@@ -20,7 +20,7 @@ async function lockFund(client: DbClient, fundId: string): Promise<LockedFund> {
   const result = await client.query<LockedFund>(
     `SELECT f.id, f.captain_id, f.status, f.cash_usdc::text, f.total_shares::text, t.ends_at
      FROM funds f JOIN trials t ON t.fund_id = f.id
-     WHERE f.id = $1 FOR NO KEY UPDATE OF f`,
+     WHERE f.id = $1 AND f.round_model_version=1 FOR NO KEY UPDATE OF f`,
     [fundId],
   );
   const fund = result.rows[0];
@@ -247,7 +247,7 @@ export async function myPositions(pool: DbPool | DbClient, userId: string) {
        SELECT share_price_usdc, status, priced_at FROM nav_snapshots
        WHERE fund_id = s.fund_id ORDER BY event_sequence DESC NULLS LAST, created_at DESC LIMIT 1
      ) n ON true
-     WHERE s.user_id = $1 AND s.shares > 0 ORDER BY f.created_at DESC`,
+     WHERE s.user_id = $1 AND s.shares > 0 AND f.round_model_version=1 ORDER BY f.created_at DESC`,
     [userId],
   );
   return result.rows.map((row) => ({

@@ -25,6 +25,7 @@ export function registerOrderRoutes(app: FastifyInstance, db: () => DbPool): voi
     "/v0/funds/:fundId/orders/preview", { schema: { body: orderBody } },
     async (request) => {
       const actor = await requireActor(request, db());
+      await getFund(db(),request.params.fundId);
       return previewOrder(db(), actor, request.params.fundId, request.body);
     },
   );
@@ -33,6 +34,7 @@ export function registerOrderRoutes(app: FastifyInstance, db: () => DbPool): voi
     "/v0/funds/:fundId/orders", { schema: { body: orderBody } },
     async (request, reply) => {
       const actor = await requireActor(request, db());
+      await getFund(db(),request.params.fundId);
       const result = await submitOrder(db(), actor, request.params.fundId, request.body,
         idempotencyKey(request.headers["idempotency-key"]));
       reply.code(202);

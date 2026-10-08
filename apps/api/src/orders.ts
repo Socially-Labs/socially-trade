@@ -39,6 +39,8 @@ interface OrderContext {
   total_shares: string;
   peak_share_price: string;
   ends_at: Date;
+  round_phase: string | null;
+  db_now: Date;
   max_order_bps: number;
   max_position_bps: number;
   drawdown_breaker_bps: number;
@@ -46,24 +48,27 @@ interface OrderContext {
 }
 
 async function context(client: import("@socially/db").DbClient, fundId: string): Promise<OrderContext> {
+  await client.query('SELECT id FROM funds WHERE id=$1 FOR NO KEY UPDATE',[fundId]);
   const result = await client.query<OrderContext>(
     `SELECT f.id, f.captain_id, f.status, f.cash_usdc::text, f.total_shares::text,
-            f.peak_share_price::text, t.ends_at, p.max_order_bps, p.max_position_bps,
+            f.peak_share_price::text, COALESCE(t.ends_at,r.trading_ends_at) AS ends_at, r.phase AS round_phase, clock_timestamp() AS db_now, p.max_order_bps, p.max_position_bps,
             p.drawdown_breaker_bps, p.allowed_instruments
-     FROM funds f JOIN trials t ON t.fund_id = f.id
+     FROM funds f LEFT JOIN trials t ON t.fund_id = f.id LEFT JOIN vault_rounds r ON r.fund_id=f.id
      JOIN LATERAL (SELECT * FROM fund_policy_versions WHERE fund_id = f.id
                    ORDER BY version DESC LIMIT 1) p ON true
      WHERE f.id = $1`,
     [fundId],
   );
   if (!result.rows[0]) throw new ApiFault(404, "fund_not_found", "Fund not found");
+  result.rows[0].db_now = (await client.query<{ now: Date }>("SELECT clock_timestamp() AS now")).rows[0]!.now;
   return result.rows[0];
 }
 
 function authorize(actor: Actor, fund: OrderContext, side: string): void {
   if (fund.captain_id !== actor.id) throw new ApiFault(403, "captain_required", "Only this fund's Captain can trade");
-  if (fund.ends_at.getTime() <= Date.now() || fund.status === "COMPLETED" ||
-      (fund.status === "FROZEN" && side !== "SELL")) {
+  if (fund.ends_at.getTime() <= fund.db_now.getTime() ||
+      !(fund.status === "ACTIVE" || fund.status === "FROZEN" && side === "SELL") ||
+      (fund.round_phase !== null && fund.round_phase !== "ACTIVE")) {
     throw new ApiFault(409, "fund_not_tradable", "Fund is not accepting this trade");
   }
 }
