@@ -25,6 +25,8 @@ interface FundState {
   total_shares: string;
   peak_share_price: string;
   ends_at: Date;
+  round_phase: string | null;
+  db_now: Date;
   max_order_bps: number;
   max_position_bps: number;
   drawdown_breaker_bps: number;
@@ -56,17 +58,20 @@ function fresh(observation: Observation): boolean {
 }
 
 async function fundState(client: DbClient, fundId: string): Promise<FundState> {
+  await client.query('SELECT id FROM funds WHERE id=$1 FOR NO KEY UPDATE',[fundId]);
   const result = await client.query<FundState>(
     `SELECT f.id, f.status, f.cash_usdc::text, f.total_shares::text,
-            f.peak_share_price::text, t.ends_at, p.max_order_bps, p.max_position_bps,
+            f.peak_share_price::text, COALESCE(t.ends_at,r.trading_ends_at) AS ends_at, r.phase AS round_phase, clock_timestamp() AS db_now, p.max_order_bps, p.max_position_bps,
             p.drawdown_breaker_bps, p.allowed_instruments
-     FROM funds f JOIN trials t ON t.fund_id = f.id
+     FROM funds f LEFT JOIN trials t ON t.fund_id = f.id LEFT JOIN vault_rounds r ON r.fund_id=f.id
      JOIN LATERAL (SELECT * FROM fund_policy_versions WHERE fund_id = f.id
                    ORDER BY version DESC LIMIT 1) p ON true
-     WHERE f.id = $1 FOR NO KEY UPDATE OF f`,
+     WHERE f.id = $1`,
     [fundId],
   );
-  return result.rows[0]!;
+  const fund = result.rows[0]!;
+  fund.db_now = (await client.query<{ now: Date }>("SELECT clock_timestamp() AS now")).rows[0]!.now;
+  return fund;
 }
 
 async function position(client: DbClient, fundId: string, instrumentId: string) {
@@ -101,8 +106,9 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
     const order = selected.rows[0];
     if (!order) return false;
     const fund = await fundState(client, order.fund_id);
-    if (fund.status === "COMPLETED" || fund.ends_at.getTime() <= Date.now() ||
-        (fund.status === "FROZEN" && order.side === "BUY")) {
+    if (fund.ends_at.getTime() <= fund.db_now.getTime() ||
+        !(fund.status === "ACTIVE" || fund.status === "FROZEN" && order.side === "SELL") ||
+        (fund.round_phase !== null && fund.round_phase !== "ACTIVE")) {
       await reject(client, order, "fund_not_tradable");
       return true;
     }
@@ -237,7 +243,10 @@ export async function markActiveFunds(pool: DbPool): Promise<number> {
         const breaker = new Amount(fund.peak_share_price)
           .mul(new Amount(1).minus(new Amount(fund.drawdown_breaker_bps).div(10_000)));
         const frozen = fund.status === "ACTIVE" && sharePrice.lt(breaker);
-        if (frozen) await client.query("UPDATE funds SET status = 'FROZEN' WHERE id = $1", [fund.id]);
+        if (frozen) {
+          await client.query("UPDATE funds SET status = 'FROZEN' WHERE id = $1", [fund.id]);
+          await client.query("UPDATE vault_rounds SET risk_state='FROZEN' WHERE fund_id=$1",[fund.id]);
+        }
         await appendFundEvent(client, fund.id, frozen ? "drawdown_breaker" : "fund_marked", {
           observationId: observation.id, navUsdc: fixed(nav, USDC_DECIMALS),
           sharePriceUsdc: fixed(sharePrice, SHARE_DECIMALS), frozen,

@@ -11,13 +11,14 @@ export interface ValuedFund {
   high_water_mark: string;
   performance_fee_factor: string;
   ends_at: Date;
+  round_model_version: number;
 }
 
 export async function lockValuedFund(client: DbClient, fundId: string) {
   const fundResult = await client.query<ValuedFund>(
     `SELECT f.id,f.captain_id,f.status,f.cash_usdc::text,f.total_shares::text,
-      f.protocol_shares::text,f.high_water_mark::text,f.performance_fee_factor::text,t.ends_at
-     FROM funds f JOIN trials t ON t.fund_id=f.id WHERE f.id=$1 FOR NO KEY UPDATE OF f`, [fundId],
+      f.protocol_shares::text,f.high_water_mark::text,f.performance_fee_factor::text,COALESCE(t.ends_at,r.trading_ends_at) AS ends_at,f.round_model_version
+     FROM funds f LEFT JOIN trials t ON t.fund_id=f.id LEFT JOIN vault_rounds r ON r.fund_id=f.id WHERE f.id=$1 FOR NO KEY UPDATE OF f`, [fundId],
   );
   const fund = fundResult.rows[0];
   if (!fund || fund.status === "COMPLETED" || new Amount(fund.total_shares).lte(0)) return null;

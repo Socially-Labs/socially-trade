@@ -17,6 +17,7 @@ export async function* eligibleFundBatches(pool: DbPool, job: FundJob): AsyncGen
   for (;;) {
     const page: { rows: Array<{ id: string }> } = await pool.query<{ id: string }>(
       `SELECT f.id FROM funds f WHERE f.status IN ('ACTIVE','FROZEN')
+       AND ${job.kind === 'VALUATION' ? "(f.round_model_version=1 OR EXISTS(SELECT 1 FROM vault_rounds r WHERE r.fund_id=f.id AND r.phase='ACTIVE'))" : 'f.round_model_version=1'}
        AND ($1::uuid IS NULL OR f.id>$1) AND f.id<=$2 AND ${condition} ORDER BY f.id LIMIT 100`,
       job.kind === "VALUATION" ? [after, upper] : [after, upper, job.kind === "FEES" ? job.feeDay : job.now],
     );

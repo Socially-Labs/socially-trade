@@ -8,7 +8,7 @@ import { eligibleFundBatches } from "./fund-batches.js";
 export async function completeTrial(pool: DbPool, fundId: string, now = new Date()): Promise<boolean> {
   return inTransaction(pool, async client => {
     const valuation = await lockValuedFund(client, fundId);
-    if (!valuation || valuation.fund.ends_at > now) return false;
+    if (!valuation || valuation.fund.round_model_version !== 1 || valuation.fund.ends_at > now) return false;
     const { fund, positions, pricedAt } = valuation;
     let cash = new Amount(fund.cash_usdc);
     let liquidationCost = new Amount(0);

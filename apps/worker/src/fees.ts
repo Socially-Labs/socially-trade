@@ -6,7 +6,7 @@ import { eligibleFundBatches } from "./fund-batches.js";
 
 export async function assessFundFee(client: DbClient, fundId: string, feeDay: string): Promise<boolean> {
   const valuation = await lockValuedFund(client, fundId);
-  if (!valuation || valuation.nav.lte(0)) return false;
+  if (!valuation || valuation.fund.round_model_version !== 1 || valuation.nav.lte(0)) return false;
   const { fund, nav, pricedAt, positions } = valuation;
   const prior = await client.query("SELECT 1 FROM fee_assessments WHERE fund_id=$1 AND fee_day=$2", [fundId, feeDay]);
   if (prior.rowCount) return false;
