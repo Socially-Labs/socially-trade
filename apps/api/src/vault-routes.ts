@@ -1,3 +1,4 @@
+import { paperCashColumn } from './paper-portfolio.js';
 import { vaultPerformance } from './vault-performance.js';
 import type { FastifyInstance } from 'fastify';
 import type { DbPool } from '@socially/db';
@@ -20,7 +21,8 @@ export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
   app.post<{ Body: VaultCreateInput }>('/v1/vaults/preview',{ schema: { body: vaultCreateSchema } },async (req,reply) => {
     reply.header('cache-control','no-store');
     const actor = await requireActor(req,db());
-    return { ...vaultConfig(),input: req.body,availableUsdc: fixed(actor.paperCash,6),
+    const cash=(await db().query(`SELECT ${paperCashColumn()}::text AS cash FROM users WHERE id=$1`,[actor.id])).rows[0]!.cash;
+    return { ...vaultConfig(),input: req.body,availableUsdc: fixed(cash,6),
       captainEligible: actor.role === 'captain',seedUsdc: '100.000000', networkCostUsdc: '0.000000' };
   });
   app.post<{ Body: VaultCreateInput }>('/v1/vaults',{ schema: { body: vaultCreateSchema } },async (req,reply) => {

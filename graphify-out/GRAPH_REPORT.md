@@ -1,53 +1,53 @@
 # Graph Report - backend  (2026-10-10)
 
 ## Corpus Check
-- 236 files · ~172,786 words
+- 239 files · ~174,274 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2588 nodes · 6651 edges · 165 communities (127 shown, 20 thin omitted)
-- Extraction: 82% EXTRACTED · 18% INFERRED · 0% AMBIGUOUS · INFERRED: 1176 edges (avg confidence: 0.85)
+- 2614 nodes · 6726 edges · 164 communities (129 shown, 17 thin omitted)
+- Extraction: 83% EXTRACTED · 17% INFERRED · 0% AMBIGUOUS · INFERRED: 1176 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `14334005`
+- Built from commit: `e3476613`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- Env
+- live-vault-chain.ts
 - expect_err
-- warp
+- test_open_seas.rs
 - Backend simulation report: recorded checks on October 1, 2026
 - math.rs
 - switchboard.rs
 - token-flows.ts
-- Fund
+- nav.rs
 - ingestor/src/index.ts
 - setup
 - vault-uploads.ts
 - Trade
 - worker/src/orders.ts
-- Exit
+- Fund
 - api/src/orders.ts
-- errors.ts
+- social.ts
 - token-chain.ts
 - Graphify project setup and refresh guide
 - ingestor/package.json
 - vault_rounds
 - worker/package.json
-- ix_deposit
-- read_fund
+- warp
+- exit
 - requireActor
 - admin.rs
-- vault-routes.ts
+- api/src/vaults.ts
 - create_fund
 - Local Docker Compose PostgreSQL service
 - common/mod.rs
 - FakeChain
 - pnpm workspace globs
 - instructions/delegate.rs
-- fund_with_member
+- funded_user
 - db/package.json
 - api/package.json
 - domain/src/index.ts
@@ -94,8 +94,8 @@
 - compilerOptions
 - compilerOptions
 - ProposeTrade
-- app.ts
 - ApiFault
+- swap-flows.ts
 - backend-simulation.test.mjs
 - api/tsconfig.json
 - ingestor/tsconfig.json
@@ -139,32 +139,31 @@
 - price_observations
 - nav_snapshots
 - wallet-swaps.test.mjs
-- Policy
+- qr-deposits.ts
 - UsernameIndex
 - users
 - InitializeConfig
 - v0 paper fill model
 - instruments
-- devnet-token.test.mjs
+- ChargeAnnualFee
 - WriteLog
 - TokenEntry
+- @solana/web3.js
 - funds
+- LiveChain
 - Backend simulation report
+- SwapChain
 - Wallet-funded vaults
-- live-vaults.test.mjs
-- @solana/kit
+- 027_paper_wallet_portfolios.sql
 - vault-rounds-simulation.test.mjs
-- token_deposits
 - 018_qr_deposits.sql
-- 024_captain_dashboard.sql
-- 023_vault_performance_rollups.sql
+- captain_vault_metrics
 - socially.trade
-- jose
 - README.md
 - Phased v0 delivery plan and recorded backend checkpoints
 
 ## God Nodes (most connected - your core abstractions)
-1. `ApiFault` - 149 edges
+1. `ApiFault` - 153 edges
 2. `expect_err()` - 141 edges
 3. `Env` - 81 edges
 4. `warp()` - 79 edges
@@ -194,19 +193,19 @@
 - **Proposed atomic paper execution** — docs_v0_paper_trading_architecture_orders, docs_v0_paper_trading_architecture_ledger, docs_v0_paper_trading_architecture_outbox, docs_v0_paper_trading_architecture_projections [EXTRACTED 1.00]
 - **Planned live fund integrity mechanisms** — socially_trade_whitepaper_fund_vault, socially_trade_whitepaper_delegates, socially_trade_whitepaper_policy, socially_trade_whitepaper_profile [EXTRACTED 1.00]
 
-## Communities (165 total, 20 thin omitted)
+## Communities (164 total, 17 thin omitted)
 
-### Community 0 - "Env"
-Cohesion: 0.20
-Nodes (24): custom_code(), entry_meta(), Env, exit_accounts(), FundHandles, ix_execute_proposal(), ix_propose(), listed_source() (+16 more)
+### Community 0 - "live-vault-chain.ts"
+Cohesion: 0.25
+Nodes (13): createFundInstruction(), discriminator(), fundAddresses(), LIVE_PROGRAM, meta(), pda(), readFund(), SEED_MINIMUM (+5 more)
 
 ### Community 1 - "expect_err"
 Cohesion: 0.08
-Nodes (97): expect_err(), ix_swap(), register_token(), set_usd_price(), Trading, trading_fund(), venue_data(), buy_bonk() (+89 more)
+Nodes (99): expect_err(), ix_swap(), register_token(), set_usd_price(), Trading, trading_fund(), venue_data(), add_delegate_captain_only() (+91 more)
 
-### Community 2 - "warp"
-Cohesion: 0.05
-Nodes (151): E, Fn, PolicyParams, Tier, decode_events(), deposit(), exit(), inject_holding() (+143 more)
+### Community 2 - "test_open_seas.rs"
+Cohesion: 0.11
+Nodes (61): read_entry(), token_balance(), a_new_switchboard_output_stores_its_mark(), an_active_mark_is_not_reseeded(), break_meme(), buy_into_a_based_holding_takes_basis_and_caps_after_a_retier(), buy_of(), buy_sol() (+53 more)
 
 ### Community 3 - "Backend simulation report: recorded checks on October 1, 2026"
 Cohesion: 0.27
@@ -221,10 +220,10 @@ Cohesion: 0.11
 Nodes (36): age_counts_from_the_oldest_sample(), an_idle_mark_reseeds_at_the_value_and_warms_again(), at_value(), deposit_mark_is_the_ema_and_the_cut_fits_the_highest_value(), deposit_mark_moves_once_per_interval(), deposit_mark_stays_two_way_during_the_warmup(), deposit_mark_step_is_at_most_ten_percent_both_ways(), encode_feed() (+28 more)
 
 ### Community 6 - "token-flows.ts"
-Cohesion: 0.07
-Nodes (51): CrewChange, myPositions(), registerQrDepositRoutes(), createQrDeposit(), fundingSummary(), qrEnabled(), qrPaymentFailure(), readQrDeposit() (+43 more)
+Cohesion: 0.08
+Nodes (44): registerAuthRoutes(), CrewChange, myPositions(), fromRaw(), TokenChain, toRaw(), advancePayout(), bindWallet() (+36 more)
 
-### Community 7 - "Fund"
+### Community 7 - "nav.rs"
 Cohesion: 0.14
 Nodes (28): BreakerPps, compute(), compute_for_usdc_sale(), each_mode_takes_its_side_of_spot_and_ema(), kamino_stake_lower_bound_is_the_lower_of_spot_and_ema_value(), NavResult, price(), price_and_store_mark() (+20 more)
 
@@ -233,8 +232,8 @@ Cohesion: 0.13
 Nodes (15): accounts, bus, jupiter, logs, metadataClient, pool, scheduler, shutdown (+7 more)
 
 ### Community 9 - "setup"
-Cohesion: 0.11
-Nodes (50): LiteSVM, create_mint(), funded(), ix_apply_token(), ix_apply_venue(), ix_initialize_config(), ix_queue_token(), ix_queue_venue() (+42 more)
+Cohesion: 0.10
+Nodes (48): LiteSVM, create_mint(), funded(), ix_apply_token(), ix_initialize_config(), ix_queue_token(), program_data_address(), pyth() (+40 more)
 
 ### Community 10 - "vault-uploads.ts"
 Cohesion: 0.18
@@ -248,21 +247,21 @@ Nodes (38): apply_t3(), burn_nav(), call_venue(), captain_stake(), CaptainStake,
 Cohesion: 0.10
 Nodes (32): runWorkerCycle(), assessDailyFees(), assessFundFee(), eligibleFundBatches(), FundJob, logs, pool, deliverOne() (+24 more)
 
-### Community 13 - "Exit"
-Cohesion: 0.08
-Nodes (33): charge_fee(), Exit, fresh_pps(), FreshPps, Account, AccountInfo, Box, Context (+25 more)
+### Community 13 - "Fund"
+Cohesion: 0.16
+Nodes (19): charge_fee(), Exit, fresh_pps(), FreshPps, Account, AccountInfo, Box, Context (+11 more)
 
 ### Community 14 - "api/src/orders.ts"
 Cohesion: 0.23
 Nodes (16): HistoryQuery, historySchema, orderHistory(), page(), registerHistoryRoutes(), registerOrderRoutes(), amount(), authorize() (+8 more)
 
-### Community 15 - "errors.ts"
+### Community 15 - "social.ts"
 Cohesion: 0.12
-Nodes (33): beginIdempotent(), finishIdempotent(), PositionValue, saveNav(), Valuation, valueFund(), joinFund(), joinFundInTransaction() (+25 more)
+Nodes (31): beginIdempotent(), finishIdempotent(), PositionValue, saveNav(), Valuation, valueFund(), joinFund(), joinFundInTransaction() (+23 more)
 
 ### Community 16 - "token-chain.ts"
-Cohesion: 0.12
-Nodes (24): assertDevnetGenesis(), assertNotMainnetUrl(), assertOwnedMint(), BalanceChange, COMPUTE_BUDGET_PROGRAM, createDevnetChain(), sign(), DEVNET_GENESIS_HASH (+16 more)
+Cohesion: 0.09
+Nodes (29): app, liveVaults, logs, port, swapConfig, loadSwapConfig(), assertDevnetGenesis(), assertNotMainnetUrl() (+21 more)
 
 ### Community 17 - "Graphify project setup and refresh guide"
 Cohesion: 0.12
@@ -273,68 +272,68 @@ Cohesion: 0.06
 Nodes (30): dependencies, ioredis, @socially/db, @socially/domain, @socially/logging, @socially/market-data, @socially/market-stream, devDependencies (+22 more)
 
 ### Community 19 - "vault_rounds"
-Cohesion: 0.24
-Nodes (13): protect_vault_terms(), fund_events, vault_claims, vault_contributions, vault_operations, vault_rounds, vault_terms_immutable, vault_asset_uploads (+5 more)
+Cohesion: 0.23
+Nodes (12): protect_vault_terms(), fund_events, vault_claims, vault_contributions, vault_operations, vault_rounds, vault_terms_immutable, vault_asset_uploads (+4 more)
 
 ### Community 20 - "worker/package.json"
 Cohesion: 0.07
 Nodes (28): dependencies, @socially/db, @socially/domain, @socially/logging, @socially/market-data, devDependencies, tsx, @types/node (+20 more)
 
-### Community 21 - "ix_deposit"
-Cohesion: 0.18
-Nodes (20): ix_deposit(), ix_poke_nav(), KToken, listed_kusdc(), now(), price_account(), refresh_kusdc(), set_price() (+12 more)
+### Community 21 - "warp"
+Cohesion: 0.09
+Nodes (89): Fn, deposit(), fund_with_member(), inject_holding(), KToken, listed_kusdc(), listed_meme(), listed_sol() (+81 more)
 
-### Community 22 - "read_fund"
+### Community 22 - "exit"
 Cohesion: 0.12
-Nodes (37): expect_anchor_err(), ix_exit(), ix_exit_unpriced(), mint_usdc(), read_fund(), write_fund(), assert_paid_at_last_pps(), captain_cannot_exit_below_5pct_while_crew_holds() (+29 more)
+Nodes (45): ata(), exit(), ix_create_ata(), ix_exit(), ix_exit_unpriced(), mint_usdc(), setup_venue_pool(), usdc_ata() (+37 more)
 
 ### Community 23 - "requireActor"
-Cohesion: 0.15
-Nodes (27): registerAccountRoutes(), Actor, identity(), requireActor(), registerAuthRoutes(), tokenLayerOn(), captainProfile(), paramsSchema (+19 more)
+Cohesion: 0.13
+Nodes (27): registerAccountRoutes(), Actor, identity(), requireActor(), tokenLayerOn(), captainProfile(), paramsSchema, registerCaptainProfileRoutes() (+19 more)
 
 ### Community 24 - "admin.rs"
-Cohesion: 0.16
+Cohesion: 0.17
 Nodes (23): apply_token(), apply_venue(), ApplyToken, ApplyVenue, check_due(), eta(), queue_token(), queue_venue() (+15 more)
 
-### Community 25 - "vault-routes.ts"
-Cohesion: 0.20
-Nodes (25): vaultPerformance(), empty, page, params, registerVaultRoutes(), uuid, cancelContribution(), claimVault() (+17 more)
+### Community 25 - "api/src/vaults.ts"
+Cohesion: 0.15
+Nodes (31): captain(), paging, registerCaptainDashboardRoutes(), paperCashColumn(), paperOwner(), walletPaperEnabled(), vaultPerformance(), empty (+23 more)
 
 ### Community 26 - "create_fund"
 Cohesion: 0.23
-Nodes (16): create_fund(), events(), expect_code(), expect_log(), poke(), FailedTransactionMetadata, Keypair, Result (+8 more)
+Nodes (16): create_fund(), events(), expect_anchor_err(), expect_code(), expect_log(), poke(), FailedTransactionMetadata, Keypair (+8 more)
 
 ### Community 27 - "Local Docker Compose PostgreSQL service"
 Cohesion: 0.83
 Nodes (4): Local Docker Compose PostgreSQL service, Configured pg_isready database health check, Configured PostgreSQL 17 Alpine at localhost port 5432, Configured persistent socially-postgres Docker volume
 
 ### Community 28 - "common/mod.rs"
-Cohesion: 0.14
-Nodes (46): InstructionData, ata(), config_pda(), fund_pda(), ix_annual_fee(), ix_apply_policy(), ix_cancel_proposal(), ix_compute_limit() (+38 more)
+Cohesion: 0.11
+Nodes (76): InstructionData, config_pda(), custom_code(), entry_meta(), Env, exit_accounts(), fund_pda(), FundHandles (+68 more)
 
 ### Community 29 - "FakeChain"
-Cohesion: 0.18
-Nodes (3): FakeChain, fakeSignature(), sleep()
+Cohesion: 0.12
+Nodes (9): FakeChain, fakeSignature(), LIVE, newAddress(), observeRecorded(), requests, rpcReturning(), SIG (+1 more)
 
 ### Community 30 - "pnpm workspace globs"
 Cohesion: 0.67
 Nodes (3): Workspace apps/* packages, pnpm workspace globs, Workspace packages/* packages
 
 ### Community 31 - "instructions/delegate.rs"
-Cohesion: 0.15
-Nodes (24): add_delegate(), AddDelegate, charge_delegate(), code(), d(), daily_limit_and_reset(), day_volume_overflow_is_math_overflow(), per_trade_limit() (+16 more)
+Cohesion: 0.17
+Nodes (22): add_delegate(), AddDelegate, charge_delegate(), code(), d(), daily_limit_and_reset(), day_volume_overflow_is_math_overflow(), per_trade_limit() (+14 more)
 
-### Community 32 - "fund_with_member"
-Cohesion: 0.12
-Nodes (39): delegate_pda(), fund_with_member(), funded_user(), ix_add_delegate(), ix_revoke_delegate(), read_account(), captain_can_exit_fully_when_alone(), annual_fee_not_due_before_a_year() (+31 more)
+### Community 32 - "funded_user"
+Cohesion: 0.17
+Nodes (27): delegate_pda(), funded_user(), ix_add_delegate(), annual_fee_not_due_before_a_year(), annual_fee_rejects_captain(), annual_fee_requires_fresh_valid_prices(), annual_fee_uses_the_ema_price(), annual_fee_uses_the_recorded_pps_after_one_step() (+19 more)
 
 ### Community 33 - "db/package.json"
 Cohesion: 0.09
 Nodes (21): dependencies, pg, devDependencies, tsx, @types/node, @types/pg, typescript, exports (+13 more)
 
 ### Community 34 - "api/package.json"
-Cohesion: 0.09
-Nodes (21): decimal.js, ioredis, pg, @socially/db, @socially/domain, @socially/logging, @socially/market-data, @socially/market-stream (+13 more)
+Cohesion: 0.08
+Nodes (22): decimal.js, ioredis, pg, @socially/db, @socially/domain, @socially/logging, @socially/market-data, @socially/market-stream (+14 more)
 
 ### Community 35 - "domain/src/index.ts"
 Cohesion: 0.13
@@ -345,8 +344,8 @@ Cohesion: 0.10
 Nodes (19): dependencies, ioredis, @socially/db, devDependencies, @types/node, typescript, exports, ioredis (+11 more)
 
 ### Community 37 - "swap-chain.ts"
-Cohesion: 0.05
-Nodes (52): connection, instruction, programData, signer, tx, connection, deployer, program (+44 more)
+Cohesion: 0.15
+Nodes (18): address(), ATA, decodeWire(), invalid(), keyAt(), parseVenueQuote(), pools, rawAmount() (+10 more)
 
 ### Community 38 - "dependencies"
 Cohesion: 0.10
@@ -421,12 +420,12 @@ Cohesion: 0.25
 Nodes (7): Captain dashboard API and storage, Checks, Definitions, History semantics, Home states and actions, Routes, Storage
 
 ### Community 56 - "CreateFund"
-Cohesion: 0.12
-Nodes (19): create_fund(), create_share_mint(), CreateFund, Account, AssociatedToken, Box, Context, Interface (+11 more)
+Cohesion: 0.06
+Nodes (50): E, create_fund(), create_share_mint(), CreateFund, Account, AssociatedToken, Box, Context (+42 more)
 
 ### Community 57 - "privy-fixture.mjs"
-Cohesion: 0.31
-Nodes (3): all(), get(), configurePrivyFixture()
+Cohesion: 0.14
+Nodes (7): all(), get(), address, wallet, marks(), seedPrices(), configurePrivyFixture()
 
 ### Community 58 - "Jupiter ingestion and WebSocket integration — v0"
 Cohesion: 0.17
@@ -449,8 +448,8 @@ Cohesion: 0.17
 Nodes (11): Context, Interface, InterfaceAccount, Mint, Result, Signer, TokenAccount, TokenInterface (+3 more)
 
 ### Community 63 - "Round-v2 paper implementation"
-Cohesion: 0.25
-Nodes (7): Implementation and authority, Local enablement and rollback, Recorded product decisions, Round-v2 paper implementation, Vault artwork, Verification and outstanding release work, WS protocol
+Cohesion: 0.22
+Nodes (8): Implementation and authority, Local enablement and rollback, One-time wallet portfolio, Recorded product decisions, Round-v2 paper implementation, Vault artwork, Verification and outstanding release work, WS protocol
 
 ### Community 64 - "tasks"
 Cohesion: 0.15
@@ -469,8 +468,8 @@ Cohesion: 0.18
 Nodes (10): compilerOptions, esModuleInterop, forceConsistentCasingInFileNames, module, moduleResolution, noUncheckedIndexedAccess, resolveJsonModule, skipLibCheck (+2 more)
 
 ### Community 68 - "devnet-setup.mjs"
-Cohesion: 0.22
-Nodes (6): rpc, sleep(), treasuryFloat, waitFor(), @solana-program/system, @solana-program/token
+Cohesion: 0.14
+Nodes (7): rpc, sleep(), treasuryFloat, waitFor(), @solana/kit, @solana-program/system, @solana-program/token
 
 ### Community 69 - "contracts/src/vaults.ts"
 Cohesion: 0.10
@@ -508,13 +507,13 @@ Nodes (8): compilerOptions, declaration, outDir, rootDir, types, extends, includ
 Cohesion: 0.19
 Nodes (22): cancel_proposal(), CancelProposal, CastVote, execute_proposal(), ExecuteProposal, propose_trade(), ProposeTrade, Account (+14 more)
 
-### Community 79 - "app.ts"
+### Community 79 - "ApiFault"
 Cohesion: 0.08
-Nodes (32): authorize(), css, logsCsp, logsHtml, script, registerAdminLogs(), AppOptions, createApp() (+24 more)
+Nodes (42): authorize(), css, logsCsp, logsHtml, script, registerAdminLogs(), AppOptions, createApp() (+34 more)
 
-### Community 81 - "ApiFault"
-Cohesion: 0.11
-Nodes (30): ApiFault, params, raw, registerLiveVaultRoutes(), Row, startLiveVaultWorker(), uuid, view() (+22 more)
+### Community 81 - "swap-flows.ts"
+Cohesion: 0.25
+Nodes (17): SwapConfig, ownedSwap(), prepareWalletSwap(), QuoteRow, quoteSwap(), submitWalletSwap(), SwapLayer, swapRateLimit() (+9 more)
 
 ### Community 82 - "backend-simulation.test.mjs"
 Cohesion: 0.39
@@ -549,8 +548,8 @@ Cohesion: 0.25
 Nodes (7): compilerOptions, declaration, outDir, rootDir, extends, include, ../../tsconfig.base.json
 
 ### Community 90 - "v1-core/src/lib.rs"
-Cohesion: 0.27
-Nodes (18): add_delegate(), apply_policy(), apply_venue(), cancel_proposal(), charge_annual_fee(), create_fund(), deposit(), execute_proposal() (+10 more)
+Cohesion: 0.20
+Nodes (26): add_delegate(), apply_policy(), apply_token(), apply_venue(), cancel_proposal(), captain_log(), charge_annual_fee(), create_fund() (+18 more)
 
 ### Community 91 - "Captain image storage and CDN costs"
 Cohesion: 0.29
@@ -632,21 +631,21 @@ Nodes (17): Backend checkpoints prepared for Phases 6-7, Decisions to settle bef
 Cohesion: 0.18
 Nodes (11): config, instruction(), meta(), native, poolId, quote(), response(), str (+3 more)
 
-### Community 142 - "Policy"
-Cohesion: 0.21
-Nodes (13): apply_policy(), ApplyPolicy, poke_nav(), PokeNav, Account, Box, Context, Result (+5 more)
+### Community 142 - "qr-deposits.ts"
+Cohesion: 0.24
+Nodes (15): registerQrDepositRoutes(), createQrDeposit(), fundingSummary(), qrEnabled(), qrPaymentFailure(), readQrDeposit(), reconcileQrDeposit(), Row (+7 more)
 
 ### Community 143 - "UsernameIndex"
 Cohesion: 0.39
 Nodes (3): keys(), UsernameIndex, version()
 
 ### Community 144 - "users"
-Cohesion: 0.18
-Nodes (10): users, api_idempotency, deposit_prepares, support_requests, wallet_swap_quotes, wallet_swap_requests, wallet_swaps, live_vault_transactions (+2 more)
+Cohesion: 0.14
+Nodes (14): users, api_idempotency, fund_events, token_deposits, token_payouts, user_wallets, deposit_prepares, support_requests (+6 more)
 
 ### Community 145 - "InitializeConfig"
-Cohesion: 0.15
-Nodes (13): ProgramData, handler(), InitializeConfig, Account, Context, InterfaceAccount, Mint, Program (+5 more)
+Cohesion: 0.17
+Nodes (12): ProgramData, handler(), InitializeConfig, Account, Context, InterfaceAccount, Mint, Program (+4 more)
 
 ### Community 146 - "v0 paper fill model"
 Cohesion: 0.67
@@ -656,45 +655,53 @@ Nodes (3): Execution assumptions, model version 1, Price source, v0 paper fill m
 Cohesion: 0.27
 Nodes (8): instruments, market_events, market_feed_state, market_latest, market_samples, market_token_metadata, market_watchlist, price_observations
 
-### Community 148 - "devnet-token.test.mjs"
-Cohesion: 0.25
-Nodes (6): LIVE, newAddress(), observeRecorded(), requests, rpcReturning(), SIG
+### Community 148 - "ChargeAnnualFee"
+Cohesion: 0.13
+Nodes (14): charge_annual_fee(), ChargeAnnualFee, Account, Box, Context, InterfaceAccount, Mint, Program (+6 more)
 
 ### Community 149 - "WriteLog"
-Cohesion: 0.22
-Nodes (9): captain_log(), Account, Box, Context, Option, Result, Signer, WriteLog (+1 more)
+Cohesion: 0.25
+Nodes (8): captain_log(), Account, Box, Context, Option, Result, Signer, WriteLog
 
 ### Community 150 - "TokenEntry"
-Cohesion: 0.27
-Nodes (9): QueueToken, InterfaceAccount, Mint, queue_token(), Marks, PriceSource, Marks, Pubkey (+1 more)
+Cohesion: 0.43
+Nodes (6): Marks, PriceSource, Marks, Pubkey, Tier, TokenEntry
+
+### Community 151 - "@solana/web3.js"
+Cohesion: 0.15
+Nodes (10): connection, instruction, programData, signer, tx, connection, deployer, program (+2 more)
 
 ### Community 152 - "funds"
 Cohesion: 0.29
 Nodes (5): outbox_events, captain_profiles, funds, notifications, captain_asset_uploads
 
+### Community 153 - "LiveChain"
+Cohesion: 0.22
+Nodes (4): LiveChain, LivePreparation, sweepLiveVaults(), PreparedSwap
+
 ### Community 154 - "Backend simulation report"
 Cohesion: 0.22
 Nodes (9): Authentication provider change — October 4, 2026, Backend simulation report, Backend support for user-facing results, Environment and repeatability, History extension — October 4, 2026, Implemented fee and settlement conventions, Problems found and corrected, Scenario coverage (+1 more)
 
-### Community 156 - "Wallet-funded vaults"
-Cohesion: 0.33
-Nodes (5): Contract terms and current scope, Deployment handoff, Funding, Routes, Wallet-funded vaults
+### Community 155 - "SwapChain"
+Cohesion: 0.25
+Nodes (3): reconcileWalletSwap(), sweepWalletSwaps(), SwapChain
 
-### Community 160 - "token_deposits"
+### Community 156 - "Wallet-funded vaults"
+Cohesion: 0.29
+Nodes (6): Contract terms and current scope, Deployment handoff, Devnet deployment — October 10, 2026, Funding, Routes, Wallet-funded vaults
+
+### Community 157 - "027_paper_wallet_portfolios.sql"
 Cohesion: 0.50
-Nodes (4): fund_events, token_deposits, token_payouts, user_wallets
+Nodes (4): paper_wallet_snapshots, preserve_vault_balance_source(), fund_events, vault_balance_source_immutable
 
 ### Community 161 - "018_qr_deposits.sql"
 Cohesion: 0.50
 Nodes (4): qr_deposit_attempts, qr_deposits, fund_events, token_deposit_receipts
 
-### Community 162 - "024_captain_dashboard.sql"
-Cohesion: 0.60
-Nodes (4): captain_aum_phase, captain_aum_snapshot, captain_vault_aum_rollups, record_captain_vault_aum()
-
-### Community 163 - "023_vault_performance_rollups.sql"
-Cohesion: 0.67
-Nodes (3): record_vault_performance(), vault_performance_rollups, vault_performance_snapshot
+### Community 162 - "captain_vault_metrics"
+Cohesion: 0.31
+Nodes (8): captain_aum_phase, captain_aum_snapshot, captain_vault_aum_rollups, captain_vault_metrics, capture_captain_vault_aum(), record_captain_vault_aum(), nav_snapshots, positions
 
 ### Community 164 - "socially.trade"
 Cohesion: 0.25
@@ -705,24 +712,24 @@ Cohesion: 0.18
 Nodes (11): Recorded implemented accounts, shares, execution and social backend checkpoints, Future Phase 6 mobile Captain and Crew flows, Phase-scoped reviewable commits on main, Phased v0 delivery plan and recorded backend checkpoints, Completed foundation: Git, pnpm, Turborepo, TypeScript and health API, Future Phase 9 operational hardening, Recorded implemented performance, fees, trial settlement and retained records, Future risk-adjusted rankings; existing ranking is net return only (+3 more)
 
 ## Knowledge Gaps
-- **679 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+674 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 960 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **20 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **681 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+676 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 967 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **17 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Fund` connect `Fund` to `warp`, `Trade`, `Exit`, `Policy`, `Deposit`, `ProposeTrade`, `WriteLog`, `read_fund`, `CreateFund`, `instructions/delegate.rs`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
-- **Why does `ApiFault` connect `ApiFault` to `swap-chain.ts`, `token-flows.ts`, `market-catalog-routes.ts`, `vault-uploads.ts`, `api/src/orders.ts`, `errors.ts`, `app.ts`, `requireActor`, `vault-routes.ts`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
-- **Why does `expect_err()` connect `expect_err` to `fund_with_member`, `Env`, `warp`, `math.rs`, `setup`, `ix_deposit`, `read_fund`, `create_fund`, `common/mod.rs`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
+- **Why does `Fund` connect `Fund` to `test_open_seas.rs`, `nav.rs`, `Trade`, `ProposeTrade`, `Deposit`, `ChargeAnnualFee`, `WriteLog`, `warp`, `CreateFund`, `common/mod.rs`, `instructions/delegate.rs`?**
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+- **Why does `ApiFault` connect `ApiFault` to `live-vault-chain.ts`, `swap-chain.ts`, `token-flows.ts`, `market-catalog-routes.ts`, `vault-uploads.ts`, `api/src/orders.ts`, `social.ts`, `qr-deposits.ts`, `swap-flows.ts`, `requireActor`, `api/src/vaults.ts`?**
+  _High betweenness centrality (0.021) - this node is a cross-community bridge._
+- **Why does `expect_err()` connect `expect_err` to `funded_user`, `test_open_seas.rs`, `math.rs`, `setup`, `warp`, `exit`, `CreateFund`, `create_fund`, `common/mod.rs`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
 - **Are the 134 inferred relationships involving `expect_err()` (e.g. with `initialize_config_rejects_frozen_program()` and `initialize_config_rejects_non_upgrade_authority()`) actually correct?**
   _`expect_err()` has 134 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 74 inferred relationships involving `warp()` (e.g. with `harness_warp_advances_clock()` and `more_than_four_venues_active_at_once()`) actually correct?**
   _`warp()` has 74 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _679 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _681 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `expect_err` be split into smaller, more focused modules?**
-  _Cohesion score 0.08080808080808081 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07862550960978451 - nodes in this community are weakly interconnected._

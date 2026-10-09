@@ -1,3 +1,4 @@
+import { registerPaperPortfolioRoutes,DevnetPaperSnapshotSource,type PaperSnapshotSource } from './paper-portfolio.js';
 import { registerCaptainDashboardRoutes } from './captain-dashboard.js';
 import { registerLiveVaultRoutes, startLiveVaultWorker } from './live-vault-routes.js';
 import type { LiveChain } from './live-vault-chain.js';
@@ -34,6 +35,7 @@ import { startSwapWorker, type SwapLayer } from "./swap-flows.js";
 import { registerQrDepositRoutes } from "./qr-deposit-routes.js";
 
 export interface AppOptions {
+  paperSnapshotSource?: PaperSnapshotSource;
   liveVaults?: LiveChain | null;
   liveVaultWorker?: boolean;
   logs?: LogCollector;
@@ -86,14 +88,14 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   });
 
   app.addHook('onReady',async () => {
-    if (token && pool && (await pool.query('SELECT 1 FROM vault_rounds LIMIT 1')).rowCount) {
+    if (token && pool && (await pool.query("SELECT 1 FROM vault_rounds WHERE balance_source='LEGACY' LIMIT 1")).rowCount) {
       throw new Error('Paper vault rounds require an isolated paper environment; do not enable treasury token redemption on this database');
     }
   });
   registerCors(app);
   app.register(websocket, { options: { maxPayload: 8192 } });
   app.register(async scope => { registerMarketRoutes(scope, db); registerVaultStream(scope, db); });
-  app.register(async scope => { registerVaultRateLimit(scope); registerCaptainDashboardRoutes(scope, db); registerVaultRoutes(scope, db); registerVaultUploadRoutes(scope, db); });
+  app.register(async scope => { registerVaultRateLimit(scope); registerCaptainDashboardRoutes(scope, db); registerPaperPortfolioRoutes(scope,db,options.paperSnapshotSource??new DevnetPaperSnapshotSource(process.env.SOLANA_RPC_URL??process.env.DEVNET_RPC_URL??'https://api.devnet.solana.com')); registerVaultRoutes(scope, db); registerVaultUploadRoutes(scope, db); });
   app.register(async scope => { registerVaultRateLimit(scope); registerLiveVaultRoutes(scope, db, options.liveVaults ?? null); });
   let stopLiveVaultWorker: (() => Promise<void>) | undefined;
   app.addHook('onReady', async () => { if (pool && options.liveVaults && options.liveVaultWorker !== false) stopLiveVaultWorker = startLiveVaultWorker(pool,options.liveVaults,error=>app.log.error(error)); });

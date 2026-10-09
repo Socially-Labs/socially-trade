@@ -1,3 +1,4 @@
+import { paperCashColumn } from './paper-portfolio.js';
 import type { FastifyInstance } from 'fastify';
 import { inTransaction, type DbPool } from '@socially/db';
 import { Amount, fixed, VAULT_RULES } from '@socially/domain';
@@ -30,7 +31,7 @@ export function registerCaptainDashboardRoutes(app: FastifyInstance, db: () => D
         COALESCE(sum(captain_fee_usdc),0)::text AS "earnedUsdc",COALESCE(sum(claimed_fee_usdc),0)::text AS "claimedUsdc"
         FROM captain_vault_metrics WHERE captain_id=$1`,[actor.id])).rows[0]!;
       const crew=(await client.query(`SELECT count(*)::integer AS count FROM (${crewSql}) members`,[actor.id])).rows[0]!.count;
-      const cash=(await client.query('SELECT paper_cash::text AS amount FROM users WHERE id=$1',[actor.id])).rows[0]!.amount;
+      const cash=(await client.query(`SELECT ${paperCashColumn()}::text AS amount FROM users WHERE id=$1`,[actor.id])).rows[0]!.amount;
       const legacy=(await client.query("SELECT 1 FROM funds WHERE captain_id=$1 AND status IN ('ACTIVE','FROZEN') LIMIT 1",[actor.id])).rowCount;
       const config=vaultConfig();
       const creationReason=!config.enabled?'funding_unavailable':legacy?'open_round_exists':new Amount(cash).lt(VAULT_RULES.captainSeedUsdc)?'insufficient_seed':null;

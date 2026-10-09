@@ -50,12 +50,22 @@ Mobile connections stop on blur/background and resume with REST resync; reconnec
 
 ## Local enablement and rollback
 
-1. Use an isolated PAPER environment, with `USDG_MINT` unset. Never convert real token treasury balances into paper vault capital. The API refuses startup with both existing paper vault rounds and a treasury token layer.
+1. For wallet-valued simulation, apply migration `027_paper_wallet_portfolios.sql` and set `PAPER_WALLET_SNAPSHOT_ENABLED=true`. This mode can coexist with the devnet treasury layer: it uses `users.vault_paper_cash`, with separate USDC ledger accounts `USER / paper-vault:<userId>`. Existing legacy rounds still require an isolated environment without `USDG_MINT`; startup rejects that unsafe combination.
 2. Run the standard migration runner, build, then start API and worker. Do not run tests against production; the simulation suites create disposable local schemas.
-3. Set `VAULT_PAPER_ENABLED=true` and `VAULT_TERMS_APPROVAL=locked-v1-retain-residue` for the chosen paper environment. Set allowed HTTP/WS origins and APK API origin normally.
+3. Set `VAULT_PAPER_ENABLED=true`, `VAULT_TERMS_APPROVAL=locked-v1-retain-residue`, and `LIVE_VAULTS_ENABLED=false` for the paper experience. Configure a devnet RPC, server-only `PRIVY_APP_SECRET`, live SOL/USDC market ingestion, allowed HTTP/WS origins and APK API origin normally.
 4. To stop new rounds, set `VAULT_PAPER_ENABLED=false`. To pause new contributions too, set `VAULT_CONTRIBUTIONS_PAUSED=true`. Keep the migrated schema, v2 worker, cancellation and claim routes available. Never roll back the schema after funded v2 rounds exist.
 
-No production data/configuration or deployment has been changed by this implementation.
+The local development database and configuration have been updated for wallet-snapshot paper vaults. No mainnet deployment is involved.
+
+### One-time wallet portfolio
+
+`GET /v1/me/paper-portfolio` reads the authenticated user's initialized state and available virtual USDC. `POST /v1/me/paper-portfolio/initialize` accepts only `{wallet}`. The server verifies Privy wallet ownership, the devnet genesis hash, finalized native SOL and Circle USDC balances, and fresh SOL/USDC USD prices from the market feed. Each nonzero asset needs a current mark no older than 90 seconds; missing marks fail the whole snapshot. Decimal arithmetic floors the combined value to six decimals.
+
+The initialization button copies that USD value into a simulated portfolio exactly once per account and wallet. It builds no transaction, deposits no tokens and never updates redeemable `paper_cash`. Parallel requests serialize the credit; retries return the saved snapshot without another RPC read. The indexed snapshot stores raw amounts, prices, slot and issuance event for audit. This is a demo balance, not proof of ongoing collateral: subsequent wallet transfers and price changes do not replenish or revalue paper cash. Moving tokens between different wallets can seed different demo accounts; paper funds are deliberately non-redeemable.
+
+Each new round persists an immutable `balance_source=WALLET_SNAPSHOT`. Creation, contributions, cancellations and claims use that round's source, including after mode flags change. The $100 seed, $50 Crew minimum and $1,000 total fundraising minimum remain unchanged. Trading, NAV, performance and settlement reuse the paper engine. Wallet send, swap and token withdrawal routes continue using their existing onchain/redeemable balances.
+
+The active APK Create route uses the original harbor layout, banner/image pickers, frosted fields and receipt review. Captain and Crew initialization is explicit; opening a screen never creates a snapshot automatically. Existing onchain recovery and exit routes remain available for previously submitted transactions.
 
 ## Verification and outstanding release work
 

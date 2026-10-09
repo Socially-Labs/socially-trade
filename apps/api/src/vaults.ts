@@ -1,3 +1,4 @@
+import { walletPaperEnabled,paperOwner } from './paper-portfolio.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFundEvent, inTransaction, ledgerAccountId, type DbClient, type DbPool } from '@socially/db';
 import { Amount, contributionReason, fixed, microUsdc, roundEntitlement, usdcFromMicro, VAULT_RULES } from '@socially/domain';
@@ -35,23 +36,23 @@ async function vaultMutation(pool:DbPool,actor:Actor,key:string,route:string,bod
 
 // Explicit deployment decision, never a client body field. Existing funded rounds remain recoverable.
 export function vaultConfig() {
-  const enabled = !process.env.USDG_MINT && process.env.VAULT_PAPER_ENABLED === 'true' && process.env.VAULT_TERMS_APPROVAL === 'locked-v1-retain-residue';
-  return { schemaVersion: 1, mode: 'PAPER', ...VAULT_RULES, enabled, liveEnabled: false,
+  const enabled = (!process.env.USDG_MINT || walletPaperEnabled()) && process.env.VAULT_PAPER_ENABLED === 'true' && process.env.VAULT_TERMS_APPROVAL === 'locked-v1-retain-residue';
+  return { schemaVersion: 1, mode: 'PAPER', ...VAULT_RULES, enabled, liveEnabled: false, walletSnapshotEnabled: walletPaperEnabled(),
     residuePolicy: 'RETAIN_AS_LIABILITY', emergencyUnwindEnabled: false,
     serverTime: new Date().toISOString() };
 }
 function requireCreationEnabled() {
   if (!vaultConfig().enabled) throw new ApiFault(503, 'vault_creation_disabled', 'New paper vaults are awaiting approved round terms');
-  if (process.env.USDG_MINT) throw new ApiFault(409, 'mode_unavailable', 'Paper rounds require an isolated paper balance environment');
+  if (process.env.USDG_MINT && !walletPaperEnabled()) throw new ApiFault(409, 'mode_unavailable', 'Paper rounds require an isolated paper balance environment');
 }
 export interface RoundRow {
   id: string; captain_id: string; name: string; description: string; status: string; cash_usdc: string; total_shares: string;
-  phase: VaultSummary['phase']; risk_state: 'NORMAL' | 'FROZEN'; terms_hash: string; terms: Record<string, unknown>; duration_days: number; funding_window_hours: number;
+  balance_source:'LEGACY'|'WALLET_SNAPSHOT'; phase: VaultSummary['phase']; risk_state: 'NORMAL' | 'FROZEN'; terms_hash: string; terms: Record<string, unknown>; duration_days: number; funding_window_hours: number;
   accepted_capital_usdc: string; funding_closes_at: Date; trading_ends_at: Date; actual_activated_at: Date | null;
   event_sequence: string; blocked_reason: string | null; avatar_url:string|null; banner_url:string|null; final_assets_usdc: string | null; residue_liability_usdc: string | null; final_supply: string | null; distribution_pool_usdc: string | null; captain_fee_usdc: string | null;
 }
 const roundSql = `SELECT f.id,f.captain_id,f.name,f.description,f.status,f.cash_usdc::text,f.total_shares::text,
- f.event_sequence::text,r.phase,r.risk_state,r.terms_hash,r.terms,r.duration_days,r.funding_window_hours,r.accepted_capital_usdc::text,
+ f.event_sequence::text,r.balance_source,r.phase,r.risk_state,r.terms_hash,r.terms,r.duration_days,r.funding_window_hours,r.accepted_capital_usdc::text,
  (SELECT public_url FROM vault_media WHERE fund_id=f.id AND kind='avatar') AS avatar_url,
  (SELECT public_url FROM vault_media WHERE fund_id=f.id AND kind='banner') AS banner_url,
  r.funding_closes_at,r.trading_ends_at,r.actual_activated_at,r.blocked_reason,r.residue_liability_usdc::text,r.final_assets_usdc::text,r.final_supply::text,r.distribution_pool_usdc::text,r.captain_fee_usdc::text
@@ -104,7 +105,8 @@ export async function vaultList(pool: DbPool, input: { after?: string; limit: nu
   const now = new Date();
   return { vaults: rows.slice(0,input.limit).map(row => summary(row,now)), nextCursor: rows.length>input.limit ? rows[input.limit-1]!.id : null };
 }
-async function transfer(client: DbClient, event: string, fromType: string, from: string, toType: string, to: string, asset: string, amount: string) {
+async function transfer(client: DbClient, event: string, fromType: string, from: string, toType: string, to: string, asset: string, amount: string, isolated=false) {
+  if(isolated&&asset==='USDC'){if(fromType==='USER')from=paperOwner(from);if(toType==='USER')to=paperOwner(to);}
   if (microUsdc(amount) === 0n) return;
   const debit = await ledgerAccountId(client, fromType as 'USER',from,asset);
   const credit = await ledgerAccountId(client, toType as 'USER',to,asset);
@@ -116,16 +118,17 @@ async function operation(client: DbClient, actor: Actor, key: string, fundId: st
     [id,actor.id,key,fundId,kind,eventId,amountUsdc]);
   return { id,vaultId: fundId,kind,status: 'SUCCEEDED',mode: 'PAPER',eventId,amountUsdc };
 }
-async function fundContribution(client: DbClient, actor: Actor, fundId: string, amountUsdc: string, eventId: string) {
-  const user = (await client.query<{ paper_cash: string }>('SELECT paper_cash::text FROM users WHERE id=$1 FOR NO KEY UPDATE',[actor.id])).rows[0];
+async function fundContribution(client: DbClient, actor: Actor, fundId: string, amountUsdc: string, eventId: string, isolated: boolean) {
+  const column=isolated?'vault_paper_cash':'paper_cash';
+  const user = (await client.query<{ paper_cash: string }>(`SELECT ${column}::text AS paper_cash FROM users WHERE id=$1 FOR NO KEY UPDATE`,[actor.id])).rows[0];
   if (!user || new Amount(user.paper_cash).lt(amountUsdc)) throw new ApiFault(422,'insufficient_virtual_cash','Not enough paper USDC');
-  await client.query('UPDATE users SET paper_cash=paper_cash-$2::numeric WHERE id=$1',[actor.id,amountUsdc]);
+  await client.query(`UPDATE users SET ${column}=${column}-$2::numeric WHERE id=$1`,[actor.id,amountUsdc]);
   await client.query('UPDATE funds SET cash_usdc=cash_usdc+$2::numeric,total_shares=total_shares+$2::numeric WHERE id=$1',[fundId,amountUsdc]);
   await client.query(`INSERT INTO fund_shares(fund_id,user_id,shares) VALUES($1,$2,$3)
     ON CONFLICT(fund_id,user_id) DO UPDATE SET shares=fund_shares.shares+EXCLUDED.shares`,[fundId,actor.id,amountUsdc]);
   await client.query('UPDATE vault_rounds SET accepted_capital_usdc=accepted_capital_usdc+$2::numeric WHERE fund_id=$1',[fundId,amountUsdc]);
   await client.query('INSERT INTO vault_contributions(id,fund_id,user_id,amount_usdc,event_id) VALUES($1,$2,$3,$4,$5)',[randomUUID(),fundId,actor.id,amountUsdc,eventId]);
-  await transfer(client,eventId,'USER',actor.id,'FUND',fundId,'USDC',amountUsdc);
+  await transfer(client,eventId,'USER',actor.id,'FUND',fundId,'USDC',amountUsdc,isolated);
   await transfer(client,eventId,'ISSUANCE',fundId,'USER',actor.id,`SHARE:${fundId}`,amountUsdc);
   await client.query(`INSERT INTO nav_snapshots(id,fund_id,nav_usdc,share_price_usdc,status,priced_at,event_sequence)
     SELECT $2,id,cash_usdc,1,'CURRENT',clock_timestamp(),event_sequence FROM funds WHERE id=$1`,[fundId,randomUUID()]);
@@ -148,12 +151,12 @@ export async function createVault(pool: DbPool, actor: Actor, input: VaultCreate
       residuePolicy: 'RETAIN_AS_LIABILITY', emergencyUnwind: 'DISABLED',captainTopUps: false,mode: 'PAPER' };
     const hash = createHash('sha256').update(JSON.stringify(terms)).digest('hex');
     await client.query(`INSERT INTO funds(id,captain_id,name,description,status,round_model_version) VALUES($1,$2,$3,$4,'FROZEN',2)`,[fundId,actor.id,name,description]);
-    await client.query(`INSERT INTO vault_rounds(fund_id,terms_version,terms,terms_hash,phase,funding_window_hours,duration_days,funding_started_at,funding_closes_at,trading_ends_at,accepted_capital_usdc)
-      VALUES($1,1,$2,$3,'FUNDRAISING',$4,$5,$6,$7,$8,0)`,[fundId,terms,hash,input.fundingWindowHours,input.durationDays,now,close,end]);
+    await client.query(`INSERT INTO vault_rounds(fund_id,balance_source,terms_version,terms,terms_hash,phase,funding_window_hours,duration_days,funding_started_at,funding_closes_at,trading_ends_at,accepted_capital_usdc)
+      VALUES($1,$9,1,$2,$3,'FUNDRAISING',$4,$5,$6,$7,$8,0)`,[fundId,terms,hash,input.fundingWindowHours,input.durationDays,now,close,end,walletPaperEnabled()?'WALLET_SNAPSHOT':'LEGACY']);
     await client.query(`INSERT INTO fund_policy_versions(fund_id,version,max_order_bps,max_position_bps,drawdown_breaker_bps,allowed_instruments,effective_at)
       VALUES($1,1,1000,2500,3000,$2,$3)`,[fundId,tradableInstrumentIds,now]);
     const event = await appendFundEvent(client,fundId,'vault_created',{ termsHash: hash });
-    await fundContribution(client,actor,fundId,VAULT_RULES.captainSeedUsdc,event);
+    await fundContribution(client,actor,fundId,VAULT_RULES.captainSeedUsdc,event,walletPaperEnabled());
     const result = await operation(client,actor,key,fundId,'CREATE',event,VAULT_RULES.captainSeedUsdc);
     return result;
   });
@@ -170,9 +173,9 @@ export async function contributeVault(pool: DbPool, actor: Actor, id: string, am
     const reason = contributionReason({ phase: row.phase,now: now.getTime(),fundingClosesAt: row.funding_closes_at.getTime(),
       acceptedCapitalUsdc: row.accepted_capital_usdc,amountUsdc,isCaptain: row.captain_id === actor.id });
     if (reason) throw new ApiFault(409,reason,'This contribution cannot be accepted');
-    if (process.env.USDG_MINT || process.env.VAULT_CONTRIBUTIONS_PAUSED === 'true') throw new ApiFault(503,'contributions_paused','New contributions are temporarily paused');
+    if ((process.env.USDG_MINT && row.balance_source!=='WALLET_SNAPSHOT') || process.env.VAULT_CONTRIBUTIONS_PAUSED === 'true') throw new ApiFault(503,'contributions_paused','New contributions are temporarily paused');
     const event = await appendFundEvent(client,id,'vault_contributed',{});
-    await fundContribution(client,actor,id,amountUsdc,event);
+    await fundContribution(client,actor,id,amountUsdc,event,row.balance_source==='WALLET_SNAPSHOT');
     const result = await operation(client,actor,key,id,'CONTRIBUTE',event,amountUsdc); return result;
   });
 }
@@ -194,11 +197,11 @@ export async function cancelContribution(pool: DbPool, actor: Actor, id: string,
     if (!held || new Amount(held.shares).lte(0)) throw new ApiFault(409,'no_contribution','No accepted contribution to cancel');
     const amount = fixed(held.shares,6), event = await appendFundEvent(client,id,'vault_contribution_cancelled',{});
     await client.query("UPDATE vault_contributions SET state='CANCELLED',cancelled_event_id=$3 WHERE fund_id=$1 AND user_id=$2 AND state='ACCEPTED'",[id,actor.id,event]);
-    await client.query('UPDATE users SET paper_cash=paper_cash+$2::numeric WHERE id=$1',[actor.id,amount]);
+    await client.query(`UPDATE users SET ${row.balance_source==='WALLET_SNAPSHOT'?'vault_paper_cash':'paper_cash'}=${row.balance_source==='WALLET_SNAPSHOT'?'vault_paper_cash':'paper_cash'}+$2::numeric WHERE id=$1`,[actor.id,amount]);
     await client.query('UPDATE funds SET cash_usdc=cash_usdc-$2::numeric,total_shares=total_shares-$2::numeric WHERE id=$1',[id,amount]);
     await client.query('UPDATE vault_rounds SET accepted_capital_usdc=accepted_capital_usdc-$2::numeric WHERE fund_id=$1',[id,amount]);
     await client.query('UPDATE fund_shares SET shares=0 WHERE fund_id=$1 AND user_id=$2',[id,actor.id]);
-    await transfer(client,event,'FUND',id,'USER',actor.id,'USDC',amount);
+    await transfer(client,event,'FUND',id,'USER',actor.id,'USDC',amount,row.balance_source==='WALLET_SNAPSHOT');
     await transfer(client,event,'USER',actor.id,'ISSUANCE',id,`SHARE:${id}`,amount);
     await client.query(`INSERT INTO nav_snapshots(id,fund_id,nav_usdc,share_price_usdc,status,priced_at,event_sequence)
       SELECT $2,id,cash_usdc,1,'CURRENT',clock_timestamp(),event_sequence FROM funds WHERE id=$1`,[id,randomUUID()]);
@@ -220,9 +223,9 @@ export async function claimVault(pool: DbPool, actor: Actor, id: string, key: st
     const event = await appendFundEvent(client,id,'vault_claimed',{});
     const result = await operation(client,actor,key,id,'CLAIM',event,total);
     await client.query('INSERT INTO vault_claims(fund_id,user_id,investment_usdc,captain_fee_usdc,operation_id) VALUES($1,$2,$3,$4,$5)',[id,actor.id,investment,fee,result.id]);
-    await transfer(client,event,'FUND',id,'USER',actor.id,'USDC',total);
+    await transfer(client,event,'FUND',id,'USER',actor.id,'USDC',total,row.balance_source==='WALLET_SNAPSHOT');
     await transfer(client,event,'USER',actor.id,'ISSUANCE',id,`SHARE:${id}`,fixed(shares,6));
-    await client.query('UPDATE users SET paper_cash=paper_cash+$2::numeric WHERE id=$1',[actor.id,total]);
+    await client.query(`UPDATE users SET ${row.balance_source==='WALLET_SNAPSHOT'?'vault_paper_cash':'paper_cash'}=${row.balance_source==='WALLET_SNAPSHOT'?'vault_paper_cash':'paper_cash'}+$2::numeric WHERE id=$1`,[actor.id,total]);
     await client.query('UPDATE funds SET cash_usdc=cash_usdc-$2::numeric,total_shares=total_shares-$3::numeric WHERE id=$1',[id,total,shares]);
     await client.query('UPDATE fund_shares SET shares=0 WHERE fund_id=$1 AND user_id=$2',[id,actor.id]);
     // Residue stays in the fund as an explicit outstanding liability; never protocol income.
@@ -238,7 +241,7 @@ export async function vaultPosition(pool: DbPool, actor: Actor, id: string): Pro
     if (!row) throw new ApiFault(404,'vault_not_found','Vault not found');
     const shares = fixed((await client.query<{ shares: string }>('SELECT shares::text FROM fund_shares WHERE fund_id=$1 AND user_id=$2',[id,actor.id])).rows[0]?.shares ?? '0',6);
     const capital = (await client.query<{ capital: string }>("SELECT COALESCE(sum(amount_usdc),0)::text AS capital FROM vault_contributions WHERE fund_id=$1 AND user_id=$2 AND state='ACCEPTED'",[id,actor.id])).rows[0]!.capital;
-    const available = (await client.query<{ paper_cash: string }>('SELECT paper_cash::text FROM users WHERE id=$1',[actor.id])).rows[0]!.paper_cash;
+    const available = (await client.query<{ paper_cash: string }>(`SELECT ${row.balance_source==='WALLET_SNAPSHOT'?'vault_paper_cash':'paper_cash'}::text AS paper_cash FROM users WHERE id=$1`,[actor.id])).rows[0]!.paper_cash;
     const paidRow = (await client.query<{ investment_usdc: string; captain_fee_usdc: string }>('SELECT investment_usdc::text,captain_fee_usdc::text FROM vault_claims WHERE fund_id=$1 AND user_id=$2',[id,actor.id])).rows[0];
     const paid = !!paidRow;
     const detail = await vaultDetail(client,id);
