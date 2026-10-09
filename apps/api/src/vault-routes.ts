@@ -33,9 +33,9 @@ export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
     const actor = await requireActor(req,db()); reply.header('cache-control','no-store');
     return vaultList(db(),{ ...req.query,limit: Number(req.query.limit ?? 20) },actor.id);
   });
-  app.get('/v1/me/captain/vaults',async (req,reply) => {
+  app.get<{ Querystring: { after?: string; limit?: string; phase?: string; durationGroup?: string } }>('/v1/me/captain/vaults',{ schema:{ querystring:page } },async (req,reply) => {
     const actor=await requireActor(req,db()); reply.header('cache-control','no-store');
-    return vaultList(db(),{ limit:50 },actor.id,true);
+    return vaultList(db(),{ ...req.query,limit:Number(req.query.limit??20) },actor.id,true);
   });
   app.get<{ Params: { id: string } }>('/v1/vaults/:id',{ schema: { params } },async (req,reply) => {
     reply.header('cache-control','no-store'); return vaultDetail(db(),req.params.id);
