@@ -23,17 +23,18 @@
     "@socially/contracts": "workspace:*",
     "@socially/db": "workspace:*",
     "@socially/domain": "workspace:*",
+    "@socially/logging": "workspace:*",
     "@socially/market-data": "workspace:*",
     "@socially/market-stream": "workspace:*",
     "@solana-program/system": "^0.15.0",
     "@solana-program/token": "^0.17.0",
     "@solana/kit": "^8.4.0",
+    "@solana/web3.js": "1.98.4",
     "decimal.js": "^10.6.0",
     "fastify": "^5.12.5",
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "pg": "^8.23.0",
-    "sharp": "^0.35.5",
-    "@socially/logging": "workspace:*"
+    "sharp": "^0.35.5"
   }
 }

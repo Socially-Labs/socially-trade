@@ -132,3 +132,5 @@ With `USDG_MINT` set, money in and out uses one SPL test token on Solana devnet,
 
 See [Graphify setup and refresh instructions](docs/graphify.md) for the backend,
 database, architecture and whitepaper knowledge graph in `graphify-out/`.
+
+Real devnet wallet SOL/USDC swaps use authenticated backend orchestration with local wallet signing. See [wallet swap routes, recovery and configuration](docs/wallet-swaps-api.md).
