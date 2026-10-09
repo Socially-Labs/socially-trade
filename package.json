@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev",
     "build": "turbo run build",
     "check-types": "turbo run check-types",
     "test:backend": "pnpm build && node --test apps/api/test/*.test.mjs",
@@ -16,5 +16,10 @@
   "devDependencies": {
     "turbo": "^2.11.5",
     "typescript": "^7.0.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/ws": "^8.18.2"
+    }
   }
 }

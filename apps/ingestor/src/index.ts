@@ -12,8 +12,9 @@ captureConsole(logs);
 console.info("Market ingestor starting");
 const accounts = loadJupiterAccounts();
 const redisUrl = process.env.REDIS_URL;
-const rpc = process.env.MARKET_RPC_URL ?? process.env.SOLANA_RPC_URL;
-if (!redisUrl || !rpc) throw new Error("REDIS_URL and MARKET_RPC_URL (or SOLANA_RPC_URL) are required");
+// Jupiter prices carry mainnet slots; wallet SOLANA_RPC_URL may point to devnet.
+const rpc = process.env.MARKET_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
+if (!redisUrl) throw new Error("REDIS_URL is required");
 const pool = createPool(); const bus = new MarketBus(pool, redisUrl);
 const scheduler = new JupiterScheduler(bus.redis, accounts);
 const jupiter = new JupiterClient(scheduler, {
