@@ -93,7 +93,15 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
     }
   });
   registerCors(app);
-  app.register(websocket, { options: { maxPayload: 8192 } });
+  app.register(websocket, {
+    options: { maxPayload: 8192 },
+    // A phone suspended during a watch restart may never acknowledge a close
+    // handshake. Terminate upgraded sockets before HTTP draining/onClose hooks.
+    preClose(done) {
+      for (const socket of this.websocketServer.clients) socket.terminate();
+      this.websocketServer.close(done);
+    },
+  });
   app.register(async scope => { registerMarketRoutes(scope, db); registerVaultStream(scope, db); });
   app.register(async scope => { registerVaultRateLimit(scope); registerCaptainDashboardRoutes(scope, db); registerPaperPortfolioRoutes(scope,db,options.paperSnapshotSource??new DevnetPaperSnapshotSource(process.env.SOLANA_RPC_URL??process.env.DEVNET_RPC_URL??'https://api.devnet.solana.com')); registerVaultRoutes(scope, db); registerVaultUploadRoutes(scope, db); });
   app.register(async scope => { registerVaultRateLimit(scope); registerLiveVaultRoutes(scope, db, options.liveVaults ?? null); });

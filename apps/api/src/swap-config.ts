@@ -17,14 +17,16 @@ export function loadSwapConfig(): SwapConfig | null {
     if (!Number.isSafeInteger(value)) throw new Error(`Invalid ${name}`);
     return value;
   };
-  const url = (name: string, fallback: string) => {
+  const url = (name: string, fallback: string, allowQuery = false) => {
     const value = new URL(process.env[name] ?? fallback);
-    if (value.protocol !== 'https:' || value.username || value.password || value.hash || value.search) throw new Error(`Invalid ${name}: HTTPS URL required`);
-    return value.toString().replace(/\/$/,'');
+    if (value.protocol !== 'https:' || value.username || value.password || value.hash || (!allowQuery && value.search)) throw new Error(`Invalid ${name}: HTTPS URL required`);
+    return value.search ? value.toString() : value.toString().replace(/\/$/,'');
   };
   return {
     // SOLANA_RPC_URL is the user's canonical devnet endpoint for wallet swaps.
-    rpcUrl: url('SOLANA_RPC_URL',process.env.DEVNET_RPC_URL ?? 'https://api.devnet.solana.com'),
+    // Providers such as Helius authenticate with a query key. Keep it intact;
+    // RPC errors/logs must never include the configured endpoint.
+    rpcUrl: url('SOLANA_RPC_URL',process.env.DEVNET_RPC_URL ?? 'https://api.devnet.solana.com',true),
     venueUrl: url('SWAP_VENUE_URL','https://transaction-v1-devnet.raydium.io'),
     slippageBps: integer('SWAP_SLIPPAGE_BPS',100,1,100), maxPriceImpact: number('SWAP_MAX_PRICE_IMPACT_PCT',5,0,5),
     priorityMicroLamports: integer('SWAP_PRIORITY_MICRO_LAMPORTS',10000,0,1000000),

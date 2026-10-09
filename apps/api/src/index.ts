@@ -8,6 +8,7 @@ import { createDevnetChain, loadTokenConfig } from "./token-chain.js";
 import { tokenLimits } from "./token-flows.js";
 
 import { startQrDepositWorker } from "./qr-deposits.js";
+import { installShutdown } from './shutdown.js';
 
 const logs = new LogCollector("api");
 captureConsole(logs);
@@ -39,6 +40,4 @@ await app.listen({
   host: process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1"),
 });
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.once(signal, () => { void app.close().catch(() => { process.exitCode = 1; }); });
-}
+installShutdown(() => app.close());
