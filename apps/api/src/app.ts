@@ -1,3 +1,6 @@
+import { registerCaptainDashboardRoutes } from './captain-dashboard.js';
+import { registerLiveVaultRoutes, startLiveVaultWorker } from './live-vault-routes.js';
+import type { LiveChain } from './live-vault-chain.js';
 import { registerVaultUploadRoutes } from './vault-uploads.js';
 import Fastify from "fastify";
 import { registerVaultRateLimit } from "./vault-rate-limit.js";
@@ -26,10 +29,17 @@ import { registerAuthClientEvents } from "./auth-client-events.js";
 import type { TokenLayer } from "./token-flows.js";
 import { registerTokenRoutes } from "./token-routes.js";
 
+import { registerSwapRoutes } from "./swap-routes.js";
+import { startSwapWorker, type SwapLayer } from "./swap-flows.js";
 import { registerQrDepositRoutes } from "./qr-deposit-routes.js";
 
 export interface AppOptions {
+  liveVaults?: LiveChain | null;
+  liveVaultWorker?: boolean;
   logs?: LogCollector;
+  swaps?: SwapLayer | null;
+  /** Tests can drive reconciliation explicitly. */
+  swapWorker?: boolean;
   /** Devnet token layer. Required exactly when USDG_MINT is set. */
   token?: TokenLayer | null;
 }
@@ -83,7 +93,11 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   registerCors(app);
   app.register(websocket, { options: { maxPayload: 8192 } });
   app.register(async scope => { registerMarketRoutes(scope, db); registerVaultStream(scope, db); });
-  app.register(async scope => { registerVaultRateLimit(scope); registerVaultRoutes(scope, db); registerVaultUploadRoutes(scope, db); });
+  app.register(async scope => { registerVaultRateLimit(scope); registerCaptainDashboardRoutes(scope, db); registerVaultRoutes(scope, db); registerVaultUploadRoutes(scope, db); });
+  app.register(async scope => { registerVaultRateLimit(scope); registerLiveVaultRoutes(scope, db, options.liveVaults ?? null); });
+  let stopLiveVaultWorker: (() => Promise<void>) | undefined;
+  app.addHook('onReady', async () => { if (pool && options.liveVaults && options.liveVaultWorker !== false) stopLiveVaultWorker = startLiveVaultWorker(pool,options.liveVaults,error=>app.log.error(error)); });
+  app.addHook('preClose', async () => { await stopLiveVaultWorker?.(); });
 
   app.get("/health", async () => ({ status: "ok", mode: "PAPER" }));
   registerAdminLogs(app, logs);
@@ -93,6 +107,12 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   registerAuthRoutes(app, db, token);
   registerAuthClientEvents(app);
   registerQrDepositRoutes(app, db, token?.chain ?? null);
+  registerSwapRoutes(app, db, options.swaps ?? null);
+  let stopSwapWorker: (() => Promise<void>) | undefined;
+  app.addHook("onReady", async () => {
+    if (pool && options.swaps && options.swapWorker !== false) stopSwapWorker = startSwapWorker(pool, options.swaps.chain, error => app.log.error(error));
+  });
+  app.addHook("preClose", async () => { await stopSwapWorker?.(); });
   if (token) registerTokenRoutes(app, db, token.chain);
   registerFundRoutes(app, db);
   registerMarketCatalogRoutes(app, db);

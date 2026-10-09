@@ -1,3 +1,6 @@
+import { loadSwapConfig } from "./swap-config.js";
+import { SolanaLiveVaultChain } from './live-vault-chain.js';
+import { RaydiumSwapChain } from "./swap-chain.js";
 import { createPool } from "@socially/db";
 import { captureConsole, LogCollector } from "@socially/logging";
 import { createApp } from "./app.js";
@@ -24,7 +27,11 @@ const token = tokenConfig
     allowUnverifiedWallet: tokenConfig.allowUnverifiedWallet,
   }
   : null;
-const app = createApp(pool, { token, logs });
+const swapConfig = loadSwapConfig();
+const swapChain = swapConfig ? new RaydiumSwapChain(swapConfig) : null;
+if (swapChain) await swapChain.assertDevnet();
+const liveVaults = new SolanaLiveVaultChain(process.env.SOLANA_RPC_URL ?? process.env.DEVNET_RPC_URL ?? 'https://api.devnet.solana.com',swapChain,process.env.LIVE_VAULTS_ENABLED !== 'false');
+const app = createApp(pool, { token, logs, liveVaults, swaps: swapChain && swapConfig ? { chain: swapChain, config: swapConfig } : null });
 const stopQrWorker = pool && token ? startQrDepositWorker(pool, token.chain, error => app.log.error(error)) : null;
 app.addHook("preClose", async () => { await stopQrWorker?.(); });
 await app.listen({
