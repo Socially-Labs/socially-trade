@@ -138,7 +138,7 @@ The script pins platform-tools v1.57 (anchor 1.2 pulls edition2024 crates) and f
 
 | Program | Id |
 |---|---|
-| v1-core | `HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi` |
+| v1-core (local devnet build; not deployed) | `8GaCjFv4QCtCzMQaBxGzpEbQZxfML2gMzNXZEigaPcUb` |
 | mock-venue (test only) | `7wy5kqiVEWLHgmoccpe1DUD5vFA6tm68CM3hWiMcY1ng` |
 
 To regenerate a program id (these steps were not executed as part of this build):

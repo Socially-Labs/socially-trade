@@ -17,7 +17,7 @@ use {
     state::{PolicyParams, PriceSource, Tier},
 };
 
-declare_id!("HjRBKzvcuSiztYH97iL6RtbwDU9Mw8AF3Av3Q1nJgQsi");
+declare_id!("8GaCjFv4QCtCzMQaBxGzpEbQZxfML2gMzNXZEigaPcUb");
 
 #[program]
 pub mod v1_core {

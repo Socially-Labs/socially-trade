@@ -75,6 +75,7 @@ fn create_fund_mints_one_to_one_and_records_captain() {
 
 #[test]
 fn create_fund_accepts_exact_minimum() {
+    assert_eq!(CAPTAIN_MIN_DEPOSIT, 100_000_000);
     let mut env = setup();
     let cap = funded_user(&mut env, CAPTAIN_MIN_DEPOSIT);
     let f = create_fund(&mut env, &cap, 7, CAPTAIN_MIN_DEPOSIT).unwrap();
@@ -86,7 +87,7 @@ fn create_fund_rejects_small_stake() {
     let mut env = setup();
     let cap = funded_user(&mut env, 1_000_000_000);
     expect_err(
-        create_fund(&mut env, &cap, 1, 249_999_999),
+        create_fund(&mut env, &cap, 1, 99_999_999),
         ErrorCode::CaptainDepositTooSmall,
     );
 }

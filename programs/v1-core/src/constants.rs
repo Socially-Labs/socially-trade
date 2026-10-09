@@ -3,7 +3,7 @@
 pub const MAX_HOLDINGS: usize = 8;
 /// Max venue instruction data for `swap` (fits a Jupiter route).
 pub const MAX_VENUE_DATA: usize = 1024;
-pub const CAPTAIN_MIN_DEPOSIT: u64 = 250_000_000;
+pub const CAPTAIN_MIN_DEPOSIT: u64 = 100_000_000;
 pub const CAPTAIN_MIN_STAKE_BPS: u16 = 500;
 pub const PERF_FEE_BPS: u16 = 1000;
 pub const ADMIN_TIMELOCK_SECS: i64 = 604_800;
