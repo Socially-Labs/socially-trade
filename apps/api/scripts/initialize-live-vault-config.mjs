@@ -24,5 +24,17 @@ if(simulation.value.err)throw Error('Config initialization simulation failed; no
 if(!process.argv.includes('--send')){console.log('Config initialization simulation passed; nothing sent. Use --send only after deployment approval.');process.exit(0);}
 const signature=await connection.sendRawTransaction(tx.serialize(),{skipPreflight:false,maxRetries:3});
 console.log(JSON.stringify({signature,config:config.toBase58()}));
-const result=await connection.confirmTransaction({...deadline,signature},'finalized');if(result.value.err)throw Error('Initialization failed onchain');
-console.log('Config finalized with Circle devnet USDC');
+// Some HTTP RPC providers do not support signatureSubscribe at the inferred
+// WebSocket URL. Poll the same signature without rebuilding or resending it.
+const until=Date.now()+120000;
+while(Date.now()<until){
+ const {value:[status]}=await connection.getSignatureStatuses([signature],{searchTransactionHistory:true});
+ if(status?.err)throw Error('Initialization failed onchain');
+ if(status?.confirmationStatus==='finalized'){
+  console.log('Config finalized with Circle devnet USDC');process.exit(0);
+ }
+ // A landed transaction can finalize after its blockhash expires.
+ if(!status&&await connection.getBlockHeight()>deadline.lastValidBlockHeight)throw Error('Initialization signature not found after blockhash expiry; check chain state before retrying');
+ await new Promise(resolve=>setTimeout(resolve,2000));
+}
+throw Error('Initialization confirmation is pending; check the saved signature and config before retrying');

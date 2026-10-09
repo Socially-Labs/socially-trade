@@ -33,13 +33,24 @@ Read paths use indexed ownership queries and batched RPC account reads, not mult
 
 This is the existing v1-core share vault, **not** the round-v2 paper product. Withdrawals are in kind, without a paper funding window or settlement lock. Crew performance fees use a high-water mark, on exit/yearly. The client states these terms in its review. Onchain Crew deposit, trading, performance graph, earnings aggregation and media uploads are not connected by this change. No paper order can trade a funded live vault. The withdrawal adapter currently supports classic SPL holdings; unsupported holdings or oracle-dependent exits fail simulation rather than falling back to a treasury payout.
 
-The deployed program/config must match the local contract before funding is enabled. The undeployed source address was aligned to the ignored local build keypair: `8GaCjFv4QCtCzMQaBxGzpEbQZxfML2gMzNXZEigaPcUb`. This changes no existing chain account. Keep the deployment keypair secure and backed up; do not commit it.
+The deployed program/config must match the local contract before funding is enabled. The source address matches the ignored local build keypair: `8GaCjFv4QCtCzMQaBxGzpEbQZxfML2gMzNXZEigaPcUb`. Keep the deployment keypair secure and backed up; do not commit it.
 
 ## Deployment handoff
 
 1. `bash scripts/build-programs.sh` builds the SBF program with the pinned toolchain and rejects stack overflow.
 2. `node --env-file=.env apps/api/scripts/live-vault-preflight.mjs` checks program ID/keypair agreement, binary hash, configured devnet, deployer balance and config state without sending anything.
 3. After deployment approval, deploy `target/deploy/v1_core.so` using the matching ignored `target/deploy/v1_core-keypair.json` and the intended upgrade-authority wallet. Run `node --env-file=.env apps/api/scripts/initialize-live-vault-config.mjs` to simulate initialization, then add `--send` only after approval. It uses the same upgrade authority and Circle devnet USDC, never the treasury's test-token mint. The app's readiness endpoint remains closed until this succeeds.
-4. Run a separately authorized small end-to-end funding/withdrawal test with a wallet that has the required USDC/SOL. No deployment or real signed transaction has been sent during implementation verification.
+4. Run a separately authorized small end-to-end funding/withdrawal test with a wallet that has the required USDC/SOL. Deployment does not validate a user funding/withdrawal transaction; that still requires a separately authorized wallet signature.
 
 Mainnet requires a separate environment and deployment decision. This adapter enforces devnet; it must not be pointed at mainnet.
+
+## Devnet deployment — October 10, 2026
+
+- Program: `8GaCjFv4QCtCzMQaBxGzpEbQZxfML2gMzNXZEigaPcUb`.
+- Config: `12CFeomZJ9FJhFbBvPUihagzcbWRvhADuEsSY7MTDupf`, Circle devnet USDC, unpaused.
+- Deployment transaction: `21yFzdL9vFFJzj26euTGUKH9VbyiX65wzf5RZqnLF9xU5wLqa9Y6d2uYLGY7idWnB4CgLCtkk5ZrRiiXWKCXFtXU`.
+- Initialization transaction: `3pTbDnSM1mcs5pcWUPWGKGiEJiP6xWFfyfuSNfgKTnc8KbL9qkxb6TxrwzD2uSGPx5GbCZJ3ESevCL38NC1yWwEp`.
+- Both transactions finalized. Onchain bytecode matches the tested 778,840-byte binary, SHA-256 `4bfecd124422610174d866215999fab52cf82a9800a3f9d413e09b5f74517cce`.
+- Upload buffer closed; approximately 1.03659968 SOL remained from the 5 SOL deployment funding. No app-wallet funds were used.
+- The running backend returned `enabled: true`, `reason: null` for `/v1/live-vaults/config`. Funding still requires the normal wallet signature, $100 minimum, simulation and fee/liquidity checks.
+- Used the configured devnet RPC with paced, resumable writes after CLI bursts were throttled. Initialization confirmation uses HTTP status polling so an unsupported WebSocket subscription cannot stall the script.
