@@ -5,6 +5,7 @@ import type { JupiterAccount } from "./config.js";
 // Every attempted HTTP request consumes a token. Retries never bypass this script.
 const acquire = `
 local clock = redis.call('TIME'); local now = clock[1]*1000 + math.floor(clock[2]/1000)
+redis.call('SET', KEYS[7], '1', 'PX', 15000)
 local disabled = redis.call('PTTL', KEYS[3])
 if disabled > 0 then return disabled end
 local permission = redis.call('PTTL', KEYS[5])
@@ -19,6 +20,16 @@ if latest[2] and now-tonumber(latest[2]) < 1250 then return 1250-(now-tonumber(l
 if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[2]) then
  local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES'); return tonumber(oldest[2])+60000-now
 end
+-- Each class gets a small protected floor when it has recently requested service.
+-- Idle reservations are borrowable; a waiting class cannot be permanently starved.
+redis.call('SET', KEYS[7], '1', 'PX', 15000)
+redis.call('ZREMRANGEBYSCORE', KEYS[6], '-inf', now-60000)
+local own = redis.call('ZCARD', KEYS[6])
+local total = redis.call('ZCARD', KEYS[1])
+if redis.call('EXISTS', KEYS[8]) == 1 and own >= tonumber(ARGV[3]) and total >= 48-tonumber(ARGV[4]) then
+ return 1250
+end
+redis.call('ZADD', KEYS[6], now, ARGV[1]); redis.call('PEXPIRE', KEYS[6], 120000)
 redis.call('SET', KEYS[4], ARGV[1], 'PX', 10000)
 redis.call('ZADD', KEYS[1], now, ARGV[1]); redis.call('PEXPIRE', KEYS[1], 120000); return 0`;
 const release = `
@@ -75,10 +86,10 @@ export class JupiterScheduler implements AccountScheduler {
       const account = this.accounts[(start + offset) % this.accounts.length]!;
       if (excluded.has(account.id)) continue;
       const token = randomUUID();
-      // Keep 20 shared-window slots available to prices when searches surge or accounts fail.
-      // This is a priority ceiling within the same quota, not a second product budget.
-      const ceiling = this.product === "tokens-v2" ? 28 : 48;
-      const wait = Number(await this.redis.eval(acquire, 5, ...this.names(account), token, ceiling));
+      const prefix = this.prefix(account), tokens = this.product === 'tokens-v2';
+      const own = tokens ? 'tokens' : 'prices', other = tokens ? 'prices' : 'tokens';
+      const wait = Number(await this.redis.eval(acquire, 8, ...this.names(account),
+        `${prefix}:class:${own}`,`${prefix}:demand:${own}`,`${prefix}:demand:${other}`,token,48,tokens?6:12,tokens?12:6));
       if (wait === 0) return { account, token };
       waitMs = Math.min(waitMs, wait);
     }

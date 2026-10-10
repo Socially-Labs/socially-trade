@@ -146,14 +146,22 @@ test("token permissions are scoped but price/token calls share organisation paci
   assert.equal(await redis.zcard(window),2);
 });
 
-test("metadata/search cannot exhaust remaining price capacity when only one organisation is healthy", async () => {
-  const [seconds, micros] = await redis.time(), now = Number(seconds) * 1000 + Math.floor(Number(micros) / 1000);
-  const window = `${prefix(accounts[0])}:window`;
-  await redis.zadd(window, ...Array.from({ length: 28 }, (_, i) => [now - 59_000 + i * 1_200, `shared-${i}`]).flat());
-  const metadata = new JupiterScheduler(redis, [accounts[0]], "tokens-v2");
-  assert.ok((await metadata.next()).waitMs > 0);
-  assert.equal(await redis.zcard(window), 28, "Denied metadata consumes no quota");
-  const prices = new JupiterScheduler(redis, [accounts[0]]), permit = await prices.next();
-  assert.ok("account" in permit); await prices.release(permit);
-  assert.equal(await redis.zcard(window), 29);
+test("idle reservations can be borrowed; active prices and discovery each retain capacity",async()=>{
+  const [seconds,micros]=await redis.time(),now=Number(seconds)*1000+Math.floor(Number(micros)/1000);
+  const base=prefix(accounts[0]),window=`${base}:window`;
+  await redis.zadd(window,...Array.from({length:28},(_,i)=>[now-59000+i*1200,`shared-${i}`]).flat());
+  const metadata=new JupiterScheduler(redis,[accounts[0]],'tokens-v2');
+  const borrowed=await metadata.next();assert.ok('account' in borrowed);await metadata.release(borrowed);
+  await redis.del(window,`${base}:class:tokens`);
+  const entries=Array.from({length:36},(_,i)=>[now-59000+i*1200,`token-${i}`]).flat();
+  await redis.zadd(window,...entries);await redis.zadd(`${base}:class:tokens`,...entries);
+  await redis.set(`${base}:demand:prices`,'1','PX',15000);
+  assert.ok((await metadata.next()).waitMs>0);
+  const prices=new JupiterScheduler(redis,[accounts[0]]),permit=await prices.next();assert.ok('account' in permit);await prices.release(permit);
+  await redis.del(window,`${base}:class:prices`);
+  const priceEntries=Array.from({length:42},(_,i)=>[now-59000+i*1200,`price-${i}`]).flat();
+  await redis.zadd(window,...priceEntries);await redis.zadd(`${base}:class:prices`,...priceEntries);
+  assert.ok((await prices.next()).waitMs>0);
+  await redis.del(`${base}:class:tokens`);
+  const protectedToken=await metadata.next();assert.ok('account' in protectedToken);await metadata.release(protectedToken);
 });

@@ -24,11 +24,32 @@ function fixture(overrides = {}) {
 }
 const isCode = code => error => error instanceof JupiterClientError && error.code === code;
 
+test('short pacing waits acquire a fresh permit without consuming an HTTP retry', async () => {
+  const { scheduler, state } = fixture(); const next = scheduler.next;
+  let permits = 0, requests = 0;
+  scheduler.next = async (...args) => ++permits <= 2 ? { waitMs: 1 } : next(...args);
+  const client = new JupiterClient(scheduler, { maxAttempts: 1, fetchPrices: async () => { requests++; return result; } });
+  assert.equal(await client.getPrices([SOL_MINT]), result);
+  assert.equal(requests, 1); assert.equal(permits, 3);
+  assert.deepEqual(state.failures, []); assert.equal(state.releases.length, 1);
+});
+
+test('cancelling during a pacing wait never sends a provider request', async () => {
+  const { scheduler } = fixture({ next: async () => ({ waitMs: 1000 }) });
+  let requests = 0;
+  const client = new JupiterClient(scheduler, { fetchPrices: async () => { requests++; return result; } });
+  const abort = new AbortController(); const pending = client.getPrices([SOL_MINT], abort.signal);
+  setTimeout(() => abort.abort(), 10);
+  await assert.rejects(pending, isCode('cancelled')); assert.equal(requests, 0);
+});
+
 test("loads numbered accounts in numeric order, including gaps, without requiring legacy config", () => {
   const configured = loadJupiterAccounts({ JUP_ACC_10: " last ", JUP_ACC_2: "second", JUP_ACC_1: "first" });
   assert.deepEqual(configured.map(({ id, organisation }) => [id, organisation]),
-    [["JUP_ACC_1", "JUP_ACC_1"], ["JUP_ACC_2", "JUP_ACC_2"], ["JUP_ACC_10", "JUP_ACC_10"]]);
+    [["JUP_ACC_1", "default"], ["JUP_ACC_2", "default"], ["JUP_ACC_10", "default"]]);
   assert.equal(configured[2].key, "last");
+  const grouped = loadJupiterAccounts({ JUP_ACC_1: 'one', JUP_ACC_2: 'two', JUPITER_ORGANISATION_ID: 'shared', JUP_ACC_2_ORGANISATION_ID: 'separate' });
+  assert.deepEqual(grouped.map(a => a.organisation), ['shared', 'separate']);
 });
 
 test("rejects empty, duplicate and ambiguous configuration without exposing keys", () => {

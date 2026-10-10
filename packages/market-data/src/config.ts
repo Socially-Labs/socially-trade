@@ -11,7 +11,7 @@ export function loadJupiterAccounts(env: NodeJS.ProcessEnv = process.env): Jupit
   for (let i = 1; i <= 10; i++) {
     const id = `JUP_ACC_${i}`;
     const key = env[id]?.trim();
-    if (key) accounts.push({ id, key, organisation: id });
+    if (key) accounts.push({ id, key, organisation: env[`${id}_ORGANISATION_ID`]?.trim() || env.JUPITER_ORGANISATION_ID?.trim() || "default" });
   }
   // Legacy keys belong to ONE organisation and must share its budget.
   if (!accounts.length) {

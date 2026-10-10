@@ -1,5 +1,6 @@
 import { fetchJupiterPrices, JupiterDataError, JupiterHttpError, type JupiterPrice } from "./jupiter.js";
-import { fetchJupiterTokens, type TokenMetadata } from "./tokens.js";
+import { fetchJupiterTokens, fetchJupiterCategory, type TokenMetadata } from "./tokens.js";
+import { setTimeout as delay } from "node:timers/promises";
 import type { AccountScheduler, JupiterFailure } from "./scheduler.js";
 
 export class JupiterClientError extends Error {
@@ -19,6 +20,7 @@ interface ClientOptions {
   maxConcurrent?: number;
   fetchPrices?: typeof fetchJupiterPrices;
   fetchTokens?: typeof fetchJupiterTokens;
+  fetchCategory?: typeof fetchJupiterCategory;
   onFailure?: (event: JupiterClientEvent) => void;
 }
 
@@ -65,6 +67,9 @@ export class JupiterClient {
     if (!query.trim() || query.length > 4500) throw new JupiterDataError("Invalid token query");
     return this.run((key, signal) => (this.options.fetchTokens ?? fetchJupiterTokens)(key, query, { signal }), callerSignal, true);
   }
+  async getCategory(feed: 'toptraded' | 'trending', interval: string, signal?: AbortSignal): Promise<TokenMetadata[]> {
+    return this.run((key, signal) => (this.options.fetchCategory ?? fetchJupiterCategory)(key, feed, interval, { signal }), signal, true);
+  }
   private async run<T>(fetchOperation: (key: string, signal: AbortSignal) => Promise<T>, callerSignal?: AbortSignal, tokenProduct = false): Promise<T> {
     const timeout = AbortSignal.timeout(this.deadline);
     const signal = callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;
@@ -76,7 +81,15 @@ export class JupiterClient {
       for (let attempt = 1; attempt <= this.attempts; attempt++) {
         signal.throwIfAborted();
         let permit;
-        try { permit = await this.scheduler.next(excluded, signal); }
+        try {
+          permit = await this.scheduler.next(excluded, signal);
+          // Pacing another healthy request is normal, not a failed upstream attempt.
+          // Wait only for short slots; long quota/cooldown waits remain caller-scheduled.
+          while ("waitMs" in permit && permit.waitMs <= 1_500) {
+            await delay(Math.max(1, permit.waitMs) + 25, undefined, { signal });
+            permit = await this.scheduler.next(excluded, signal);
+          }
+        }
         catch { signal.throwIfAborted(); throw new JupiterClientError("scheduler_unavailable"); }
         if ("waitMs" in permit) {
           throw new JupiterClientError(excluded.size ? "upstream_unavailable" : "quota_wait",
