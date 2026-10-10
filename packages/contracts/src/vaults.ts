@@ -14,6 +14,7 @@ export interface VaultSummary {
   schemaVersion: 1; roundModelVersion: 2; mode: 'PAPER'; id: string; captainId: string;
   name: string; description: string; avatarUrl?: string|null; bannerUrl?:string|null; phase: VaultPhase; riskState: 'NORMAL' | 'FROZEN';
   termsVersion: 1; termsHash: string; durationDays: number; fundingWindowHours: number;
+  universeMode?: 'LEGACY_ALLOWLIST' | 'DYNAMIC_SPOT';
   acceptedCapitalUsdc: string; remainingCapacityUsdc: string; economicShares: string; participants: number;
   fundingClosesAt: string; tradingStartsAt: string; actualActivatedAt: string | null; tradingEndsAt: string;
   navUsdc: string | null; valuationStatus: 'CURRENT' | 'UNAVAILABLE'; valuedAt: string | null;
@@ -41,6 +42,7 @@ export function parseVaultSummary(value: unknown): VaultSummary {
   if (v.schemaVersion !== 1 || v.roundModelVersion !== 2 || v.mode !== 'PAPER' || !uuid(v.id) || !uuid(v.captainId) ||
     !image(v.avatarUrl) || !image(v.bannerUrl) || typeof v.name !== 'string' || typeof v.description !== 'string' || !vaultPhases.includes(v.phase as VaultPhase) ||
     !['NORMAL','FROZEN'].includes(String(v.riskState)) || v.termsVersion !== 1 ||
+    (v.universeMode !== undefined && !['LEGACY_ALLOWLIST','DYNAMIC_SPOT'].includes(String(v.universeMode))) ||
     typeof v.termsHash !== 'string' || !/^[a-f0-9]{64}$/.test(v.termsHash) ||
     ![12,24,72].includes(Number(v.fundingWindowHours)) || typeof v.fundingWindowHours !== 'number' ||
     ![3,7,14,21,28,30,60,90,180,365].includes(Number(v.durationDays)) || typeof v.durationDays !== 'number' ||

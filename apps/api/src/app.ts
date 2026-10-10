@@ -1,3 +1,5 @@
+import { registerPaperTradingHealth } from './paper-trading-health.js';
+import { registerMarketTrackingRoutes } from "./market-tracking.js";
 import { registerPaperPortfolioRoutes,DevnetPaperSnapshotSource,type PaperSnapshotSource } from './paper-portfolio.js';
 import { registerCaptainDashboardRoutes } from './captain-dashboard.js';
 import { registerLiveVaultRoutes, startLiveVaultWorker } from './live-vault-routes.js';
@@ -11,6 +13,7 @@ import { LogCollector } from "@socially/logging";
 import { registerAdminLogs } from "./admin-logs.js";
 import { registerCors } from "./cors.js";
 import websocket from "@fastify/websocket";
+import { registerMarketDiscoveryRoutes } from "./market-discovery-routes.js";
 import { registerMarketCatalogRoutes } from "./market-catalog-routes.js";
 import { registerTradingContextRoutes } from "./trading-context.js";
 import { registerMarketRoutes } from "./market-routes.js";
@@ -126,8 +129,11 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   if (token) registerTokenRoutes(app, db, token.chain);
   registerFundRoutes(app, db);
   registerMarketCatalogRoutes(app, db);
+  registerMarketDiscoveryRoutes(app, db);
+  registerMarketTrackingRoutes(app, db);
   registerTradingContextRoutes(app, db);
   registerOrderRoutes(app, db);
+  registerPaperTradingHealth(app, db);
   registerFundEventRoutes(app, db);
   registerSocialRoutes(app, db);
   registerNotificationRoutes(app, db);

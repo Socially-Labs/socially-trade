@@ -4,7 +4,7 @@ import { levels, services, type LogCollector, type LogFilter } from "@socially/l
 import { ApiFault } from "./errors.js";
 import { logsHtml, logsCsp } from "./admin-logs-page.js";
 
-function authorize(request: FastifyRequest): void {
+export function authorize(request: FastifyRequest): void {
   const token = process.env.ADMIN_LOGS_TOKEN;
   if (token) {
     const supplied = request.headers.authorization?.replace(/^Bearer /i, "") ?? "";

@@ -80,7 +80,7 @@ export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
     type:'object',additionalProperties:false,properties:{ range:{ type:'string',enum:['7D','30D','ALL'] } },
   } } },async req => vaultPerformance(db(),req.params.id,req.query.range ?? '30D'));
   const orderBody = { type: 'object',additionalProperties: false,required: ['side','instrumentId'],properties: {
-    side: { type: 'string',enum: ['BUY','SELL'] },instrumentId: { type: 'string',minLength: 1,maxLength: 32 },
+    side: { type: 'string',enum: ['BUY','SELL'] },instrumentId: { type: 'string',minLength: 1,maxLength: 64 },
     notionalUsdc: { type: 'string',maxLength: 40 },quantity: { type: 'string',maxLength: 40 },
   },oneOf: [{ required: ['notionalUsdc'],not: { required: ['quantity'] } },
     { required: ['quantity'],not: { required: ['notionalUsdc'] },properties: { side: { const: 'SELL' } } }] };

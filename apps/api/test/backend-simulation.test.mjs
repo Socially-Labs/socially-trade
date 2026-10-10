@@ -222,7 +222,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       await processOrder(pool, id);
       const record = (await request('GET', route(`/orders/${id}`))).order;
       await pool.query("UPDATE instruments SET active=true WHERE id='SOL'");
-      assert.equal(record.reject_reason, 'asset_not_allowed');
+      assert.equal(record.reject_reason, 'asset_disabled');
     });
     await t.test('production ignores seeded prices and development credentials', async () => {
       const id = await order(); await ageOrder(id); await seed();

@@ -190,14 +190,14 @@ test('market catalog, history, watchlist and multi-asset paper execution', { tim
         await rm(directory,{recursive:true,force:true});
       }
     });
-    await t.test('disabled instruments retain browse identity but lose catalog and fund trading eligibility', async () => {
+    await t.test('buy disablement retains browse identity and permits existing holdings to exit', async () => {
       await pool.query("UPDATE instruments SET active=false WHERE id='JUP'");
       const catalog = await route('GET', '/v0/market/tokens');
       const token = catalog.tokens.find(token => token.instrumentId === 'JUP');
       assert.equal(token.tracked, true); assert.equal(token.tradable, false); assert.equal(token.tradeReason, 'asset_disabled');
       const context = await route('GET', `/v0/funds/${fundId}/trading-context`, 'captain');
       const limit = context.limits.find(limit => limit.instrumentId === 'JUP');
-      assert.equal(limit.canBuy, false); assert.equal(limit.canSell, false);
+      assert.equal(limit.canBuy, false); assert.equal(limit.canSell, true);
       await pool.query("UPDATE instruments SET active=true WHERE id='JUP'");
     });
   } finally { globalThis.fetch=originalFetch; await app.close(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); }

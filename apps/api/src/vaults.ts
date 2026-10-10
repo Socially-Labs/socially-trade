@@ -1,3 +1,4 @@
+import { dynamicTradingEnabled } from "@socially/market-data/registry";
 import { walletPaperEnabled,paperOwner } from './paper-portfolio.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFundEvent, inTransaction, ledgerAccountId, type DbClient, type DbPool } from '@socially/db';
@@ -73,6 +74,7 @@ function summary(row: RoundRow & { participants: number; nav_usdc: string | null
   return { schemaVersion: 1, roundModelVersion: 2, mode: 'PAPER', id: row.id, captainId: row.captain_id,
     name: row.name, description: row.description,avatarUrl:row.avatar_url,bannerUrl:row.banner_url, phase: row.phase, riskState: row.risk_state,
     termsVersion: 1, termsHash: row.terms_hash, durationDays: row.duration_days, fundingWindowHours: row.funding_window_hours,
+    universeMode: row.terms.universeMode === 'DYNAMIC_SPOT' ? 'DYNAMIC_SPOT' : 'LEGACY_ALLOWLIST',
     acceptedCapitalUsdc: fixed(row.accepted_capital_usdc,6), remainingCapacityUsdc: fixed(new Amount(30000).minus(row.accepted_capital_usdc),6),
     economicShares: fixed(row.total_shares,6), participants: row.participants,
     fundingClosesAt: row.funding_closes_at.toISOString(), tradingStartsAt: row.funding_closes_at.toISOString(),
@@ -146,15 +148,15 @@ export async function createVault(pool: DbPool, actor: Actor, input: VaultCreate
     if (active.rowCount) throw new ApiFault(409,'active_round_exists','Captain already has an open round');
     const now = await databaseNow(client), fundId = randomUUID();
     const close = new Date(now.getTime()+input.fundingWindowHours*3600_000), end = new Date(close.getTime()+input.durationDays*86400_000);
-    const terms = { ...VAULT_RULES,fundingWindowHours: input.fundingWindowHours,durationDays: input.durationDays,
+    const terms = { ...VAULT_RULES,universeMode: dynamicTradingEnabled()?'DYNAMIC_SPOT':'LEGACY_ALLOWLIST',fundingWindowHours: input.fundingWindowHours,durationDays: input.durationDays,
       fundingCancellation: 'FULL_BEFORE_DEADLINE',captainCancellation: 'BEFORE_FIRST_CREW_COMMITMENT',
       residuePolicy: 'RETAIN_AS_LIABILITY', emergencyUnwind: 'DISABLED',captainTopUps: false,mode: 'PAPER' };
     const hash = createHash('sha256').update(JSON.stringify(terms)).digest('hex');
     await client.query(`INSERT INTO funds(id,captain_id,name,description,status,round_model_version) VALUES($1,$2,$3,$4,'FROZEN',2)`,[fundId,actor.id,name,description]);
     await client.query(`INSERT INTO vault_rounds(fund_id,balance_source,terms_version,terms,terms_hash,phase,funding_window_hours,duration_days,funding_started_at,funding_closes_at,trading_ends_at,accepted_capital_usdc)
       VALUES($1,$9,1,$2,$3,'FUNDRAISING',$4,$5,$6,$7,$8,0)`,[fundId,terms,hash,input.fundingWindowHours,input.durationDays,now,close,end,walletPaperEnabled()?'WALLET_SNAPSHOT':'LEGACY']);
-    await client.query(`INSERT INTO fund_policy_versions(fund_id,version,max_order_bps,max_position_bps,drawdown_breaker_bps,allowed_instruments,effective_at)
-      VALUES($1,1,1000,2500,3000,$2,$3)`,[fundId,tradableInstrumentIds,now]);
+    await client.query(`INSERT INTO fund_policy_versions(fund_id,version,max_order_bps,max_position_bps,drawdown_breaker_bps,allowed_instruments,effective_at,universe_mode)
+      VALUES($1,1,1000,2500,3000,$2,$3,$4)`,[fundId,tradableInstrumentIds,now,dynamicTradingEnabled()?"DYNAMIC_SPOT":"LEGACY_ALLOWLIST"]);
     const event = await appendFundEvent(client,fundId,'vault_created',{ termsHash: hash });
     await fundContribution(client,actor,fundId,VAULT_RULES.captainSeedUsdc,event,walletPaperEnabled());
     const result = await operation(client,actor,key,fundId,'CREATE',event,VAULT_RULES.captainSeedUsdc);

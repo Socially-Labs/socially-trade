@@ -29,3 +29,5 @@ export interface FundSummary {
   trialEndsAt: string;
 }
 export * from './vaults.js';
+export * from './markets.js';
+export * from './paper-trading.js';

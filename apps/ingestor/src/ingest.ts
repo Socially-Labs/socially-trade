@@ -59,8 +59,8 @@ export function unavailable(reason: string, token: Pick<SupportedToken, "id" | "
   return { instrumentId: token.id, mint: token.mint, source: "JUPITER_PRICE_V3", priceUsd: null, priceUsdc: null,
     sourceBlockId: null, sourceAt: null, quoteSourceBlockId: null, quoteSourceAt: null, observationId: null, receivedAt: new Date().toISOString(), status: "UNAVAILABLE", reason };
 }
-export async function unavailableMarkets(pool: DbPool, reason: string): Promise<void> {
-  for (const token of supportedTokens) await recordMarketPrice(pool, unavailable(reason, token));
+export async function unavailableMarkets(pool: DbPool, reason: string, tokens: readonly SupportedToken[] = supportedTokens): Promise<void> {
+  for (const token of tokens) await recordMarketPrice(pool, unavailable(reason, token));
 }
 export async function ingestJupiter(pool: DbPool, jupiter: Pick<JupiterClient, "getPrices">, rpc: string, signal?: AbortSignal,
   tokens: readonly SupportedToken[] = supportedTokens): Promise<void> {

@@ -1,3 +1,4 @@
+import { dynamicTradingEnabled } from "@socially/market-data/registry";
 import { createHash, randomUUID } from "node:crypto";
 import { tradableInstrumentIds } from "@socially/market-data/catalog";
 import { appendFundEvent, inTransaction, ledgerAccountId, type DbPool } from "@socially/db";
@@ -109,9 +110,9 @@ export async function createFund(
     await client.query(
       `INSERT INTO fund_policy_versions
        (fund_id, version, max_order_bps, max_position_bps, drawdown_breaker_bps,
-        allowed_instruments, effective_at)
-       VALUES ($1, 1, 1000, 2500, 3000, $3::text[], $2)`,
-      [fundId, startsAt, tradableInstrumentIds],
+        allowed_instruments, effective_at, universe_mode)
+       VALUES ($1, 1, 1000, 2500, 3000, $3::text[], $2, $4)`,
+      [fundId, startsAt, tradableInstrumentIds, dynamicTradingEnabled()?"DYNAMIC_SPOT":"LEGACY_ALLOWLIST"],
     );
     await client.query(
       `INSERT INTO trials (fund_id, starts_at, ends_at, seed_usdc)

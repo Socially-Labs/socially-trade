@@ -11,7 +11,7 @@ export function registerOrderRoutes(app: FastifyInstance, db: () => DbPool): voi
     type: "object", required: ["side", "instrumentId"], additionalProperties: false,
     properties: {
       side: { type: "string", enum: ["BUY", "SELL"] },
-      instrumentId: { type: "string", minLength: 1, maxLength: 32 },
+      instrumentId: { type: "string", minLength: 1, maxLength: 64 },
       notionalUsdc: { type: "string", maxLength: 40 },
       quantity: { type: "string", maxLength: 40 },
     },

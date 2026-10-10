@@ -30,6 +30,13 @@ async function identity(request: FastifyRequest): Promise<{ subject: string; dis
 
 export async function requireActor(request: FastifyRequest, pool: DbPool): Promise<Actor> {
   const { subject, displayName } = await identity(request);
+  // Existing accounts need no transaction or INSERT on every private read.
+  // This is an indexed database read after JWT verification, never an auth cache.
+  const known = (await pool.query<Actor>(
+    `SELECT id,auth_subject AS subject,display_name AS "displayName",paper_cash::text AS "paperCash",username,role,bio,
+      avatar_url AS "avatarUrl",banner_url AS "bannerUrl",hide_balances AS "hideBalances",avatar_kind AS "avatarKind"
+     FROM users WHERE auth_subject=$1`,[subject])).rows[0];
+  if (known) return known;
   return inTransaction(pool, async (client) => {
     const id = randomUUID();
     const inserted = await client.query<Actor>(
