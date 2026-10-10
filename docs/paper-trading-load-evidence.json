@@ -1,0 +1,2322 @@
+{
+  "at": "2026-10-10T19:42:04.346Z",
+  "environment": "Single API app.inject process; local Docker PostgreSQL 17, temporary Redis; synthetic metadata and auth; no live provider calls; burst requests, not sustained capacity. Cold chart concurrency is bounded and may return 503. Context cache Redis connection is primed once before the measurement. Both vault and Captain invalidation channels are subscribed in the gateway measurement. Query durations measure execution after pool acquisition; peakPoolWaiting records queue depth.",
+  "socketEvidence": {
+    "users": 100,
+    "captainUpdateDeliveryP95Ms": 309.54,
+    "idleObservationMs": 2000,
+    "idleGatewayQueries": 8,
+    "updateDeliveryP95Ms": 304.95,
+    "measurement": "In-process WebSocket gateway, synthetic committed revision invalidations; latency includes SQL update, excludes app rendering and device network. Client 60-second reconciliation implies 300 private resource reads/minute for 100 idle Captains versus 3600 previously; that client estimate is not a sustained device measurement."
+  },
+  "priceCapacityModel": [
+    {
+      "mintsIncludingQuote": 11,
+      "callsPerMinuteAtFiveSeconds": 12
+    },
+    {
+      "mintsIncludingQuote": 51,
+      "callsPerMinuteAtFiveSeconds": 24
+    },
+    {
+      "mintsIncludingQuote": 101,
+      "callsPerMinuteAtFiveSeconds": 36
+    },
+    {
+      "mintsIncludingQuote": 501,
+      "callsPerMinuteAtFiveSeconds": 132
+    }
+  ],
+  "results": [
+    {
+      "users": 5,
+      "requests": 5,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 11.94,
+      "p95": 12.09,
+      "p99": 12.09,
+      "queryCount": 15,
+      "dbExecutionMs": 20.65,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 5
+      },
+      "cpuMs": 12.692,
+      "rssBytes": 202080256,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "token-details",
+      "p50": 4.88,
+      "p95": 10.44,
+      "p99": 10.44,
+      "queryCount": 40,
+      "dbExecutionMs": 33.49,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 13.126,
+      "rssBytes": 202768384,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "holdings",
+      "p50": 16.9,
+      "p95": 18.58,
+      "p99": 18.58,
+      "queryCount": 120,
+      "dbExecutionMs": 139.39,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 18.586,
+      "rssBytes": 203128832,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "pending-orders",
+      "p50": 4.4,
+      "p95": 4.64,
+      "p99": 4.64,
+      "queryCount": 20,
+      "dbExecutionMs": 35.15,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 6.058,
+      "rssBytes": 203177984,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "diverse-searches",
+      "p50": 29.22,
+      "p95": 29.48,
+      "p99": 29.48,
+      "queryCount": 30,
+      "dbExecutionMs": 33.27,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 5.019,
+      "rssBytes": 203472896,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "cold-charts",
+      "p50": 5.35,
+      "p95": 5.6,
+      "p99": 5.6,
+      "queryCount": 40,
+      "dbExecutionMs": 41.5,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 5.282,
+      "rssBytes": 203653120,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 5,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 1.68,
+      "p95": 1.86,
+      "p99": 1.86,
+      "queryCount": 15,
+      "dbExecutionMs": 6.96,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 5
+      },
+      "cpuMs": 1.497,
+      "rssBytes": 203669504,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "token-details",
+      "p50": 13.79,
+      "p95": 15.12,
+      "p99": 15.19,
+      "queryCount": 200,
+      "dbExecutionMs": 140.34,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 11.98,
+      "rssBytes": 203997184,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "holdings",
+      "p50": 31.04,
+      "p95": 52.16,
+      "p99": 56.4,
+      "queryCount": 500,
+      "dbExecutionMs": 479.27,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 82.752,
+      "rssBytes": 208896000,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "pending-orders",
+      "p50": 11.6,
+      "p95": 15.18,
+      "p99": 15.44,
+      "queryCount": 100,
+      "dbExecutionMs": 127.09,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 23.602,
+      "rssBytes": 208912384,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "diverse-searches",
+      "p50": 11.02,
+      "p95": 12.59,
+      "p99": 12.92,
+      "queryCount": 150,
+      "dbExecutionMs": 111.53,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 10.737,
+      "rssBytes": 209158144,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "cold-charts",
+      "p50": 2.04,
+      "p95": 7.67,
+      "p99": 7.67,
+      "queryCount": 64,
+      "dbExecutionMs": 50.05,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 26,
+        "503": 24
+      },
+      "cpuMs": 7.347,
+      "rssBytes": 209174528,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 5,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 1.5,
+      "p95": 3.06,
+      "p99": 3.06,
+      "queryCount": 15,
+      "dbExecutionMs": 9.07,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 5
+      },
+      "cpuMs": 1.433,
+      "rssBytes": 209174528,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "token-details",
+      "p50": 35.64,
+      "p95": 41.34,
+      "p99": 41.64,
+      "queryCount": 400,
+      "dbExecutionMs": 394.37,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 38.263,
+      "rssBytes": 209928192,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "holdings",
+      "p50": 33.97,
+      "p95": 69.41,
+      "p99": 70.24,
+      "queryCount": 700,
+      "dbExecutionMs": 634.53,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 72.417,
+      "rssBytes": 211681280,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "pending-orders",
+      "p50": 21.16,
+      "p95": 28.04,
+      "p99": 28.28,
+      "queryCount": 200,
+      "dbExecutionMs": 241.96,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 28.417,
+      "rssBytes": 212566016,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "diverse-searches",
+      "p50": 24.76,
+      "p95": 27.63,
+      "p99": 27.72,
+      "queryCount": 300,
+      "dbExecutionMs": 252.55,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 33.746,
+      "rssBytes": 213057536,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "cold-charts",
+      "p50": 2.84,
+      "p95": 7.75,
+      "p99": 7.86,
+      "queryCount": 64,
+      "dbExecutionMs": 44.71,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 42,
+        "503": 58
+      },
+      "cpuMs": 8.18,
+      "rssBytes": 213598208,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 5,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 1.38,
+      "p95": 1.45,
+      "p99": 1.45,
+      "queryCount": 15,
+      "dbExecutionMs": 5.86,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 5
+      },
+      "cpuMs": 0.832,
+      "rssBytes": 213598208,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "token-details",
+      "p50": 145.93,
+      "p95": 159.32,
+      "p99": 160.29,
+      "queryCount": 2000,
+      "dbExecutionMs": 1553.29,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 127.74,
+      "rssBytes": 223281152,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "holdings",
+      "p50": 260.89,
+      "p95": 449.03,
+      "p99": 459.48,
+      "queryCount": 5000,
+      "dbExecutionMs": 4399.02,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 386.669,
+      "rssBytes": 237256704,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "pending-orders",
+      "p50": 101.19,
+      "p95": 152.98,
+      "p99": 167.89,
+      "queryCount": 1190,
+      "dbExecutionMs": 1480.73,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 199.333,
+      "rssBytes": 242614272,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "diverse-searches",
+      "p50": 107.66,
+      "p95": 125.75,
+      "p99": 127.3,
+      "queryCount": 1500,
+      "dbExecutionMs": 1200.64,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 91.59,
+      "rssBytes": 243482624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 5,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "cold-charts",
+      "p50": 19.29,
+      "p95": 19.57,
+      "p99": 26.28,
+      "queryCount": 64,
+      "dbExecutionMs": 57.56,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 58,
+        "503": 442
+      },
+      "cpuMs": 34.96,
+      "rssBytes": 251658240,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 3.05,
+      "p95": 3.2,
+      "p99": 3.2,
+      "queryCount": 30,
+      "dbExecutionMs": 27.42,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 1.853,
+      "rssBytes": 251674624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "token-details",
+      "p50": 4.5,
+      "p95": 4.72,
+      "p99": 4.72,
+      "queryCount": 40,
+      "dbExecutionMs": 42.56,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 1.683,
+      "rssBytes": 251674624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "holdings",
+      "p50": 3.69,
+      "p95": 10.35,
+      "p99": 10.35,
+      "queryCount": 70,
+      "dbExecutionMs": 58.14,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 5.295,
+      "rssBytes": 251674624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "pending-orders",
+      "p50": 3.37,
+      "p95": 3.8,
+      "p99": 3.8,
+      "queryCount": 20,
+      "dbExecutionMs": 24.45,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 4.087,
+      "rssBytes": 251674624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "diverse-searches",
+      "p50": 3.09,
+      "p95": 3.18,
+      "p99": 3.18,
+      "queryCount": 30,
+      "dbExecutionMs": 26.68,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 1.518,
+      "rssBytes": 251674624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "cold-charts",
+      "p50": 0.27,
+      "p95": 0.28,
+      "p99": 0.28,
+      "queryCount": 0,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 0.286,
+      "rssBytes": 251674624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 3.76,
+      "p95": 4.2,
+      "p99": 4.2,
+      "queryCount": 30,
+      "dbExecutionMs": 36.49,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 7.581,
+      "rssBytes": 251740160,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "token-details",
+      "p50": 13.92,
+      "p95": 15.89,
+      "p99": 15.94,
+      "queryCount": 200,
+      "dbExecutionMs": 151.94,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 8.618,
+      "rssBytes": 251674624,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "holdings",
+      "p50": 25.59,
+      "p95": 40.73,
+      "p99": 43.06,
+      "queryCount": 420,
+      "dbExecutionMs": 388.71,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 37.251,
+      "rssBytes": 252297216,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "pending-orders",
+      "p50": 12.15,
+      "p95": 15.99,
+      "p99": 16.14,
+      "queryCount": 100,
+      "dbExecutionMs": 138.54,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 12.068,
+      "rssBytes": 252362752,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "diverse-searches",
+      "p50": 13.24,
+      "p95": 15.66,
+      "p99": 15.71,
+      "queryCount": 150,
+      "dbExecutionMs": 139.33,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 8.345,
+      "rssBytes": 253345792,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "cold-charts",
+      "p50": 0.93,
+      "p95": 9.87,
+      "p99": 9.9,
+      "queryCount": 64,
+      "dbExecutionMs": 80.01,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 44,
+        "503": 6
+      },
+      "cpuMs": 8.596,
+      "rssBytes": 253345792,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 2.97,
+      "p95": 3.1,
+      "p99": 3.1,
+      "queryCount": 30,
+      "dbExecutionMs": 27.01,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 1.892,
+      "rssBytes": 253345792,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "token-details",
+      "p50": 27.12,
+      "p95": 30.2,
+      "p99": 30.45,
+      "queryCount": 400,
+      "dbExecutionMs": 290.14,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 25.896,
+      "rssBytes": 253919232,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "holdings",
+      "p50": 27.96,
+      "p95": 65.74,
+      "p99": 66.58,
+      "queryCount": 700,
+      "dbExecutionMs": 620.23,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 43.4,
+      "rssBytes": 255016960,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "pending-orders",
+      "p50": 19.09,
+      "p95": 29.38,
+      "p99": 29.89,
+      "queryCount": 200,
+      "dbExecutionMs": 262.56,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 31.359,
+      "rssBytes": 255803392,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "diverse-searches",
+      "p50": 23.26,
+      "p95": 25.66,
+      "p99": 25.74,
+      "queryCount": 300,
+      "dbExecutionMs": 238.19,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 23.3,
+      "rssBytes": 256016384,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "cold-charts",
+      "p50": 1.66,
+      "p95": 9.83,
+      "p99": 10.01,
+      "queryCount": 64,
+      "dbExecutionMs": 74.39,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 74,
+        "503": 26
+      },
+      "cpuMs": 9.885,
+      "rssBytes": 256081920,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 10,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 2.51,
+      "p95": 2.68,
+      "p99": 2.68,
+      "queryCount": 30,
+      "dbExecutionMs": 22.75,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 10
+      },
+      "cpuMs": 1.36,
+      "rssBytes": 256081920,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "token-details",
+      "p50": 134.64,
+      "p95": 152.5,
+      "p99": 153.76,
+      "queryCount": 2000,
+      "dbExecutionMs": 1492.45,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 123.013,
+      "rssBytes": 257835008,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "holdings",
+      "p50": 205.58,
+      "p95": 386.55,
+      "p99": 404.84,
+      "queryCount": 4330,
+      "dbExecutionMs": 3862.81,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 319.769,
+      "rssBytes": 266797056,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "pending-orders",
+      "p50": 147.88,
+      "p95": 249.95,
+      "p99": 265.71,
+      "queryCount": 1840,
+      "dbExecutionMs": 2379.2,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 257.122,
+      "rssBytes": 293486592,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "diverse-searches",
+      "p50": 122.7,
+      "p95": 153.88,
+      "p99": 155.73,
+      "queryCount": 1500,
+      "dbExecutionMs": 1425.03,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 108.619,
+      "rssBytes": 305856512,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 10,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "cold-charts",
+      "p50": 27.6,
+      "p95": 27.99,
+      "p99": 51.99,
+      "queryCount": 64,
+      "dbExecutionMs": 153.58,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 106,
+        "503": 394
+      },
+      "cpuMs": 47.493,
+      "rssBytes": 302596096,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 9.11,
+      "p95": 9.79,
+      "p99": 9.88,
+      "queryCount": 60,
+      "dbExecutionMs": 89.28,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 5.31,
+      "rssBytes": 302252032,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "token-details",
+      "p50": 11.78,
+      "p95": 13.37,
+      "p99": 13.39,
+      "queryCount": 80,
+      "dbExecutionMs": 121.18,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 5.767,
+      "rssBytes": 302088192,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "holdings",
+      "p50": 14.51,
+      "p95": 16.39,
+      "p99": 19.14,
+      "queryCount": 150,
+      "dbExecutionMs": 144.51,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 12.877,
+      "rssBytes": 304119808,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "pending-orders",
+      "p50": 6.38,
+      "p95": 7.71,
+      "p99": 8.04,
+      "queryCount": 40,
+      "dbExecutionMs": 59.15,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 7.591,
+      "rssBytes": 304267264,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "diverse-searches",
+      "p50": 7.75,
+      "p95": 8.59,
+      "p99": 8.61,
+      "queryCount": 60,
+      "dbExecutionMs": 75.27,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 9.164,
+      "rssBytes": 302825472,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "cold-charts",
+      "p50": 0.52,
+      "p95": 0.54,
+      "p99": 0.54,
+      "queryCount": 0,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 0.552,
+      "rssBytes": 302841856,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 6.72,
+      "p95": 7.93,
+      "p99": 7.95,
+      "queryCount": 60,
+      "dbExecutionMs": 68.54,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 3.699,
+      "rssBytes": 302825472,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "token-details",
+      "p50": 14.58,
+      "p95": 16.93,
+      "p99": 16.96,
+      "queryCount": 200,
+      "dbExecutionMs": 159.05,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 8.055,
+      "rssBytes": 302940160,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "holdings",
+      "p50": 42.83,
+      "p95": 63.6,
+      "p99": 63.97,
+      "queryCount": 500,
+      "dbExecutionMs": 600.83,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 46.473,
+      "rssBytes": 293289984,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "pending-orders",
+      "p50": 14.79,
+      "p95": 18.79,
+      "p99": 19.04,
+      "queryCount": 100,
+      "dbExecutionMs": 163.46,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 17.218,
+      "rssBytes": 291028992,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "diverse-searches",
+      "p50": 10.77,
+      "p95": 12.32,
+      "p99": 12.37,
+      "queryCount": 150,
+      "dbExecutionMs": 108.25,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 9.473,
+      "rssBytes": 291143680,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "cold-charts",
+      "p50": 1.09,
+      "p95": 1.13,
+      "p99": 3.23,
+      "queryCount": 4,
+      "dbExecutionMs": 1.8,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 1.628,
+      "rssBytes": 291176448,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 4.85,
+      "p95": 5.36,
+      "p99": 5.39,
+      "queryCount": 60,
+      "dbExecutionMs": 48.54,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 4.426,
+      "rssBytes": 291258368,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "token-details",
+      "p50": 35.93,
+      "p95": 40.15,
+      "p99": 40.85,
+      "queryCount": 400,
+      "dbExecutionMs": 391.28,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 24.917,
+      "rssBytes": 291684352,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "holdings",
+      "p50": 50.77,
+      "p95": 80.78,
+      "p99": 84.61,
+      "queryCount": 830,
+      "dbExecutionMs": 773.68,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 63.34,
+      "rssBytes": 295747584,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "pending-orders",
+      "p50": 23.17,
+      "p95": 31.49,
+      "p99": 32.43,
+      "queryCount": 200,
+      "dbExecutionMs": 274.2,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 29.21,
+      "rssBytes": 299827200,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "diverse-searches",
+      "p50": 49.27,
+      "p95": 52.07,
+      "p99": 52.14,
+      "queryCount": 300,
+      "dbExecutionMs": 494.76,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 70.212,
+      "rssBytes": 295927808,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "cold-charts",
+      "p50": 1.77,
+      "p95": 9.39,
+      "p99": 9.47,
+      "queryCount": 64,
+      "dbExecutionMs": 70.1,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 91,
+        "503": 9
+      },
+      "cpuMs": 6.937,
+      "rssBytes": 296173568,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 20,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 5.17,
+      "p95": 5.83,
+      "p99": 5.85,
+      "queryCount": 60,
+      "dbExecutionMs": 53.14,
+      "peakPoolWaiting": 10,
+      "statusCounts": {
+        "200": 20
+      },
+      "cpuMs": 5.254,
+      "rssBytes": 296173568,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "token-details",
+      "p50": 140.46,
+      "p95": 162.58,
+      "p99": 164.35,
+      "queryCount": 2000,
+      "dbExecutionMs": 1597.45,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 100.027,
+      "rssBytes": 297615360,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "holdings",
+      "p50": 263.17,
+      "p95": 435.6,
+      "p99": 450.2,
+      "queryCount": 4680,
+      "dbExecutionMs": 4191.13,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 355.13,
+      "rssBytes": 309198848,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "pending-orders",
+      "p50": 100.67,
+      "p95": 182.03,
+      "p99": 196.03,
+      "queryCount": 1580,
+      "dbExecutionMs": 1797.13,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 178.956,
+      "rssBytes": 314343424,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "diverse-searches",
+      "p50": 156.14,
+      "p95": 169.5,
+      "p99": 170.38,
+      "queryCount": 1500,
+      "dbExecutionMs": 1629.52,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 111.598,
+      "rssBytes": 318291968,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 20,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "cold-charts",
+      "p50": 11.7,
+      "p95": 11.92,
+      "p99": 19.06,
+      "queryCount": 64,
+      "dbExecutionMs": 64.11,
+      "peakPoolWaiting": 6,
+      "statusCounts": {
+        "200": 139,
+        "503": 361
+      },
+      "cpuMs": 17.719,
+      "rssBytes": 318308352,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 13,
+      "p95": 14.05,
+      "p99": 14.28,
+      "queryCount": 150,
+      "dbExecutionMs": 132.94,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 14.291,
+      "rssBytes": 319389696,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "token-details",
+      "p50": 13.09,
+      "p95": 14.6,
+      "p99": 14.63,
+      "queryCount": 200,
+      "dbExecutionMs": 140.02,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 6.193,
+      "rssBytes": 319422464,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "holdings",
+      "p50": 28.8,
+      "p95": 43.63,
+      "p99": 43.66,
+      "queryCount": 500,
+      "dbExecutionMs": 404.21,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 25.788,
+      "rssBytes": 319422464,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "pending-orders",
+      "p50": 9.05,
+      "p95": 11.67,
+      "p99": 11.98,
+      "queryCount": 100,
+      "dbExecutionMs": 95.99,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 10.777,
+      "rssBytes": 319422464,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "diverse-searches",
+      "p50": 11.72,
+      "p95": 12.92,
+      "p99": 13,
+      "queryCount": 150,
+      "dbExecutionMs": 117.31,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 13.779,
+      "rssBytes": 319602688,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "cold-charts",
+      "p50": 0.95,
+      "p95": 0.98,
+      "p99": 0.99,
+      "queryCount": 0,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 1,
+      "rssBytes": 319602688,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 11.86,
+      "p95": 12.74,
+      "p99": 12.79,
+      "queryCount": 150,
+      "dbExecutionMs": 121.07,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 6.054,
+      "rssBytes": 319602688,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "token-details",
+      "p50": 11.42,
+      "p95": 13.97,
+      "p99": 14.06,
+      "queryCount": 200,
+      "dbExecutionMs": 131.47,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 9.744,
+      "rssBytes": 321454080,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "holdings",
+      "p50": 24.35,
+      "p95": 36.88,
+      "p99": 37.68,
+      "queryCount": 460,
+      "dbExecutionMs": 337.62,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 21.143,
+      "rssBytes": 321503232,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "pending-orders",
+      "p50": 9.52,
+      "p95": 12.5,
+      "p99": 12.84,
+      "queryCount": 100,
+      "dbExecutionMs": 104.55,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 9.515,
+      "rssBytes": 321699840,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "diverse-searches",
+      "p50": 12.44,
+      "p95": 13.96,
+      "p99": 14.02,
+      "queryCount": 150,
+      "dbExecutionMs": 104.44,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 12.448,
+      "rssBytes": 323584000,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "cold-charts",
+      "p50": 0.94,
+      "p95": 0.97,
+      "p99": 0.97,
+      "queryCount": 0,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 0.986,
+      "rssBytes": 323584000,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 8.28,
+      "p95": 9.95,
+      "p99": 10.49,
+      "queryCount": 150,
+      "dbExecutionMs": 94.02,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 6.218,
+      "rssBytes": 323600384,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "token-details",
+      "p50": 20.77,
+      "p95": 23.83,
+      "p99": 23.92,
+      "queryCount": 400,
+      "dbExecutionMs": 227.83,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 12.306,
+      "rssBytes": 323600384,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "holdings",
+      "p50": 25.88,
+      "p95": 58.93,
+      "p99": 61.24,
+      "queryCount": 700,
+      "dbExecutionMs": 559.24,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 48.2,
+      "rssBytes": 327106560,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "pending-orders",
+      "p50": 17.82,
+      "p95": 24.58,
+      "p99": 24.96,
+      "queryCount": 200,
+      "dbExecutionMs": 214.35,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 22.849,
+      "rssBytes": 327106560,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "diverse-searches",
+      "p50": 17.39,
+      "p95": 19.95,
+      "p99": 20.04,
+      "queryCount": 300,
+      "dbExecutionMs": 182.11,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 11.401,
+      "rssBytes": 327155712,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "cold-charts",
+      "p50": 2.12,
+      "p95": 8.77,
+      "p99": 8.91,
+      "queryCount": 36,
+      "dbExecutionMs": 24.63,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 11.745,
+      "rssBytes": 329744384,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 50,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 9.53,
+      "p95": 10.54,
+      "p99": 10.58,
+      "queryCount": 150,
+      "dbExecutionMs": 98.22,
+      "peakPoolWaiting": 40,
+      "statusCounts": {
+        "200": 50
+      },
+      "cpuMs": 6.352,
+      "rssBytes": 329777152,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "token-details",
+      "p50": 121.72,
+      "p95": 134.02,
+      "p99": 134.83,
+      "queryCount": 2000,
+      "dbExecutionMs": 1303.37,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 77.129,
+      "rssBytes": 335249408,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "holdings",
+      "p50": 265.28,
+      "p95": 425.11,
+      "p99": 437.76,
+      "queryCount": 4950,
+      "dbExecutionMs": 4132.19,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 355.286,
+      "rssBytes": 317521920,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "pending-orders",
+      "p50": 98.24,
+      "p95": 135.51,
+      "p99": 142.05,
+      "queryCount": 1120,
+      "dbExecutionMs": 1275.27,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 141.216,
+      "rssBytes": 319930368,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "diverse-searches",
+      "p50": 82.84,
+      "p95": 97.91,
+      "p99": 98.59,
+      "queryCount": 1500,
+      "dbExecutionMs": 918.57,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 71.957,
+      "rssBytes": 321388544,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 50,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "cold-charts",
+      "p50": 12.32,
+      "p95": 12.48,
+      "p99": 12.5,
+      "queryCount": 10,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 148,
+        "503": 352
+      },
+      "cpuMs": 18.818,
+      "rssBytes": 322355200,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 20.25,
+      "p95": 24.79,
+      "p99": 25.33,
+      "queryCount": 352,
+      "dbExecutionMs": 258.58,
+      "peakPoolWaiting": 106,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 19.422,
+      "rssBytes": 322977792,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "token-details",
+      "p50": 23.73,
+      "p95": 26.36,
+      "p99": 26.43,
+      "queryCount": 402,
+      "dbExecutionMs": 265.85,
+      "peakPoolWaiting": 101,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 11.846,
+      "rssBytes": 322977792,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "holdings",
+      "p50": 57.09,
+      "p95": 84.53,
+      "p99": 86.66,
+      "queryCount": 1170,
+      "dbExecutionMs": 806.04,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 56.822,
+      "rssBytes": 324599808,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "pending-orders",
+      "p50": 16.57,
+      "p95": 22.29,
+      "p99": 22.64,
+      "queryCount": 200,
+      "dbExecutionMs": 189.77,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 18.742,
+      "rssBytes": 325533696,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "diverse-searches",
+      "p50": 15.66,
+      "p95": 17.81,
+      "p99": 18.2,
+      "queryCount": 300,
+      "dbExecutionMs": 162.5,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 10.719,
+      "rssBytes": 325926912,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 10,
+      "distinctRequestedMints": 10,
+      "scenario": "cold-charts",
+      "p50": 1.89,
+      "p95": 1.94,
+      "p99": 1.95,
+      "queryCount": 0,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 2.542,
+      "rssBytes": 326156288,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 19.82,
+      "p95": 22.38,
+      "p99": 22.47,
+      "queryCount": 315,
+      "dbExecutionMs": 215.16,
+      "peakPoolWaiting": 94,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 19.707,
+      "rssBytes": 327024640,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "token-details",
+      "p50": 27.42,
+      "p95": 30.89,
+      "p99": 30.97,
+      "queryCount": 401,
+      "dbExecutionMs": 304.39,
+      "peakPoolWaiting": 94,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 12.39,
+      "rssBytes": 327024640,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "holdings",
+      "p50": 41.94,
+      "p95": 67.71,
+      "p99": 69.02,
+      "queryCount": 960,
+      "dbExecutionMs": 638.17,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 48.217,
+      "rssBytes": 328433664,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "pending-orders",
+      "p50": 16.38,
+      "p95": 21.49,
+      "p99": 21.74,
+      "queryCount": 200,
+      "dbExecutionMs": 184.65,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 19.153,
+      "rssBytes": 329367552,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "diverse-searches",
+      "p50": 18.58,
+      "p95": 21.21,
+      "p99": 21.29,
+      "queryCount": 300,
+      "dbExecutionMs": 195.88,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 11.241,
+      "rssBytes": 329367552,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 50,
+      "distinctRequestedMints": 50,
+      "scenario": "cold-charts",
+      "p50": 1.82,
+      "p95": 1.88,
+      "p99": 1.88,
+      "queryCount": 0,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 2.006,
+      "rssBytes": 329367552,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 24.93,
+      "p95": 26.97,
+      "p99": 27.08,
+      "queryCount": 325,
+      "dbExecutionMs": 259.44,
+      "peakPoolWaiting": 98,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 23.51,
+      "rssBytes": 329908224,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "token-details",
+      "p50": 20.87,
+      "p95": 23.65,
+      "p99": 23.83,
+      "queryCount": 407,
+      "dbExecutionMs": 238.35,
+      "peakPoolWaiting": 98,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 11.066,
+      "rssBytes": 329908224,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "holdings",
+      "p50": 24.82,
+      "p95": 53.3,
+      "p99": 54.14,
+      "queryCount": 700,
+      "dbExecutionMs": 500.68,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 40.904,
+      "rssBytes": 331366400,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "pending-orders",
+      "p50": 15.51,
+      "p95": 21.29,
+      "p99": 21.69,
+      "queryCount": 200,
+      "dbExecutionMs": 182.58,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 19.139,
+      "rssBytes": 332300288,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "diverse-searches",
+      "p50": 16.29,
+      "p95": 18.04,
+      "p99": 18.19,
+      "queryCount": 300,
+      "dbExecutionMs": 165.11,
+      "peakPoolWaiting": 90,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 12.661,
+      "rssBytes": 332300288,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 100,
+      "distinctRequestedMints": 100,
+      "scenario": "cold-charts",
+      "p50": 1.81,
+      "p95": 1.86,
+      "p99": 1.87,
+      "queryCount": 0,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 1.893,
+      "rssBytes": 332300288,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 100,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 0,
+      "scenario": "shared-browsing",
+      "p50": 20.39,
+      "p95": 22.84,
+      "p99": 23.02,
+      "queryCount": 340,
+      "dbExecutionMs": 220.04,
+      "peakPoolWaiting": 104,
+      "statusCounts": {
+        "200": 100
+      },
+      "cpuMs": 19.114,
+      "rssBytes": 332300288,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "token-details",
+      "p50": 108.13,
+      "p95": 122.61,
+      "p99": 123.52,
+      "queryCount": 2016,
+      "dbExecutionMs": 1240.53,
+      "peakPoolWaiting": 504,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 70.044,
+      "rssBytes": 333709312,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "holdings",
+      "p50": 199.26,
+      "p95": 340.05,
+      "p99": 351.44,
+      "queryCount": 4950,
+      "dbExecutionMs": 3351.81,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 272.021,
+      "rssBytes": 338870272,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "pending-orders",
+      "p50": 95.4,
+      "p95": 126.62,
+      "p99": 134.54,
+      "queryCount": 1130,
+      "dbExecutionMs": 1153.59,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 211.857,
+      "rssBytes": 321454080,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "diverse-searches",
+      "p50": 97.68,
+      "p95": 112.15,
+      "p99": 112.99,
+      "queryCount": 1500,
+      "dbExecutionMs": 1067.33,
+      "peakPoolWaiting": 490,
+      "statusCounts": {
+        "200": 500
+      },
+      "cpuMs": 75.815,
+      "rssBytes": 322945024,
+      "extraUpstreamCalls": 0
+    },
+    {
+      "users": 100,
+      "requests": 500,
+      "requestedUniverse": 500,
+      "distinctRequestedMints": 500,
+      "scenario": "cold-charts",
+      "p50": 10.56,
+      "p95": 10.73,
+      "p99": 10.76,
+      "queryCount": 10,
+      "dbExecutionMs": 0,
+      "peakPoolWaiting": 0,
+      "statusCounts": {
+        "200": 148,
+        "503": 352
+      },
+      "cpuMs": 11.519,
+      "rssBytes": 323878912,
+      "extraUpstreamCalls": 0
+    }
+  ]
+}

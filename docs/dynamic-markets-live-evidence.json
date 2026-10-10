@@ -1,0 +1,60 @@
+{
+  "at": "2026-10-10T18:26:41.357Z",
+  "mint": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+  "credentialCount": 10,
+  "organisations": 1,
+  "liveUpstreamCalls": {
+    "prices": 0,
+    "tokens": 0
+  },
+  "instrumentId": "solana:EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+  "migration": "029_dynamic_markets.sql",
+  "openPaperFunds": [],
+  "preview": {
+    "mode": "PAPER",
+    "estimate": {
+      "modelVersion": 1,
+      "quantity": "45.679450",
+      "marketPriceUsdc": "0.218239596846406842",
+      "fillPriceUsdc": "0.218697899999784296",
+      "feeUsdc": "0.010000",
+      "cashChangeUsdc": "-10.000000"
+    },
+    "policy": {
+      "allowed": true,
+      "reason": null
+    },
+    "observationId": "e3f81d22-25e5-43ce-848e-f4124e3875ee",
+    "observedAt": "2026-10-10T18:26:37.000Z"
+  },
+  "afterBuy": {
+    "cash_usdc": "990.000000000000000000",
+    "quantity": "45.735027000000000000"
+  },
+  "afterSell": {
+    "cash_usdc": "999.944506000000000000",
+    "quantity": "0.000000000000000000"
+  },
+  "fills": [
+    {
+      "side": "BUY",
+      "quantity": "45.735027000000000000",
+      "fee_usdc": "0.010000000000000000",
+      "model_version": 1,
+      "source": "JUPITER_PRICE_V3",
+      "source_at": "2026-10-10T18:27:04.000Z",
+      "received_at": "2026-10-10T18:27:08.706Z"
+    },
+    {
+      "side": "SELL",
+      "quantity": "45.735027000000000000",
+      "fee_usdc": "0.009976000000000000",
+      "model_version": 1,
+      "source": "JUPITER_PRICE_V3",
+      "source_at": "2026-10-10T18:27:16.000Z",
+      "received_at": "2026-10-10T18:27:20.733Z"
+    }
+  ],
+  "unbalancedLedgerEvents": 0,
+  "result": "VERIFIED"
+}

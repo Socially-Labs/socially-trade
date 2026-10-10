@@ -1,7 +1,7 @@
 # Paper trading discovery and Captain experience — implementation handoff
 
 Prepared: 10 October 2026  
-Status: implementation proposal for owner review; product decisions are pending  
+Status: core C01–C08 implementation authorized by the owner’s “implement this” request; optional P-items deferred. See paper-trading-discovery-implementation.md for evidence and outstanding release gates.
 Repositories: `backend/` and `apk/` under `/Users/vikas/dev/socially`  
 Reviewed baseline: backend `ba85a62`, APK `f7221f9`
 
@@ -52,14 +52,14 @@ The current “Top traded” view ranks a fixed supported catalog by 24-hour vol
 
 | ID | Decision | Recommendation | One-line proposal |
 | --- | --- | --- | --- |
-| C01 | PENDING | Accept | Add backend market-list/search contracts that distinguish supported markets, top traded and trending. |
-| C02 | PENDING | Accept | Fetch Jupiter discovery feeds centrally with shared caching, bounded requests and organisation-aware quotas. |
-| C03 | PENDING | Accept | Make every token's discovery status, price freshness and paper-trading eligibility explicit in the API. |
-| C04 | PENDING | Accept | Make volume and gain/loss sorting match the selected interval and report missing historical coverage honestly. |
-| C05 | PENDING | Accept | Connect the existing Captain Markets UI to the new feeds while preserving its design and selected-vault context. |
-| C06 | PENDING | Accept | Keep all simulated order execution on the existing authenticated vault routes with safe submission recovery. |
-| C07 | PENDING | Accept | Add cache, freshness, quota and API-restart regression coverage plus a controlled feature-flag rollout. |
-| C08 | PENDING | Accept | Update API documentation and older product docs so the next agent sees one consistent paper-trading flow. |
+| C01 | ACCEPT | Accept | Add backend market-list/search contracts that distinguish supported markets, top traded and trending. |
+| C02 | ACCEPT | Accept | Fetch Jupiter discovery feeds centrally with shared caching, bounded requests and organisation-aware quotas. |
+| C03 | ACCEPT | Accept | Make every token's discovery status, price freshness and paper-trading eligibility explicit in the API. |
+| C04 | ACCEPT | Accept | Make volume and gain/loss sorting match the selected interval and report missing historical coverage honestly. |
+| C05 | ACCEPT | Accept | Connect the existing Captain Markets UI to the new feeds while preserving its design and selected-vault context. |
+| C06 | ACCEPT | Accept | Keep all simulated order execution on the existing authenticated vault routes with safe submission recovery. |
+| C07 | ACCEPT | Accept | Add cache, freshness, quota and API-restart regression coverage plus a controlled feature-flag rollout. |
+| C08 | ACCEPT | Accept | Update API documentation and older product docs so the next agent sees one consistent paper-trading flow. |
 
 Dependencies: C02–C04 underpin C01 responses; C05 requires C01–C04; C06 is mandatory whenever C05 exposes trading; C07–C08 close the accepted release. Optional product work is listed in section 10.
 
@@ -352,36 +352,36 @@ Every proposal below is **optional**. Each row is a one-line product decision; i
 
 | ID | Decision | Suggested timing | Effort | One-line proposal and user benefit |
 | --- | --- | --- | --- | --- |
-| P01 | PENDING | Next | L | Add an instant private solo practice portfolio with a fixed virtual grant so users can trade before recruiting Crew or obtaining devnet tokens. |
-| P02 | PENDING | Next | M | Show cash, invested value, realized/unrealized P&L and total return together so Captains understand where performance comes from. |
-| P03 | PENDING | Next | M | Add one paginated paper activity timeline for funding, trades, cancellations, fees and claims so every balance movement is explainable. |
-| P04 | PENDING | Next | M | Add an order receipt with requested amount, actual fill, fees, observation time and rejection reason so execution is transparent. |
-| P05 | PENDING | Next | M | Add position detail with quantity, average cost, exposure, unrealized P&L and sell action so managing a trade takes fewer steps. |
-| P06 | PENDING | After core | L | Expand supported assets through a reviewed registry and price-coverage checks so discovery gradually becomes tradeable. |
-| P07 | PENDING | After core | M | Add “Tradeable only” and quality/liquidity filters so Captains quickly find usable markets. |
-| P08 | PENDING | Next | S | Show a short first-trade checklist that disappears after completion so new users know how to start without another setup screen. |
-| P09 | PENDING | After core | M | Add reusable personal watchlists with custom names so Captains organize strategies beyond a single Saved list. |
-| P10 | PENDING | Later | M | Add configurable price alerts with cooldowns so users can return when a tracked market reaches a chosen price. |
-| P11 | PENDING | Next | M | Compare portfolio returns against SOL buy-and-hold and cash over the same dates so performance has a useful baseline. |
-| P12 | PENDING | After core | M | Show concentration and drawdown indicators with plain explanations so Captains see risk before placing another trade. |
-| P13 | PENDING | After core | M | Add Crew round progress, funding target and shareable vault links so the $1,000 activation requirement becomes understandable and actionable. |
-| P14 | PENDING | Next | M | Let Captains attach private trade notes and review them later so paper trading teaches repeatable decisions. |
-| P15 | PENDING | Later | M | Add weekly portfolio recaps covering return, drawdown, fees and decisions so users have a reason to review their progress. |
-| P16 | PENDING | Later | L | Add opt-in leaderboards grouped by start period and portfolio rules so performance comparisons are fair. |
-| P17 | PENDING | Later | M | Allow reset/archive for private practice sessions while retaining their history so users can experiment without rewriting public records. |
-| P18 | PENDING | Later | L | Add paper limit orders with expiry and observation-based triggers so Captains can practice planned entries. |
-| P19 | PENDING | Later | L | Add stop-loss/take-profit paper orders with explicit gap and partial-fill rules so exits can be rehearsed realistically. |
-| P20 | PENDING | After core | L | Backfill historical candles from a licensed/source-verified provider so 7D/30D analysis is usable before enough local samples accumulate. |
-| P21 | PENDING | Next | M | Run the API on a stable HTTPS staging host with readiness monitoring so phone testing no longer depends on a laptop's Wi-Fi address. |
-| P22 | PENDING | After core | M | Add user-visible service status and automatic recovery for safe reads so temporary outages preserve the user's work. |
-| P23 | PENDING | Later | M | Add a paper trading challenge with fixed dates and equal starting grants so newcomers can practice within comparable rules. |
-| P24 | PENDING | Later | M | Add read-only public round performance pages with clear paper labels so Captains can share an auditable track record. |
-| P25 | PENDING | After core | M | Add Captain strategy updates on vault pages so Crew understand decisions without gaining trading authority. |
-| P26 | PENDING | Later | M | Export order and portfolio history as CSV so users can analyze results outside the app. |
-| P27 | PENDING | Later | L | Version selectable execution realism presets for private practice so users can compare optimistic and conservative simulated fills. |
-| P28 | PENDING | Defer | L | Add strategy replay/backtesting with recorded historical inputs so users can evaluate ideas before starting a new practice session. |
-| P29 | PENDING | Defer | L | Add shorting or leverage only as a separately specified engine so spot accounting and liquidation assumptions remain coherent. |
-| P30 | PENDING | Defer | L | Add automated strategy execution only after defining user controls, order budgets and reproducible decision logs. |
+| P01 | DEFER | Next | L | Add an instant private solo practice portfolio with a fixed virtual grant so users can trade before recruiting Crew or obtaining devnet tokens. |
+| P02 | DEFER | Next | M | Show cash, invested value, realized/unrealized P&L and total return together so Captains understand where performance comes from. |
+| P03 | DEFER | Next | M | Add one paginated paper activity timeline for funding, trades, cancellations, fees and claims so every balance movement is explainable. |
+| P04 | DEFER | Next | M | Add an order receipt with requested amount, actual fill, fees, observation time and rejection reason so execution is transparent. |
+| P05 | DEFER | Next | M | Add position detail with quantity, average cost, exposure, unrealized P&L and sell action so managing a trade takes fewer steps. |
+| P06 | DEFER | After core | L | Expand supported assets through a reviewed registry and price-coverage checks so discovery gradually becomes tradeable. |
+| P07 | DEFER | After core | M | Add “Tradeable only” and quality/liquidity filters so Captains quickly find usable markets. |
+| P08 | DEFER | Next | S | Show a short first-trade checklist that disappears after completion so new users know how to start without another setup screen. |
+| P09 | DEFER | After core | M | Add reusable personal watchlists with custom names so Captains organize strategies beyond a single Saved list. |
+| P10 | DEFER | Later | M | Add configurable price alerts with cooldowns so users can return when a tracked market reaches a chosen price. |
+| P11 | DEFER | Next | M | Compare portfolio returns against SOL buy-and-hold and cash over the same dates so performance has a useful baseline. |
+| P12 | DEFER | After core | M | Show concentration and drawdown indicators with plain explanations so Captains see risk before placing another trade. |
+| P13 | DEFER | After core | M | Add Crew round progress, funding target and shareable vault links so the $1,000 activation requirement becomes understandable and actionable. |
+| P14 | DEFER | Next | M | Let Captains attach private trade notes and review them later so paper trading teaches repeatable decisions. |
+| P15 | DEFER | Later | M | Add weekly portfolio recaps covering return, drawdown, fees and decisions so users have a reason to review their progress. |
+| P16 | DEFER | Later | L | Add opt-in leaderboards grouped by start period and portfolio rules so performance comparisons are fair. |
+| P17 | DEFER | Later | M | Allow reset/archive for private practice sessions while retaining their history so users can experiment without rewriting public records. |
+| P18 | DEFER | Later | L | Add paper limit orders with expiry and observation-based triggers so Captains can practice planned entries. |
+| P19 | DEFER | Later | L | Add stop-loss/take-profit paper orders with explicit gap and partial-fill rules so exits can be rehearsed realistically. |
+| P20 | DEFER | After core | L | Backfill historical candles from a licensed/source-verified provider so 7D/30D analysis is usable before enough local samples accumulate. |
+| P21 | DEFER | Next | M | Run the API on a stable HTTPS staging host with readiness monitoring so phone testing no longer depends on a laptop's Wi-Fi address. |
+| P22 | DEFER | After core | M | Add user-visible service status and automatic recovery for safe reads so temporary outages preserve the user's work. |
+| P23 | DEFER | Later | M | Add a paper trading challenge with fixed dates and equal starting grants so newcomers can practice within comparable rules. |
+| P24 | DEFER | Later | M | Add read-only public round performance pages with clear paper labels so Captains can share an auditable track record. |
+| P25 | DEFER | After core | M | Add Captain strategy updates on vault pages so Crew understand decisions without gaining trading authority. |
+| P26 | DEFER | Later | M | Export order and portfolio history as CSV so users can analyze results outside the app. |
+| P27 | DEFER | Later | L | Version selectable execution realism presets for private practice so users can compare optimistic and conservative simulated fills. |
+| P28 | DEFER | Defer | L | Add strategy replay/backtesting with recorded historical inputs so users can evaluate ideas before starting a new practice session. |
+| P29 | DEFER | Defer | L | Add shorting or leverage only as a separately specified engine so spot accounting and liquidation assumptions remain coherent. |
+| P30 | DEFER | Defer | L | Add automated strategy execution only after defining user controls, order budgets and reproducible decision logs. |
 
 ### Dependency and product-policy notes
 

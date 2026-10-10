@@ -1,0 +1,69 @@
+{
+  "at": "2026-10-10T19:44:34.052Z",
+  "migrations": [
+    "031_paper_trading_operations.sql",
+    "032_captain_trading_returns.sql"
+  ],
+  "services": [
+    {
+      "path": "/health",
+      "status": 200,
+      "value": {
+        "status": "ok",
+        "mode": "PAPER"
+      }
+    },
+    {
+      "path": "/admin/paper-trading/health",
+      "status": 200,
+      "value": {
+        "mode": "PAPER",
+        "asOf": "2026-10-10T19:44:33.255Z",
+        "orders": [],
+        "valuation": {
+          "queued": 0,
+          "leased": 0,
+          "oldest_due_ms": "0"
+        },
+        "reconciliation": [
+          {
+            "status": "HEALTHY",
+            "funds": 1,
+            "oldest_check_at": "2026-10-10T19:40:07.376Z"
+          }
+        ],
+        "history": [],
+        "orderSampleLimit": 10000,
+        "orderWindowHours": 24,
+        "requestMetrics": {
+          "scope": "THIS_API_PROCESS",
+          "boundsMs": [
+            25,
+            50,
+            100,
+            250,
+            500,
+            1000,
+            2500,
+            5000
+          ],
+          "series": {}
+        }
+      }
+    }
+  ],
+  "expoStatus": 200,
+  "ingestorLeaders": 1,
+  "valuations": {
+    "queued": 0,
+    "earliest_due": null
+  },
+  "returns": {
+    "captains": 1
+  },
+  "capabilities": {
+    "privateUpdates": true,
+    "historyProvider": false,
+    "historyCredentialPresent": false
+  }
+}

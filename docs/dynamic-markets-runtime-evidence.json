@@ -1,0 +1,280 @@
+{
+  "at": "2026-10-10T19:40:51.806Z",
+  "migrations": [
+    "001_paper_core.sql",
+    "002_idempotency_and_instruments.sql",
+    "003_nav_sequence.sql",
+    "004_price_source_uniqueness.sql",
+    "005_nav_observation.sql",
+    "006_social_record.sql",
+    "007_notification_inbox.sql",
+    "008_performance_and_settlement.sql",
+    "009_history_indexes.sql",
+    "010_captain_handle_index.sql",
+    "011_market_ingestion.sql",
+    "012_captain_profile_images.sql",
+    "013_captain_asset_uploads.sql",
+    "014_devnet_tokens.sql",
+    "015_devnet_token_limits.sql",
+    "016_deposit_expiry_height.sql",
+    "017_unified_users.sql",
+    "018_qr_deposits.sql",
+    "019_account_settings.sql",
+    "020_market_catalog.sql",
+    "021_vault_rounds.sql",
+    "022_vault_media.sql",
+    "023_vault_performance_rollups.sql",
+    "024_captain_dashboard.sql",
+    "025_wallet_swaps.sql",
+    "026_live_vaults.sql",
+    "027_paper_wallet_portfolios.sql",
+    "028_market_discovery.sql",
+    "029_dynamic_markets.sql",
+    "030_vault_universe_amendments.sql",
+    "031_paper_trading_operations.sql",
+    "032_captain_trading_returns.sql"
+  ],
+  "capabilities": {
+    "dynamic": true,
+    "privateUpdates": true,
+    "historyProvider": false,
+    "historyCredentialPresent": false
+  },
+  "prices": [
+    {
+      "id": "BONK",
+      "price": {
+        "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+        "reason": "observation_stale",
+        "source": "JUPITER_PRICE_V3",
+        "status": "STALE",
+        "priceUsd": "0.000003420701532034",
+        "sourceAt": "2026-10-10T19:39:15.000Z",
+        "change24h": "3.390709700111330000",
+        "priceUsdc": "0.000003421699332588",
+        "receivedAt": "2026-10-10T19:40:18.957Z",
+        "instrumentId": "BONK",
+        "observationId": "10e8ab14-474d-4832-b698-8f923ee36343",
+        "quoteSourceAt": "2026-10-10T19:40:16.000Z",
+        "sourceBlockId": "455373609",
+        "quoteSourceBlockId": "455373888"
+      },
+      "instrument_id": "BONK",
+      "priority": 2,
+      "next_due_at": "2026-10-10T19:40:49.788Z",
+      "last_success_at": "2026-10-10T19:40:44.788Z",
+      "failure_count": 0,
+      "backoff_until": null
+    },
+    {
+      "id": "JTO",
+      "price": {
+        "mint": "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+        "reason": "observation_stale",
+        "source": "JUPITER_PRICE_V3",
+        "status": "STALE",
+        "priceUsd": "0.538538278322072400",
+        "sourceAt": "2026-10-10T19:40:04.000Z",
+        "change24h": "8.020176159492646000",
+        "priceUsdc": "0.538695367091098046",
+        "receivedAt": "2026-10-10T19:40:18.957Z",
+        "instrumentId": "JTO",
+        "observationId": "0d46bcfc-857e-4cc5-bbe3-77fb9cbebc91",
+        "quoteSourceAt": "2026-10-10T19:40:16.000Z",
+        "sourceBlockId": "455373840",
+        "quoteSourceBlockId": "455373888"
+      },
+      "instrument_id": "JTO",
+      "priority": 2,
+      "next_due_at": "2026-10-10T19:40:49.788Z",
+      "last_success_at": "2026-10-10T19:40:44.788Z",
+      "failure_count": 0,
+      "backoff_until": null
+    },
+    {
+      "id": "JUP",
+      "price": {
+        "mint": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+        "reason": null,
+        "source": "JUPITER_PRICE_V3",
+        "status": "CURRENT",
+        "priceUsd": "0.362860179064367300",
+        "sourceAt": "2026-10-10T19:40:41.000Z",
+        "change24h": "-2.138238085575855000",
+        "priceUsdc": "0.362966023460489422",
+        "receivedAt": "2026-10-10T19:40:43.742Z",
+        "instrumentId": "JUP",
+        "observationId": "6dfb1ba0-73d3-4c07-8ef2-86d5ca245280",
+        "quoteSourceAt": "2026-10-10T19:40:41.000Z",
+        "sourceBlockId": "455374002",
+        "quoteSourceBlockId": "455373999"
+      },
+      "instrument_id": "JUP",
+      "priority": 2,
+      "next_due_at": "2026-10-10T19:40:49.788Z",
+      "last_success_at": "2026-10-10T19:40:44.788Z",
+      "failure_count": 0,
+      "backoff_until": null
+    },
+    {
+      "id": "SOL",
+      "price": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "reason": null,
+        "source": "JUPITER_PRICE_V3",
+        "status": "CURRENT",
+        "priceUsd": "110.436527252765170000",
+        "sourceAt": "2026-10-10T19:40:41.000Z",
+        "change24h": "1.540929307266047000",
+        "priceUsdc": "110.468741003987564967",
+        "receivedAt": "2026-10-10T19:40:43.742Z",
+        "instrumentId": "SOL",
+        "observationId": "1828531f-64c5-4031-a20b-bbd0ee3bdb24",
+        "quoteSourceAt": "2026-10-10T19:40:41.000Z",
+        "sourceBlockId": "455374003",
+        "quoteSourceBlockId": "455373999"
+      },
+      "instrument_id": "SOL",
+      "priority": 2,
+      "next_due_at": "2026-10-10T19:40:49.788Z",
+      "last_success_at": "2026-10-10T19:40:44.788Z",
+      "failure_count": 0,
+      "backoff_until": null
+    },
+    {
+      "id": "USDC",
+      "price": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "reason": null,
+        "source": "JUPITER_PRICE_V3",
+        "status": "CURRENT",
+        "priceUsd": "0.999708390347082600",
+        "sourceAt": "2026-10-10T19:40:41.000Z",
+        "change24h": "0.004873514409698962",
+        "priceUsdc": "1.000000000000000000",
+        "receivedAt": "2026-10-10T19:40:43.742Z",
+        "instrumentId": "USDC",
+        "observationId": "800c9dce-ed8a-4b7f-afd5-692c80dfc280",
+        "quoteSourceAt": "2026-10-10T19:40:41.000Z",
+        "sourceBlockId": "455373999",
+        "quoteSourceBlockId": "455373999"
+      },
+      "instrument_id": "USDC",
+      "priority": 2,
+      "next_due_at": "2026-10-10T19:40:49.788Z",
+      "last_success_at": "2026-10-10T19:40:44.788Z",
+      "failure_count": 0,
+      "backoff_until": null
+    },
+    {
+      "id": "solana:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      "price": {
+        "mint": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+        "reason": "observation_stale",
+        "source": "JUPITER_PRICE_V3",
+        "status": "STALE",
+        "priceUsd": "2.332936746956987500",
+        "sourceAt": "2026-10-10T19:12:43.000Z",
+        "change24h": "-0.222457670257202780",
+        "priceUsdc": "2.333565266696303852",
+        "receivedAt": "2026-10-10T19:12:47.878Z",
+        "instrumentId": "solana:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+        "observationId": "0a4b51d3-f89e-4081-9d2d-d1a69c125562",
+        "quoteSourceAt": "2026-10-10T19:12:58.000Z",
+        "sourceBlockId": "455366311",
+        "quoteSourceBlockId": "455366377"
+      },
+      "instrument_id": "solana:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      "priority": 2,
+      "next_due_at": "2026-10-10T19:13:05.845Z",
+      "last_success_at": "2026-10-10T19:13:00.845Z",
+      "failure_count": 0,
+      "backoff_until": null
+    },
+    {
+      "id": "solana:EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+      "price": {
+        "mint": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+        "reason": null,
+        "source": "JUPITER_PRICE_V3",
+        "status": "CURRENT",
+        "priceUsd": "0.218079654182439020",
+        "sourceAt": "2026-10-10T18:27:40.000Z",
+        "change24h": "3.432330083286186000",
+        "priceUsdc": "0.218143344853938926",
+        "receivedAt": "2026-10-10T18:27:44.898Z",
+        "instrumentId": "solana:EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+        "observationId": "9975859d-78d8-4c10-8673-3810ee6e0243",
+        "quoteSourceAt": "2026-10-10T18:27:42.000Z",
+        "sourceBlockId": "455353972",
+        "quoteSourceBlockId": "455353985"
+      },
+      "instrument_id": "solana:EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+      "priority": 2,
+      "next_due_at": "2026-10-10T18:27:56.339Z",
+      "last_success_at": "2026-10-10T18:27:51.339Z",
+      "failure_count": 0,
+      "backoff_until": null
+    },
+    {
+      "id": "solana:cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+      "price": {
+        "mint": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+        "reason": "observation_stale",
+        "source": "JUPITER_PRICE_V3",
+        "status": "STALE",
+        "priceUsd": "82933.322967545070000000",
+        "sourceAt": "2026-10-10T19:12:52.000Z",
+        "change24h": "0.596913967737572900",
+        "priceUsdc": "82957.565830772671885595",
+        "receivedAt": "2026-10-10T19:13:08.417Z",
+        "instrumentId": "solana:cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+        "observationId": "80378c88-17ac-43f6-8176-e7cdec9b59af",
+        "quoteSourceAt": "2026-10-10T19:13:05.000Z",
+        "sourceBlockId": "455366354",
+        "quoteSourceBlockId": "455366413"
+      },
+      "instrument_id": "solana:cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+      "priority": 2,
+      "next_due_at": "2026-10-10T19:13:13.562Z",
+      "last_success_at": "2026-10-10T19:13:08.562Z",
+      "failure_count": 0,
+      "backoff_until": null
+    }
+  ],
+  "locks": [
+    {
+      "objid": 7810231,
+      "pid": 89773
+    }
+  ],
+  "windows": [
+    {
+      "key": "socially:{jupiter:37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f}:window",
+      "count": 12,
+      "latest": [
+        "c139f5dd-8232-4520-ad48-4584026f8f51",
+        "1791661249888"
+      ]
+    }
+  ],
+  "watched": [
+    "solana:EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+    "1791656874402",
+    "solana:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+    "1791659580809",
+    "solana:cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+    "1791659593151"
+  ],
+  "services": [
+    {
+      "url": "http://127.0.0.1:3000/health",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:8081/",
+      "status": 200
+    }
+  ],
+  "plans": {}
+}

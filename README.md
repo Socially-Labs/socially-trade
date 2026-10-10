@@ -134,3 +134,9 @@ See [Graphify setup and refresh instructions](docs/graphify.md) for the backend,
 database, architecture and whitepaper knowledge graph in `graphify-out/`.
 
 Real devnet wallet SOL/USDC swaps use authenticated backend orchestration with local wallet signing. See [wallet swap routes, recovery and configuration](docs/wallet-swaps-api.md).
+
+Market discovery v1: [API contract](docs/market-discovery-api.md) · [rollout and verification](docs/paper-trading-discovery-implementation.md).
+
+Next implementation: [dynamic paper trading, shared market data and fast charts handoff](docs/paper-trading-dynamic-markets-handoff.md), including schema/API changes, Jupiter quotas, historical data, private updates, load tests and rollout acceptance.
+
+Paper trading operations and APK integration: [detailed system design and Mermaid sequences](docs/paper-trading-system-design.md) · [implementation, verification and load comparison](docs/paper-trading-system-implementation.md).
