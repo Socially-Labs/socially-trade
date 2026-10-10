@@ -7,6 +7,7 @@ import { contributionReason, fixed } from '@socially/domain';
 import { requireActor } from './auth.js';
 import { previewOrder,submitOrder,getOrder,cancelOrder,type OrderInput } from './orders.js';
 import { idempotencyKey } from './request.js';
+import { startTestVaultTrading } from './test-vault-activation.js';
 import { vaultConfig, vaultDetail, vaultList, vaultPosition, createVault, contributeVault, cancelContribution, claimVault, getVaultOperation } from './vaults.js';
 
 const uuid = { type: 'string', pattern: '^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$' };
@@ -17,6 +18,10 @@ const page = { type: 'object', additionalProperties: false, properties: {
 } };
 const empty = { type: 'object', additionalProperties: false, maxProperties: 0 };
 export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
+  app.post<{Params:{id:string}}>('/v1/vaults/:id/test-activation',{schema:{params}},async(req,reply)=>{
+    const actor=await requireActor(req,db());reply.header('cache-control','no-store');
+    return startTestVaultTrading(db(),actor,req.params.id);
+  });
   app.get('/v1/vault-config', async (_req,reply) => { reply.header('cache-control','no-store'); return vaultConfig(); });
   app.post<{ Body: VaultCreateInput }>('/v1/vaults/preview',{ schema: { body: vaultCreateSchema } },async (req,reply) => {
     reply.header('cache-control','no-store');

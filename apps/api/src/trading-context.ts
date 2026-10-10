@@ -6,6 +6,7 @@ import { currentPrice, type MarketEvent } from "@socially/market-stream";
 import { requireActor } from "./auth.js";
 import { ApiFault } from "./errors.js";
 import { RevisionCache } from './revision-cache.js';
+import { testVaultActivationEnabled } from './test-vault-activation.js';
 
 export function registerTradingContextRoutes(app: FastifyInstance, db: () => DbPool) {
   const cache=new RevisionCache();app.addHook('onClose',async()=>cache.close());
@@ -31,7 +32,7 @@ export function registerTradingContextRoutes(app: FastifyInstance, db: () => DbP
       WHERE f.id=$1 AND f.round_model_version=$2`,[request.params.fundId,version===0?1:2,selected??null])).rows[0];
     if(!probe)throw new ApiFault(404,'fund_not_found','Fund not found');
     if(probe.captain_id!==actor.id)throw new ApiFault(403,'captain_required',"Only this fund's captain can view trading context");
-    return cache.read([actor.id,version,request.params.fundId,selected,process.env.PAPER_DYNAMIC_MARKETS_ENABLED,probe],()=>inTransaction(db(), async client => {
+    return cache.read([actor.id,version,request.params.fundId,selected,process.env.PAPER_DYNAMIC_MARKETS_ENABLED,testVaultActivationEnabled(),probe],()=>inTransaction(db(), async client => {
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       await client.query("SET LOCAL statement_timeout='5s'");
       const fund = (await client.query<{ id: string; captain_id: string; name: string; status: string; cash_usdc: string; ends_at: Date; round_phase: string | null; event_sequence:string }>(`
@@ -76,6 +77,7 @@ export function registerTradingContextRoutes(app: FastifyInstance, db: () => DbP
       const value={ mode: "PAPER", fund: { id: fund.id, name: fund.name, status: fund.status, trialEnd: fund.ends_at.toISOString(), ...(fund.round_phase ? {phase:fund.round_phase} : {}) },
         cashUsdc: fund.cash_usdc, navUsdc: valued ? fixed(nav, 18) : null, holdings, policy: {
           maxOrderBps: policy.max_order_bps, maxPositionBps: policy.max_position_bps, allowedInstruments: policy.allowed_instruments,universeMode:policy.universe_mode,version:policy.version },
+        testActivationAllowed: version===1 && fund.round_phase==='FUNDRAISING' && testVaultActivationEnabled(),
         accountingRevision: fund.event_sequence, limits, pending, capacityIsEstimate: true, asOf: new Date().toISOString() };
       const expiry=[...marks.values()].filter(m=>m.status==='CURRENT').flatMap(m=>[m.sourceAt?Date.parse(m.sourceAt)+15000:0,Date.parse(m.receivedAt)+15000]);
       return {value,validUntil:Math.min(Date.now()+1000,fund.ends_at.getTime(),...expiry)};

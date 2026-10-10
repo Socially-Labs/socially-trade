@@ -8,6 +8,7 @@ import { tradableInstrumentIds } from '@socially/market-data/catalog';
 import type { Actor } from './auth.js';
 import { beginIdempotent, finishIdempotent } from './accounting.js';
 import { ApiFault } from './errors.js';
+import { activateTestVault, testVaultActivationEnabled } from './test-vault-activation.js';
 
 interface RejectedVaultRequest { rejectedVaultRequest: true; statusCode: number; error: string; message: string }
 async function vaultMutation(pool:DbPool,actor:Actor,key:string,route:string,body:unknown,statusCode:number,
@@ -159,6 +160,7 @@ export async function createVault(pool: DbPool, actor: Actor, input: VaultCreate
       VALUES($1,1,1000,2500,3000,$2,$3,$4)`,[fundId,tradableInstrumentIds,now,dynamicTradingEnabled()?"DYNAMIC_SPOT":"LEGACY_ALLOWLIST"]);
     const event = await appendFundEvent(client,fundId,'vault_created',{ termsHash: hash });
     await fundContribution(client,actor,fundId,VAULT_RULES.captainSeedUsdc,event,walletPaperEnabled());
+    if (testVaultActivationEnabled()) await activateTestVault(client,actor,fundId);
     const result = await operation(client,actor,key,fundId,'CREATE',event,VAULT_RULES.captainSeedUsdc);
     return result;
   });

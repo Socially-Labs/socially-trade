@@ -1,0 +1,10 @@
+import {createPool} from '../packages/db/dist/index.js';
+import {spawn} from 'node:child_process';
+process.loadEnvFile('.env');
+const env={...process.env,TEST_DATABASE_URL:process.env.TEST_DATABASE_URL??process.env.DATABASE_URL};
+for(const key of ['USDG_MINT','PAPER_WALLET_SNAPSHOT_ENABLED','PAPER_DYNAMIC_MARKETS_ENABLED','PAPER_PRIVATE_UPDATES_ENABLED','PAPER_TEST_SKIP_FUNDRAISING','REDIS_URL'])delete env[key];
+const pool=createPool(env.TEST_DATABASE_URL);
+const clock=(await pool.query('SELECT clock_timestamp() AS now')).rows[0].now;console.log('Host/DB clock difference ms:',Date.now()-clock.getTime());await pool.end();
+const files=process.argv.slice(2);
+const child=spawn(process.execPath,['--test','--test-concurrency=1',...(files.length?files:['apps/api/test/captain-returns.test.mjs','apps/api/test/revision-cache.test.mjs','apps/api/test/dynamic-markets.test.mjs','apps/api/test/markets-simulation.test.mjs','apps/api/test/market-discovery.test.mjs','apps/api/test/backend-simulation.test.mjs','apps/api/test/vault-rounds-simulation.test.mjs','apps/ingestor/test/scheduler.test.mjs'])],{stdio:'inherit',env});
+child.on('exit',code=>process.exitCode=code);

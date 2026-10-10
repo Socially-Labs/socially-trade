@@ -61,11 +61,11 @@ The local development database and configuration have been updated for wallet-sn
 
 `GET /v1/me/paper-portfolio` reads the authenticated user's initialized state and available virtual USDC. `POST /v1/me/paper-portfolio/initialize` accepts only `{wallet}`. The server verifies Privy wallet ownership, the devnet genesis hash, finalized native SOL and Circle USDC balances, and fresh SOL/USDC USD prices from the market feed. Each nonzero asset needs a current mark no older than 90 seconds; missing marks fail the whole snapshot. Decimal arithmetic floors the combined value to six decimals.
 
-The initialization button copies that USD value into a simulated portfolio exactly once per account and wallet. It builds no transaction, deposits no tokens and never updates redeemable `paper_cash`. Parallel requests serialize the credit; retries return the saved snapshot without another RPC read. The indexed snapshot stores raw amounts, prices, slot and issuance event for audit. This is a demo balance, not proof of ongoing collateral: subsequent wallet transfers and price changes do not replenish or revalue paper cash. Moving tokens between different wallets can seed different demo accounts; paper funds are deliberately non-redeemable.
+Automatic initialization when relevant Captain/Crew screens open copies that USD value into a simulated portfolio exactly once per account and wallet. It builds no transaction, deposits no tokens and never updates redeemable `paper_cash`. Parallel requests serialize the credit; retries return the saved snapshot without another RPC read. The indexed snapshot stores raw amounts, prices, slot and issuance event for audit. This is a demo balance, not proof of ongoing collateral: subsequent wallet transfers and price changes do not replenish or revalue paper cash. Moving tokens between different wallets can seed different demo accounts; paper funds are deliberately non-redeemable.
 
 Each new round persists an immutable `balance_source=WALLET_SNAPSHOT`. Creation, contributions, cancellations and claims use that round's source, including after mode flags change. The $100 seed, $50 Crew minimum and $1,000 total fundraising minimum remain unchanged. Trading, NAV, performance and settlement reuse the paper engine. Wallet send, swap and token withdrawal routes continue using their existing onchain/redeemable balances.
 
-The active APK Create route uses the original harbor layout, banner/image pickers, frosted fields and receipt review. Captain and Crew initialization is explicit; opening a screen never creates a snapshot automatically. Existing onchain recovery and exit routes remain available for previously submitted transactions.
+The active APK Create route uses the original harbor layout, banner/image pickers, frosted fields and receipt review. Captain and Crew screens automatically request one-time, server-verified initialization; there is no separate setup button. Subsequent requests reuse the recorded snapshot. Existing onchain recovery and exit routes remain available for previously submitted transactions.
 
 ## Verification and outstanding release work
 
@@ -74,3 +74,19 @@ Verified: backend build and typechecks; 162 backend tests, including ledger/supp
 The complete plan still requires: asynchronous pending/failed operation IDs for future chain mode; full discovery search/sorting; broader mobile account-switch/process-death/device acceptance; production load measurements, dashboards, backup/restore rehearsal and pilot observation. Public v1 activity is sanitized; legacy v0 raw-event privacy remediation remains separate work.
 
 Round-v2 Solana accounts/instructions, IDL/client generation, transaction-intent verification, Privy signing, canonical finalized indexing, reorg/reconciliation tests and independent security review are not implemented or enabled here. No Android device was attached during verification. These remain explicit gates before stages 6–8 and cannot be inferred from paper/browser test success.
+# Local test activation
+
+Set `NODE_ENV=development` and `PAPER_TEST_SKIP_FUNDRAISING=true` to test paper
+trading without waiting for fundraising or reaching the $1,000 minimum. New
+seeded paper vaults activate in the creation transaction. Existing fundraising
+vaults can be activated by their Captain through
+`POST /v1/vaults/:id/test-activation`; Discover exposes “Start test trading” only
+when the authenticated trading context returns `testActivationAllowed: true`.
+
+This ends fundraising and moves the round to `ACTIVE`, so the normal preview,
+order worker, valuation and settlement paths remain in use. The seed is still
+required; no test cash is minted. Activation records a `vault_active` event with
+`testOnly: true`. Repeated activation is harmless. Closed, expired, cancelled and
+risk-paused fundraising vaults cannot be reopened through this route. Production
+rejects activation even if the flag is set. Restore the flag to `false` for normal
+fundraising behavior; previously activated test rounds remain active.
