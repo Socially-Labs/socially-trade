@@ -5,6 +5,7 @@ import { Amount, fixed, VAULT_RULES } from '@socially/domain';
 import { requireActor, type Actor } from './auth.js';
 import { ApiFault } from './errors.js';
 import { vaultConfig } from './vaults.js';
+import { captainTradingReturns } from './captain-returns.js';
 
 function captain(actor: Actor) {
   if (actor.role !== 'captain') throw new ApiFault(403,'captain_required','Choose the Captain role first');
@@ -40,7 +41,7 @@ export function registerCaptainDashboardRoutes(app: FastifyInstance, db: () => D
         valuationStatus:m.aumUsdc===null?'UNAVAILABLE':'CURRENT',
         earnings:{ earnedUsdc:fixed(m.earnedUsdc,6),claimedUsdc:fixed(m.claimedUsdc,6),claimableUsdc:fixed(new Amount(m.earnedUsdc).minus(m.claimedUsdc),6) },
         creation:{ allowed:creationReason===null,reason:creationReason,seedUsdc:VAULT_RULES.captainSeedUsdc,availableUsdc:fixed(cash,6) },
-        serverTime:new Date().toISOString() };
+        dashboardRevision:(await client.query('SELECT revision::text FROM captain_change_state WHERE captain_id=$1',[actor.id])).rows[0]?.revision??'0',serverTime:new Date().toISOString() };
     });
   });
   app.get<{ Querystring:{ after?:string;limit?:string } }>('/v1/me/captain/crew',{ schema:{ querystring:paging } },async(req,reply)=>{
@@ -78,9 +79,13 @@ export function registerCaptainDashboardRoutes(app: FastifyInstance, db: () => D
       const points=rows.map(r=>({ at:r.at.toISOString(),aumUsdc:r.amount===null?null:fixed(r.amount,6) }));
       const first=points[0]?.aumUsdc,last=points.at(-1)?.aumUsdc;
       const change=first!=null&&last!=null&&points.every(p=>p.aumUsdc!==null)?new Amount(last).minus(first):null;
-      return { mode:'PAPER',range,intervalSeconds:seconds,points,coverage:points.length?'PARTIAL':'UNAVAILABLE',
+      return { mode:'PAPER',range,intervalSeconds:seconds,points,coverage:points.length?'PARTIAL':'UNAVAILABLE',tradingReturn:await captainTradingReturns(client,actor.id,range),
         changeUsdc:change===null?null:fixed(change,6),changePercent:change===null||first==null||new Amount(first).eq(0)?null:fixed(change.div(first).mul(100),6),
         methodology:'Managed assets across round-v2 vaults. Includes contributions, cancellations and market changes; excludes completed rounds. AUM change is not investment return. Buckets contain last recorded values; missing marks stay unavailable.' };
     });
+  });
+  app.get<{Querystring:{range?:'7D'|'30D'|'90D'|'ALL'}}>('/v1/me/captain/returns',{schema:{querystring:{type:'object',additionalProperties:false,properties:{range:{type:'string',enum:['7D','30D','90D','ALL']}}}}},async(req,reply)=>{
+    const actor=await requireActor(req,db());captain(actor);reply.header('cache-control','no-store');
+    return inTransaction(db(),async client=>{await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');return captainTradingReturns(client,actor.id,req.query.range??'30D');});
   });
 }
