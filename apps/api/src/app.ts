@@ -1,5 +1,6 @@
 import { registerPaperTradingHealth } from './paper-trading-health.js';
 import { registerMarketTrackingRoutes } from "./market-tracking.js";
+import { registerTokenIconRoutes } from './token-icons.js';
 import { registerPaperPortfolioRoutes,DevnetPaperSnapshotSource,type PaperSnapshotSource } from './paper-portfolio.js';
 import { registerCaptainDashboardRoutes } from './captain-dashboard.js';
 import { registerLiveVaultRoutes, startLiveVaultWorker } from './live-vault-routes.js';
@@ -130,6 +131,7 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   registerFundRoutes(app, db);
   registerMarketCatalogRoutes(app, db);
   registerMarketDiscoveryRoutes(app, db);
+  registerTokenIconRoutes(app, db);
   registerMarketTrackingRoutes(app, db);
   registerTradingContextRoutes(app, db);
   registerOrderRoutes(app, db);
