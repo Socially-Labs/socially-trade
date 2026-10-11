@@ -1,4 +1,4 @@
-import { Amount, fixed, fixedUp, MAX_PRICE_AGE_MS, MAX_SIMULATED_ORDER_USDC, USDC_DECIMALS } from "@socially/domain";
+import { Amount, fixed, fixedUp, paperPolicy, MAX_PRICE_AGE_MS, MAX_SIMULATED_ORDER_USDC, USDC_DECIMALS } from "@socially/domain";
 
 export const SOL_USD_FEED_ID = "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
 export const FILL_MODEL_VERSION = 1;
@@ -51,11 +51,24 @@ export async function fetchSolPrice(apiKey: string): Promise<PriceObservation> {
 
 export interface SimulatedFill {
   modelVersion: number;
+  bidPriceUsdc: string;
+  askPriceUsdc: string;
+  pricingModel: 'SYNTHETIC_SPREAD';
+  modelParameters: {spreadBps:number;feeBps:number;impactBpsPerThousand:number;maxImpactBps:number};
   quantity: string;
   marketPriceUsdc: string;
   fillPriceUsdc: string;
   feeUsdc: string;
   cashChangeUsdc: string;
+}
+
+
+/** Explicit simulated bid/ask, never an upstream executable quote. Parameters are persisted with fills. */
+function syntheticQuote(price: Amount) {
+  const {spreadBps,feeBps,impactBpsPerThousand,maxImpactBps}=paperPolicy;
+  return {bidPriceUsdc:fixed(price.mul(new Amount(1).minus(new Amount(spreadBps).div(10000))),18),
+    askPriceUsdc:fixed(price.mul(new Amount(1).plus(new Amount(spreadBps).div(10000))),18),
+    pricingModel:'SYNTHETIC_SPREAD' as const,modelParameters:{spreadBps,feeBps,impactBpsPerThousand,maxImpactBps}};
 }
 
 /** Published v0 assumptions: 20 bps spread, 10 bps fee, 1 bp impact per $1k, capped at 50 bps. */
@@ -69,13 +82,13 @@ export function simulateFill(
   const marketPrice = new Amount(marketPriceUsdc);
   if (notional.lte(0) || marketPrice.lte(0)) throw new Error("Notional and market price must be positive");
   if (notional.gt(MAX_SIMULATED_ORDER_USDC)) throw new Error("Order exceeds the v0 simulated fill cap");
-  const impactBps = Amount.min(50, notional.div(1000).ceil());
-  const totalBps = new Amount(20).plus(impactBps);
+  const impactBps = Amount.min(paperPolicy.maxImpactBps, notional.div(1000).mul(paperPolicy.impactBpsPerThousand).ceil());
+  const totalBps = new Amount(paperPolicy.spreadBps).plus(impactBps);
   const priceFactor = side === "BUY"
     ? new Amount(1).plus(totalBps.div(10_000))
     : new Amount(1).minus(totalBps.div(10_000));
   const fillPrice = marketPrice.mul(priceFactor);
-  const fee = new Amount(fixedUp(notional.mul(10).div(10_000), USDC_DECIMALS));
+  const fee = new Amount(fixedUp(notional.mul(paperPolicy.feeBps).div(10_000), USDC_DECIMALS));
   const quantity = side === "BUY"
     ? new Amount(fixed(notional.minus(fee).div(fillPrice), assetDecimals))
     : new Amount(fixed(notional.div(marketPrice), assetDecimals));
@@ -86,6 +99,7 @@ export function simulateFill(
   if (side === "SELL" && cashChange.lte(0)) throw new Error("Sell proceeds are zero after fees");
   return {
     modelVersion: FILL_MODEL_VERSION,
+    ...syntheticQuote(marketPrice),
     quantity: fixed(quantity, assetDecimals),
     marketPriceUsdc: fixed(marketPrice, 18),
     fillPriceUsdc: fixed(fillPrice, 18),
@@ -102,12 +116,12 @@ export function simulateQuantitySell(quantity: string, marketPriceUsdc: string, 
   const units = new Amount(quantity), price = new Amount(marketPriceUsdc);
   if (units.lte(0) || units.decimalPlaces() > assetDecimals || price.lte(0)) throw new Error("Invalid sell quantity");
   const gross = units.mul(price), notionalUsdc = fixed(gross, USDC_DECIMALS);
-  if ((gross.lt(1) && (heldQuantity === undefined || !units.eq(heldQuantity))) || gross.gt(MAX_SIMULATED_ORDER_USDC)) throw new Error("Sell notional must be 1-1000 USDC");
-  const factor = new Amount(1).minus(new Amount(20).plus(Amount.min(50, gross.div(1000).ceil())).div(10000));
-  const fillPrice = price.mul(factor), fee = new Amount(fixedUp(gross.mul("0.001"), USDC_DECIMALS));
+  if ((gross.lt(1) && (heldQuantity === undefined || !units.eq(heldQuantity))) || gross.gt(MAX_SIMULATED_ORDER_USDC)) throw new Error("Sell notional exceeds the configured simulation limits");
+  const factor = new Amount(1).minus(new Amount(paperPolicy.spreadBps).plus(Amount.min(paperPolicy.maxImpactBps, gross.div(1000).mul(paperPolicy.impactBpsPerThousand).ceil())).div(10000));
+  const fillPrice = price.mul(factor), fee = new Amount(fixedUp(gross.mul(paperPolicy.feeBps).div(10000), USDC_DECIMALS));
   const proceeds = fixed(units.mul(fillPrice).minus(fee), USDC_DECIMALS);
   if (new Amount(proceeds).lte(0)) throw new Error("Sell proceeds are zero after fees");
-  return { modelVersion: FILL_MODEL_VERSION, quantity: fixed(units, assetDecimals), marketPriceUsdc: fixed(price, 18),
+  return { modelVersion: FILL_MODEL_VERSION,...syntheticQuote(price), quantity: fixed(units, assetDecimals), marketPriceUsdc: fixed(price, 18),
     fillPriceUsdc: fixed(fillPrice, 18), feeUsdc: fixed(fee, USDC_DECIMALS),
     cashChangeUsdc: proceeds, notionalUsdc };
 }
