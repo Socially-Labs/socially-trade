@@ -38,14 +38,13 @@ async function vaultMutation(pool:DbPool,actor:Actor,key:string,route:string,bod
 
 // Explicit deployment decision, never a client body field. Existing funded rounds remain recoverable.
 export function vaultConfig() {
-  const enabled = (!process.env.USDG_MINT || walletPaperEnabled()) && process.env.VAULT_PAPER_ENABLED === 'true' && process.env.VAULT_TERMS_APPROVAL === 'locked-v1-retain-residue';
+  const enabled = process.env.VAULT_PAPER_ENABLED === 'true' && process.env.VAULT_TERMS_APPROVAL === 'locked-v1-retain-residue';
   return { schemaVersion: 1, mode: 'PAPER', ...VAULT_RULES, enabled, liveEnabled: false, walletSnapshotEnabled: walletPaperEnabled(),
     residuePolicy: 'RETAIN_AS_LIABILITY', emergencyUnwindEnabled: false,
     serverTime: new Date().toISOString() };
 }
 function requireCreationEnabled() {
   if (!vaultConfig().enabled) throw new ApiFault(503, 'vault_creation_disabled', 'New paper vaults are awaiting approved round terms');
-  if (process.env.USDG_MINT && !walletPaperEnabled()) throw new ApiFault(409, 'mode_unavailable', 'Paper rounds require an isolated paper balance environment');
 }
 export interface RoundRow {
   id: string; captain_id: string; name: string; description: string; status: string; cash_usdc: string; total_shares: string;
