@@ -3,6 +3,7 @@ import { envInteger } from "@socially/domain";
 export { paperObservation, orderReservations, cancelFundOrders } from "./paper.js";
 export type { PaperObservation } from "./paper.js";
 
+export { serviceHeartbeat } from "./service-health.js";
 export { appendFundEvent } from "./events.js";
 export { ledgerAccountId } from "./ledger.js";
 export { saveFundNav } from "./nav.js";

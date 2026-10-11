@@ -1,4 +1,4 @@
-import { createPool } from "@socially/db";
+import { createPool,serviceHeartbeat } from "@socially/db";
 import { captureConsole, LogCollector } from "@socially/logging";
 import { runWorkerCycle } from "./cycle.js";
 
@@ -6,6 +6,7 @@ const logs = new LogCollector("worker");
 captureConsole(logs);
 console.info("Paper worker starting");
 const pool = createPool();
+const heartbeat=serviceHeartbeat(pool,'worker');
 let running = true;
 process.on("SIGTERM", () => { running = false; });
 process.on("SIGINT", () => { running = false; });
@@ -13,6 +14,7 @@ process.on("SIGINT", () => { running = false; });
 try {
   while (running) {
     const result = await runWorkerCycle(pool);
+    await heartbeat();
     for (const failure of result.failures) {
       console.error("Paper worker job failed", failure);
     }

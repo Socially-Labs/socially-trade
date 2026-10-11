@@ -1,6 +1,6 @@
 import { BirdeyeHistoryProvider, historyProviderEnabled, historyPermit, processHistoryJob } from "@socially/market-data/backfill";
 import { registeredInstruments } from "@socially/market-data/registry";
-import { createPool } from "@socially/db";
+import { createPool,serviceHeartbeat } from "@socially/db";
 import { captureConsole, LogCollector } from "@socially/logging";
 import { MarketBus } from "@socially/market-stream";
 import { JupiterScheduler } from "./scheduler.js";
@@ -19,7 +19,7 @@ const redisUrl = process.env.REDIS_URL;
 // Jupiter prices carry mainnet slots; wallet SOLANA_RPC_URL may point to devnet.
 const rpc = process.env.MARKET_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
 if (!redisUrl) throw new Error("REDIS_URL is required");
-const pool = createPool(); const bus = new MarketBus(pool, redisUrl);
+const pool = createPool(); const heartbeat=serviceHeartbeat(pool,'ingestor'); const bus = new MarketBus(pool, redisUrl);
 const scheduler = new JupiterScheduler(bus.redis, accounts);
 const jupiter = new JupiterClient(scheduler, {
   onFailure: event => console.warn("Jupiter account cooling down", event),
@@ -87,6 +87,7 @@ try {
         historyJob=processHistoryJob(pool,new BirdeyeHistoryProvider(process.env.BIRDEYE_API_KEY!),()=>historyPermit(bus.redis)).catch(()=>console.warn('History job unavailable')).finally(()=>{historyJob=undefined;});
       }
       await bus.deliver();
+      if(ownsSchedule)await heartbeat();
     } catch { console.warn("Market ingestion/delivery unavailable; retrying without unbudgeted upstream requests"); }
     await new Promise(resolve => setTimeout(resolve, 500));
   }
