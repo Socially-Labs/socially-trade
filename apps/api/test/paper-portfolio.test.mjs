@@ -21,7 +21,7 @@ test('snapshot values both assets exactly and rejects partial, stale or mismatch
 });
 test('wallet snapshots, paper vault funding, cancellation and claims remain isolated from redeemable cash',{timeout:120000},async t=>{
  const connectionString=process.env.TEST_DATABASE_URL;assert.ok(connectionString);assert.match(new URL(connectionString).hostname,/^(localhost|127\.0\.0\.1)$/);
- process.env.NODE_ENV='development';process.env.PAPER_WALLET_SNAPSHOT_ENABLED='true';process.env.VAULT_PAPER_ENABLED='true';process.env.VAULT_TERMS_APPROVAL='locked-v1-retain-residue';process.env.PRIVY_APP_SECRET='fixture';process.env.USDG_MINT='4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';delete process.env.REDIS_URL;
+ process.env.NODE_ENV='development';process.env.PAPER_WALLET_SNAPSHOT_ENABLED='true';process.env.PAPER_TEST_SKIP_FUNDRAISING='false';process.env.VAULT_PAPER_ENABLED='true';process.env.VAULT_TERMS_APPROVAL='locked-v1-retain-residue';process.env.PRIVY_APP_SECRET='fixture';process.env.USDG_MINT='4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';delete process.env.REDIS_URL;
  const wallets=Object.fromEntries(['captain','crew','stale'].map(s=>[s,Keypair.generate().publicKey.toBase58()]));wallets.duplicate=wallets.captain;
  const originalFetch=globalThis.fetch,tokenFor=configurePrivyFixture(),fixtureFetch=globalThis.fetch;
  globalThis.fetch=async(input,options)=>{if(String(input).startsWith('https://api.privy.io/v1/users/')){const subject=decodeURIComponent(String(input).split('/').at(-1)).replace('did:privy:','');return Response.json({linked_accounts:[{type:'wallet',chain_type:'solana',wallet_client_type:'privy',address:wallets[subject]}]});}return fixtureFetch(input,options);};
