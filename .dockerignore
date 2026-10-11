@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+.env
+.env.*
+coverage
+target
+graphify-out
+.superpowers
+*.tsbuildinfo
+.DS_Store

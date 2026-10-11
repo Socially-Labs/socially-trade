@@ -1,0 +1,53 @@
+# Coolify production topology. compose.yaml is the local datastores and is not included.
+# Commands are role names. socially is the only starter.
+
+x-backend: &backend
+  image: socially-backend
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - .env
+  stop_grace_period: 30s
+
+services:
+  migrate:
+    <<: *backend
+    command: ["migrate"]
+    # Quoted. A bare no is YAML false, and Coolify excludes health only for the string no.
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["api"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+
+  worker:
+    <<: *backend
+    command: ["worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  ingestor:
+    <<: *backend
+    command: ["ingestor"]
+    # Leader connection loss returns exit 0. on-failure would not start it again.
+    restart: always
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

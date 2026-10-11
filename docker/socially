@@ -1,0 +1,26 @@
+#!/bin/sh
+# dist/index.js and ../../.env are resolved from the package directory.
+# migrate finds SQL from dist/migrate.js via import.meta.url, not from cwd.
+# exec so the role is pid 1 and receives SIGTERM.
+set -eu
+role=${1:?usage: socially api|worker|ingestor|migrate}
+export NODE_ENV=production
+
+case "$role" in
+  api|worker|ingestor)
+    if [ "$role" = "api" ] && [ -z "${SWAP_ENABLED:-}" ]; then
+      echo "SWAP_ENABLED is unset. Set false unless this API is on Solana devnet. The app default is true and calls devnet genesis before listen." >&2
+      exit 64
+    fi
+    cd "/app/apps/$role"
+    exec node --env-file-if-exists=../../.env dist/index.js
+    ;;
+  migrate)
+    cd /app/packages/db
+    exec node --env-file-if-exists=../../.env dist/migrate.js
+    ;;
+  *)
+    echo "unknown role: $role" >&2
+    exit 64
+    ;;
+esac
