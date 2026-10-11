@@ -151,7 +151,9 @@ Resources:
             Principal:
               Service: cloudfront.amazonaws.com
             Action: s3:GetObject
-            Resource: !Sub '${AssetBucket.Arn}/captains/*'
+            Resource:
+              - !Sub '${AssetBucket.Arn}/captains/*'
+              - !Sub '${AssetBucket.Arn}/vaults/*'
             Condition:
               StringEquals:
                 AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${AssetDistribution}'
