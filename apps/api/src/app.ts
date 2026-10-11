@@ -34,12 +34,10 @@ import { registerPerformanceRoutes } from "./performance.js";
 import { registerHistoryRoutes } from "./history.js";
 import { registerAuthRoutes } from "./auth-routes.js";
 import { registerAuthClientEvents } from "./auth-client-events.js";
-import type { TokenLayer } from "./token-flows.js";
-import { registerTokenRoutes } from "./token-routes.js";
 
 import { registerSwapRoutes } from "./swap-routes.js";
 import { startSwapWorker, type SwapLayer } from "./swap-flows.js";
-import { registerQrDepositRoutes } from "./qr-deposit-routes.js";
+import { registerWalletRoutes } from "./wallet-routes.js";
 
 export interface AppOptions {
   paperSnapshotSource?: PaperSnapshotSource;
@@ -49,15 +47,9 @@ export interface AppOptions {
   swaps?: SwapLayer | null;
   /** Tests can drive reconciliation explicitly. */
   swapWorker?: boolean;
-  /** Devnet token layer. Required exactly when USDG_MINT is set. */
-  token?: TokenLayer | null;
 }
 
 export function createApp(pool: DbPool | null, options: AppOptions = {}) {
-  const token = options.token ?? null;
-  if (Boolean(process.env.USDG_MINT) !== Boolean(token) || (token && token.chain.mint !== process.env.USDG_MINT)) {
-    throw new Error("The token layer must run with the configured USDG_MINT and no other mint");
-  }
   const logs = options.logs ?? new LogCollector("api");
   const app = Fastify({
     logger: { level: "info", stream: logs.stream },
@@ -97,11 +89,6 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
     reply.code(500).send({ error: "internal_error", message: "Internal server error" });
   });
 
-  app.addHook('onReady',async () => {
-    if (token && pool && (await pool.query("SELECT 1 FROM vault_rounds WHERE balance_source='LEGACY' LIMIT 1")).rowCount) {
-      throw new Error('Paper vault rounds require an isolated paper environment; do not enable treasury token redemption on this database');
-    }
-  });
   registerCors(app);
   app.register(websocket, {
     options: { maxPayload: 8192 },
@@ -124,16 +111,15 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
 
   registerAccountRoutes(app, db);
   registerSupportRoutes(app, db);
-  registerAuthRoutes(app, db, token);
+  registerAuthRoutes(app, db);
   registerAuthClientEvents(app);
-  registerQrDepositRoutes(app, db, token?.chain ?? null);
+  registerWalletRoutes(app, db);
   registerSwapRoutes(app, db, options.swaps ?? null);
   let stopSwapWorker: (() => Promise<void>) | undefined;
   app.addHook("onReady", async () => {
     if (pool && options.swaps && options.swapWorker !== false) stopSwapWorker = startSwapWorker(pool, options.swaps.chain, error => app.log.error(error));
   });
   app.addHook("preClose", async () => { await stopSwapWorker?.(); });
-  if (token) registerTokenRoutes(app, db, token.chain);
   registerFundRoutes(app, db);
   registerMarketCatalogRoutes(app, db);
   registerMarketDiscoveryRoutes(app, db);
