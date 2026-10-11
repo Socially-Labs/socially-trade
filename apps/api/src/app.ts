@@ -1,3 +1,4 @@
+import { registerReadiness } from './readiness.js';
 import { registerPaperActivity } from './paper-activity.js';
 import { registerPaperTradingHealth } from './paper-trading-health.js';
 import { registerMarketTrackingRoutes } from "./market-tracking.js";
@@ -117,7 +118,7 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   app.addHook('onReady', async () => { if (pool && options.liveVaults && options.liveVaultWorker !== false) stopLiveVaultWorker = startLiveVaultWorker(pool,options.liveVaults,error=>app.log.error(error)); });
   app.addHook('preClose', async () => { await stopLiveVaultWorker?.(); });
 
-  app.get("/health", async () => ({ status: "ok", mode: "PAPER" }));
+  registerReadiness(app,db);
   registerAdminLogs(app, logs);
 
   registerAccountRoutes(app, db);
