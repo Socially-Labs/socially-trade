@@ -189,7 +189,7 @@ test('paper vault lifecycle and concurrency', { timeout:120_000 }, async t => {
       await advanceVaultRound(pool,id); await advanceVaultRound(pool,id);
       await request('POST',route('/claims'),'vault-captain',{},randomUUID());
     });
-    await t.test('real paper order, stale unwind delay, restart resume and profit conservation',async()=>{
+    await t.test('real paper order, last-recorded-price settlement, restart resume and profit conservation',async()=>{
       process.env.DEV_PRICE_SEED_ENABLED='true';
       id=(await request('POST','/v1/vaults','vault-captain',body,randomUUID(),201)).vaultId;
       await join('vault-crew','900'); await travel(1); await advanceVaultRound(pool,id);
@@ -211,11 +211,14 @@ test('paper vault lifecycle and concurrency', { timeout:120_000 }, async t => {
       const crewActivity=await request('GET','/v1/me/paper-activity','vault-crew');
       assert.ok(crewActivity.items.every(item=>!['BUY','SELL','CREATE'].includes(item.kind)));
 
+      await seed('200');
       await travel(200); await advanceVaultRound(pool,id);
-      await pool.query("UPDATE price_observations SET source_at=now()-interval '5 minutes'");
-      assert.equal(await advanceVaultRound(pool,id),false);
-      assert.equal((await request('GET',route(''))).blockedReason,'price_unavailable');
-      await seed('200'); assert.equal(await advanceVaultRound(pool,id),true); // unwind one asset
+      await pool.query("UPDATE price_observations SET source_at=source_at-interval '5 minutes'");
+      assert.equal(await advanceVaultRound(pool,id),true); // unwind using the last recorded price
+      const audit=(await pool.query("SELECT payload FROM fund_events WHERE fund_id=$1 AND type='vault_asset_unwound' ORDER BY sequence DESC LIMIT 1",[id])).rows[0].payload;
+      assert.equal(audit.pricingPolicy,'LAST_RECORDED_PRICE');
+      assert.ok(audit.priceAgeMs>=300000);
+      assert.ok(audit.observationId);
       assert.equal((await request('GET',route(''))).phase,'SETTLING');
       assert.equal(await advanceVaultRound(pool,id),true); // finalize on a separate checkpoint
       assert.equal(await advanceVaultRound(pool,id),false); // replay does nothing

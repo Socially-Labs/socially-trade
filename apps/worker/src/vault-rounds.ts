@@ -38,14 +38,15 @@ export async function advanceVaultRound(pool: DbPool,id: string): Promise<boolea
     if (position) {
       if (phase === 'REFUNDING') throw new Error('Fundraising round unexpectedly has market exposure');
       const mark = (await client.query<{ id: string; price_usdc: string; source_at: Date }>(`SELECT id,price_usdc::text,source_at FROM price_observations
-        WHERE instrument_id=$1 AND (source='JUPITER_PRICE_V3' OR ($2::boolean AND source='DEV_SEED')) ORDER BY source_at DESC,received_at DESC LIMIT 1`,
-        [position.instrument_id,process.env.NODE_ENV !== 'production' && process.env.DEV_PRICE_SEED_ENABLED === 'true'])).rows[0];
-      if (!mark || now.getTime()-mark.source_at.getTime()>MAX_PRICE_AGE_MS || mark.source_at.getTime()>now.getTime()+5000) {
+        WHERE instrument_id=$1 AND source_at<=$3 AND price_usdc>0
+        AND (source='JUPITER_PRICE_V3' OR ($2::boolean AND source='DEV_SEED')) ORDER BY source_at DESC,received_at DESC LIMIT 1`,
+        [position.instrument_id,process.env.NODE_ENV !== 'production' && process.env.DEV_PRICE_SEED_ENABLED === 'true',now])).rows[0];
+      if (!mark) {
         await client.query("UPDATE vault_rounds SET blocked_reason='price_unavailable' WHERE fund_id=$1",[id]);
         return false;
       }
       const proceeds = fixed(new Amount(position.quantity).mul(mark.price_usdc).mul('0.998'),6);
-      const event = await appendFundEvent(client,id,'vault_asset_unwound',{ instrumentId: position.instrument_id,quantity: position.quantity,proceedsUsdc: proceeds,observationId: mark.id,modelVersion: 1 });
+      const event = await appendFundEvent(client,id,'vault_asset_unwound',{ instrumentId: position.instrument_id,quantity: position.quantity,proceedsUsdc: proceeds,observationId: mark.id,modelVersion: 1,priceSourceAt: mark.source_at.toISOString(),priceAgeMs: now.getTime()-mark.source_at.getTime(),pricingPolicy: now.getTime()-mark.source_at.getTime()>MAX_PRICE_AGE_MS ? 'LAST_RECORDED_PRICE' : 'FRESH_PRICE' });
       const fundAsset = await ledgerAccountId(client,'FUND',id,position.instrument_id), marketAsset = await ledgerAccountId(client,'MARKET','paper-market',position.instrument_id);
       const fundCash = await ledgerAccountId(client,'FUND',id,'USDC'), marketCash = await ledgerAccountId(client,'MARKET','paper-market','USDC');
       await move(client,event,fundAsset,marketAsset,position.quantity);
