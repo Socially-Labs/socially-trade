@@ -26,7 +26,7 @@ export async function orderHistory(pool: DbPool, scope: "fund" | "captain", id: 
   const rows = await pool.query<{ id: string }>(`SELECT o.id,o.fund_id,o.side,o.instrument_id,
     o.notional_usdc::text,o.status,o.reject_reason,o.submitted_at,o.processed_at,
     fl.quantity::text,fl.market_price_usdc::text,fl.fill_price_usdc::text,fl.fee_usdc::text,
-    fl.model_version,fl.observation_id
+    fl.model_version,fl.model_parameters,fl.observation_id,fl.realized_pnl_usdc::text,fl.cost_basis_sold_usdc::text
     FROM orders o LEFT JOIN fills fl ON fl.order_id=o.id
     WHERE o.${field}=$1 AND ($2::uuid IS NULL OR (o.submitted_at,o.id)<
       (SELECT submitted_at,id FROM orders WHERE id=$2 AND ${field}=$1))
@@ -51,6 +51,7 @@ const personalEvents = `SELECT e.id,e.fund_id,e.sequence::text,e.recorded_at,e.t
 export function registerHistoryRoutes(app: FastifyInstance, db: () => DbPool): void {
   app.get<{ Params: { captainId: string }; Querystring: HistoryQuery }>(
     "/v0/captains/:captainId/orders", { schema: historySchema }, async request => {
+      await requireActor(request,db());
       const captainId = request.params.captainId;
       if (!(await db().query("SELECT 1 FROM users u WHERE u.id=$1 AND (u.role='captain' OR EXISTS(SELECT 1 FROM funds f WHERE f.captain_id=u.id))", [captainId])).rowCount)
         throw new ApiFault(404, "captain_not_found", "Captain not found");

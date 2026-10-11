@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { inTransaction, type DbPool } from "@socially/db";
-import { Amount, fixed } from "@socially/domain";
+import { inTransaction, orderReservations, type DbPool } from "@socially/db";
+import { Amount, fixed, paperPolicy } from "@socially/domain";
 import { registeredInstruments, assetTradeReason } from "@socially/market-data/registry";
 import { currentPrice, type MarketEvent } from "@socially/market-stream";
 import { requireActor } from "./auth.js";
@@ -56,31 +56,36 @@ export function registerTradingContextRoutes(app: FastifyInstance, db: () => DbP
         const value = mark?.status === "CURRENT" && mark.priceUsdc ? new Amount(position.quantity).mul(mark.priceUsdc) : null;
         if (value) nav = nav.plus(value); else valued = false;
         return { instrumentId: position.instrument_id, mint: token?.mint ?? null, symbol: token?.symbol ?? position.instrument_id,
-          quantity: position.quantity, costBasisUsdc: position.cost_basis_usdc, valueUsdc: value ? fixed(value, 18) : null };
+          quantity: position.quantity, costBasisUsdc: position.cost_basis_usdc, valueUsdc: value ? fixed(value, 18) : null,unrealizedPnlUsdc:value?fixed(value.minus(position.cost_basis_usdc),18):null };
       });
       const usable = ["ACTIVE","FROZEN"].includes(fund.status) && (fund.round_phase === null || fund.round_phase === "ACTIVE") && fund.ends_at.getTime() > Date.now();
       const pending = (await client.query("SELECT id,side,instrument_id AS \"instrumentId\",notional_usdc::text AS \"notionalUsdc\" FROM orders WHERE fund_id=$1 AND status='PENDING' ORDER BY submitted_at LIMIT 100", [fund.id])).rows;
-      const limits = registry.map(token => {
+      const reservationRows=(await client.query<{instrument_id:string;cash:string;quantity:string}>(`SELECT instrument_id,sum(reserved_cash_usdc)::text AS cash,sum(reserved_quantity)::text AS quantity FROM orders WHERE fund_id=$1 AND status='PENDING' GROUP BY instrument_id`,[fund.id])).rows;
+      const reservedCash=reservationRows.reduce((sum,row)=>sum.plus(row.cash),new Amount(0)).toString();
+      const reservations=registry.map(token=>{const row=reservationRows.find(row=>row.instrument_id===token.id);return {quantity:row?.quantity??'0',exposure:row?.cash??'0'};});
+      const availableCash=Amount.max(0,new Amount(fund.cash_usdc).minus(reservedCash));
+      const limits = registry.map((token,index) => {
+        const reserved=reservations[index]!;
         const mark = marks.get(token.id);
         const held = holdings.find(position => position.instrumentId === token.id);
         const buyReason = assetTradeReason(token,policy,"BUY",!!held), sellReason = assetTradeReason(token,policy,"SELL",!!held);
         const reason = !usable ? "fund_not_tradable" : !valued ? "valuation_unavailable" : mark?.status !== "CURRENT" ? "price_unavailable" : null;
-        const cap = valued ? Amount.min(1000, nav.mul(policy.max_order_bps).div(10000)) : new Amount(0);
+        const cap = valued ? Amount.min(paperPolicy.maxOrderUsdc, nav.mul(policy.max_order_bps).div(10000)) : new Amount(0);
         const sellCap = held?.valueUsdc && new Amount(held.valueUsdc).lt(1) ? new Amount(held.valueUsdc) : cap;
-        const headroom = valued ? Amount.max(0, nav.mul(policy.max_position_bps).div(10000).minus(held?.valueUsdc ?? 0)) : new Amount(0);
+        const headroom = valued ? Amount.max(0, nav.mul(policy.max_position_bps).div(10000).minus(held?.valueUsdc ?? 0).minus(reserved.exposure)) : new Amount(0);
         return { instrumentId: token.id, canBuy: !buyReason && !reason && fund.status === "ACTIVE", canSell: !sellReason && !reason && !!held,
           reason: reason ?? buyReason ?? (fund.status === "FROZEN" ? "buys_frozen" : null),
-          maxBuyNotionalUsdc: !buyReason && !reason && fund.status === "ACTIVE" ? fixed(Amount.min(cap, fund.cash_usdc, headroom), 6) : "0.000000",
-          maxSellNotionalUsdc: !sellReason && !reason && held ? fixed(Amount.min(sellCap, held.valueUsdc ?? 0), 6) : "0.000000",
+          maxBuyNotionalUsdc: !buyReason && !reason && fund.status === "ACTIVE" ? fixed(Amount.min(cap, availableCash, headroom), 6) : "0.000000",
+          maxSellNotionalUsdc: !sellReason && !reason && held ? fixed(Amount.min(sellCap, Amount.max(0,new Amount(held.quantity).minus(reserved.quantity)).mul(mark!.priceUsdc!)), 6) : "0.000000",
           maxSellQuantity: !sellReason && !reason && held && mark?.priceUsdc
-            ? fixed(Amount.min(held.quantity, sellCap.div(mark.priceUsdc)), token.decimals) : fixed(0, token.decimals) };
+            ? fixed(Amount.min(Amount.max(0,new Amount(held.quantity).minus(reserved.quantity)), sellCap.div(mark.priceUsdc)), token.decimals) : fixed(0, token.decimals) };
       });
       const value={ mode: "PAPER", fund: { id: fund.id, name: fund.name, status: fund.status, trialEnd: fund.ends_at.toISOString(), ...(fund.round_phase ? {phase:fund.round_phase} : {}) },
-        cashUsdc: fund.cash_usdc, navUsdc: valued ? fixed(nav, 18) : null, holdings, policy: {
+        cashUsdc: fixed(fund.cash_usdc,6), availableCashUsdc:fixed(availableCash,6), reservedCashUsdc:fixed(reservedCash,6), navUsdc: valued ? fixed(nav, 18) : null, holdings, policy: {
           maxOrderBps: policy.max_order_bps, maxPositionBps: policy.max_position_bps, allowedInstruments: policy.allowed_instruments,universeMode:policy.universe_mode,version:policy.version },
         testActivationAllowed: version===1 && fund.round_phase==='FUNDRAISING' && testVaultActivationEnabled(),
         accountingRevision: fund.event_sequence, limits, pending, capacityIsEstimate: true, asOf: new Date().toISOString() };
-      const expiry=[...marks.values()].filter(m=>m.status==='CURRENT').flatMap(m=>[m.sourceAt?Date.parse(m.sourceAt)+15000:0,Date.parse(m.receivedAt)+15000]);
+      const expiry=[...marks.values()].filter(m=>m.status==='CURRENT').flatMap(m=>[m.sourceAt?Date.parse(m.sourceAt)+paperPolicy.priceMaxAgeMs:0,Date.parse(m.receivedAt)+paperPolicy.priceMaxAgeMs]);
       return {value,validUntil:Math.min(Date.now()+1000,fund.ends_at.getTime(),...expiry)};
     }));
   });

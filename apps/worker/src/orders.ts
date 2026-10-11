@@ -1,13 +1,13 @@
 import { assetTradeReason, registeredInstruments } from "@socially/market-data/registry";
 import { randomUUID } from "node:crypto";
-import { appendFundEvent, inTransaction, ledgerAccountId, saveFundNav, type DbClient, type DbPool } from "@socially/db";
-import { Amount, evaluateSpotOrder, fixed, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
+import { appendFundEvent, inTransaction, paperObservation, orderReservations, ledgerAccountId, saveFundNav, type DbClient, type DbPool } from "@socially/db";
+import { Amount, evaluateSpotOrder, fixed, paperPolicy, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { simulateFill, simulateQuantitySell } from "@socially/market-data";
 import { lockValuedFund } from "./valuation.js";
 import { eligibleFundBatches } from "./fund-batches.js";
 
-const ORDER_DELAY_MS = 3_000;
-const ORDER_TIMEOUT_MS = 120_000;
+const ORDER_DELAY_MS = paperPolicy.orderDelayMs;
+const ORDER_TIMEOUT_MS = paperPolicy.orderTimeoutMs;
 
 interface PendingOrder {
   id: string;
@@ -18,6 +18,8 @@ interface PendingOrder {
   requested_quantity: string | null;
   submitted_at: Date;
   policy_version: number|null;
+  reserved_quantity: string;
+  reserved_cash_usdc: string;
 }
 
 interface FundState {
@@ -43,22 +45,7 @@ interface Observation {
   received_at: Date;
 }
 
-async function latestObservation(client: DbClient, instrumentId = "SOL", after?: Date): Promise<Observation | null> {
-  const result = await client.query<Observation>(
-    `SELECT id, price_usdc::text, source_at, received_at FROM price_observations
-     WHERE instrument_id = $3
-       AND (source = 'JUPITER_PRICE_V3' OR ($1::boolean AND source = 'DEV_SEED'))
-       AND ($2::timestamptz IS NULL OR (received_at >= $2 AND source_at >= $2))
-     ORDER BY source_at DESC, received_at DESC LIMIT 1`,
-    [process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true", after ?? null, instrumentId],
-  );
-  return result.rows[0] ?? null;
-}
-
-function fresh(observation: Observation): boolean {
-  const age = Date.now() - observation.source_at.getTime();
-  return age >= -5_000 && age <= MAX_PRICE_AGE_MS;
-}
+const latestObservation = paperObservation;
 
 async function fundState(client: DbClient, fundId: string, policyVersion?: number|null): Promise<FundState> {
   await client.query('SELECT id FROM funds WHERE id=$1 FOR NO KEY UPDATE',[fundId]);
@@ -106,8 +93,12 @@ async function progress(client:DbClient,order:PendingOrder,state:string,observat
 
 export async function processOrder(pool: DbPool, orderId: string): Promise<boolean> {
   return inTransaction(pool, async (client) => {
+    const owner=(await client.query<{fund_id:string}>("SELECT fund_id FROM orders WHERE id=$1 AND status='PENDING'",[orderId])).rows[0];
+    if(!owner)return false;
+    const locked=await client.query('SELECT id FROM funds WHERE id=$1 FOR NO KEY UPDATE SKIP LOCKED',[owner.fund_id]);
+    if(!locked.rowCount)return false;
     const selected = await client.query<PendingOrder>(
-      `SELECT id, fund_id, side, instrument_id, notional_usdc::text, requested_quantity::text, submitted_at,policy_version
+      `SELECT id, fund_id, side, instrument_id, notional_usdc::text, requested_quantity::text, submitted_at,policy_version,reserved_quantity::text,reserved_cash_usdc::text
        FROM orders WHERE id = $1 AND status = 'PENDING' FOR NO KEY UPDATE SKIP LOCKED`,
       [orderId],
     );
@@ -126,10 +117,11 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
     const assetReason = assetTradeReason(instrument,fund,order.side,new Amount(heldPosition.quantity).gt(0));
     if (assetReason) { await reject(client,order,assetReason); return true; }
     if(fund.db_now.getTime()<order.submitted_at.getTime()+ORDER_DELAY_MS){await progress(client,order,'WAITING_DELAY');return false;}
+    if(fund.db_now.getTime()>=order.submitted_at.getTime()+ORDER_TIMEOUT_MS){await reject(client,order,'order_expired');return true;}
     const observation = await latestObservation(client, order.instrument_id, new Date(order.submitted_at.getTime() + ORDER_DELAY_MS));
-    if (!observation || !fresh(observation)) {
+    if (!observation) {
       if (Date.now() - order.submitted_at.getTime() >= ORDER_TIMEOUT_MS) {
-        await reject(client, order, "price_unavailable");
+        await reject(client, order, "order_expired");
         return true;
       }
       await progress(client,order,'WAITING_PRICE');
@@ -139,7 +131,7 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
     const marketPrice = new Amount(observation.price_usdc);
     const valuation = await lockValuedFund(client, fund.id);
     if (!valuation) {
-      if (Date.now() - order.submitted_at.getTime() >= ORDER_TIMEOUT_MS) { await reject(client, order, "valuation_unavailable"); return true; }
+      if (Date.now() - order.submitted_at.getTime() >= ORDER_TIMEOUT_MS) { await reject(client, order, "order_expired"); return true; }
       await progress(client,order,'WAITING_VALUATION',observation.id);
       return false;
     }
@@ -153,11 +145,15 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
       } else fill = simulateFill(order.side, order.notional_usdc, observation.price_usdc, instrument!.decimals);
     }
     catch { await reject(client, order, "fill_model_rejected"); return true; }
+    const reservations=await orderReservations(client,fund.id,order.instrument_id,order.id);
+    if(order.side==='SELL' && new Amount(fill.quantity).gt(order.reserved_quantity)){
+      await reject(client,order,'reservation_exceeded');return true;
+    }
     const reason = evaluateSpotOrder({
       side: order.side, instrumentId: order.instrument_id,
       allowedInstruments: [order.instrument_id], notionalUsdc: order.notional_usdc,
       quantity: fill.quantity, marketPriceUsdc: fill.marketPriceUsdc,
-      cashUsdc: fund.cash_usdc, positionQuantity: held.quantity,
+      cashUsdc: new Amount(fund.cash_usdc).minus(reservations.cash).toString(), positionQuantity: order.side==='SELL'?new Amount(held.quantity).minus(reservations.quantity).toString():held.quantity,
       navUsdc: nav.toString(), sharePriceUsdc: sharePrice.toString(),
       peakSharePriceUsdc: fund.peak_share_price, maxOrderBps: fund.max_order_bps,
       maxPositionBps: fund.max_position_bps, drawdownBreakerBps: fund.drawdown_breaker_bps,
@@ -166,6 +162,8 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
 
     const quantity = new Amount(fill.quantity);
     const cashChange = new Amount(fill.cashChangeUsdc);
+    const basisSold = order.side==='SELL'?fixed(new Amount(held.cost_basis_usdc).mul(quantity).div(held.quantity),SHARE_DECIMALS):null;
+    const realizedPnl = basisSold===null?null:fixed(cashChange.minus(basisSold),SHARE_DECIMALS);
     if (order.side === "BUY") {
       await client.query(
         `INSERT INTO positions (fund_id, instrument_id, quantity, cost_basis_usdc)
@@ -176,7 +174,6 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
         [fund.id, fill.quantity, order.notional_usdc, order.instrument_id],
       );
     } else {
-      const basisSold = fixed(new Amount(held.cost_basis_usdc).mul(quantity).div(held.quantity), SHARE_DECIMALS);
       await client.query(
         `UPDATE positions SET quantity = quantity - $2::numeric,
          cost_basis_usdc = cost_basis_usdc - $3::numeric
@@ -189,7 +186,7 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
       orderId: order.id, side: order.side, instrumentId: order.instrument_id, quantity: fill.quantity,
       notionalUsdc: order.notional_usdc, marketPriceUsdc: fill.marketPriceUsdc,
       fillPriceUsdc: fill.fillPriceUsdc, feeUsdc: fill.feeUsdc,
-      modelVersion: fill.modelVersion, observationId: observation.id,
+      modelVersion: fill.modelVersion,modelParameters:fill.modelParameters,bidPriceUsdc:fill.bidPriceUsdc,askPriceUsdc:fill.askPriceUsdc,pricingModel:fill.pricingModel, observationId: observation.id,realizedPnlUsdc:realizedPnl,costBasisSoldUsdc:basisSold,
     });
     const fundSol = await ledgerAccountId(client, "FUND", fund.id, order.instrument_id);
     const marketSol = await ledgerAccountId(client, "MARKET", "paper-market", order.instrument_id);
@@ -205,10 +202,10 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
     );
     await client.query(
       `INSERT INTO fills (id, order_id, observation_id, quantity, market_price_usdc,
-       fill_price_usdc, fee_usdc, model_version)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+       fill_price_usdc, fee_usdc, model_version,realized_pnl_usdc,cost_basis_sold_usdc,model_parameters)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,$9,$10,$11)`,
       [randomUUID(), order.id, observation.id, fill.quantity, fill.marketPriceUsdc,
-        fill.fillPriceUsdc, fill.feeUsdc, fill.modelVersion],
+        fill.fillPriceUsdc, fill.feeUsdc, fill.modelVersion,realizedPnl,basisSold,fill.modelParameters],
     );
     await client.query("UPDATE orders SET status = 'FILLED',progress_state='FILLED',progress_at=clock_timestamp(), notional_usdc=$2, processed_at = clock_timestamp() WHERE id = $1", [order.id, order.notional_usdc]);
     const newNav = nav.plus(cashChange).plus(assetChange.mul(marketPrice));
@@ -220,8 +217,8 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
 export async function processPendingOrders(pool: DbPool): Promise<number> {
   const candidates = await pool.query<{ id: string }>(
     `SELECT id FROM orders WHERE status = 'PENDING'
-     AND submitted_at <= now() - interval '3 seconds'
-     ORDER BY last_attempted_at NULLS FIRST,submitted_at LIMIT 20`,
+     AND submitted_at <= now() - ($1::int * interval '1 millisecond')
+     ORDER BY last_attempted_at NULLS FIRST,submitted_at LIMIT 20`,[ORDER_DELAY_MS],
   );
   let processed = 0;
   for (const candidate of candidates.rows) {
@@ -247,7 +244,7 @@ export async function markFund(pool:DbPool,fundId:string,recordUnavailable=false
         }
         if (!valuation.positions.length) return false;
         const observation = await latestObservation(client, valuation.positions[0]?.instrument_id ?? "SOL");
-        if (!observation || !fresh(observation)) return false;
+        if (!observation) return false;
         const markRef = JSON.stringify(valuation.positions.map(p => [p.instrument_id,p.observation_id]).sort((a,b) => String(a[0]).localeCompare(String(b[0]))));
         const previous = await client.query<{ observation_id: string | null; market_mark_ref: string | null }>(
           `SELECT observation_id,market_mark_ref FROM nav_snapshots WHERE fund_id = $1
