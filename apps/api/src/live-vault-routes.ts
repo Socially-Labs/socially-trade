@@ -4,7 +4,7 @@ import { inTransaction, type DbPool } from '@socially/db';
 import { requireActor } from './auth.js';
 import { ApiFault } from './errors.js';
 import { privySolanaWallets } from './privy.js';
-import { walletOf } from './token-flows.js';
+import { walletOf } from './wallet-identity.js';
 import { SEED_MINIMUM, type LiveChain } from './live-vault-chain.js';
 import { SWAP_NETWORK } from './swap-types.js';
 import { PublicKey } from '@solana/web3.js';

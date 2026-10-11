@@ -3,7 +3,7 @@ import { inTransaction, type DbPool } from '@socially/db';
 import type { Actor } from './auth.js';
 import { ApiFault } from './errors.js';
 import { privySolanaWallets } from './privy.js';
-import { walletOf } from './token-flows.js';
+import { walletOf } from './wallet-identity.js';
 import type { SwapConfig } from './swap-config.js';
 import type { SwapChain, SwapFees, VenueQuote, SwapToken } from './swap-types.js';
 export interface SwapLayer { chain: SwapChain; config: SwapConfig }
