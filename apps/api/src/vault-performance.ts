@@ -8,10 +8,11 @@ export async function vaultPerformance(pool:DbPool,id:string,range:'7D'|'30D'|'A
   const vault=await vaultDetail(pool,id);
   const days=range==='7D'?7:range==='30D'?30:Math.min(400,vault.durationDays+3);
   const intervalSeconds=days<=7?3600:86400;
+  // Completed vaults can predate the recent window; ALL retains their full history.
   const points=(await pool.query<{ at:Date; price:string; nav:string }>(`SELECT priced_at AS at,share_price_usdc::text AS price,nav_usdc::text AS nav
     FROM vault_performance_rollups WHERE fund_id=$1 AND interval_seconds=$3
-    AND bucket_at>=to_timestamp(floor(extract(epoch FROM clock_timestamp()-$2*interval '24 hours')/$3)*$3)
-    AND priced_at<=clock_timestamp() ORDER BY bucket_at LIMIT 401`,[id,days,intervalSeconds])).rows;
+    AND ($4::boolean OR bucket_at>=to_timestamp(floor(extract(epoch FROM clock_timestamp()-$2*interval '24 hours')/$3)*$3))
+    AND priced_at<=clock_timestamp() ORDER BY bucket_at LIMIT 401`,[id,days,intervalSeconds,range==='ALL'])).rows;
   return { mode:'PAPER',vaultId:id,range,intervalSeconds,
     points:points.map(point=>({ at:point.at.toISOString(),navUsdc:fixed(point.nav,6),sharePriceUsdc:fixed(point.price,18),netReturnPercent:fixed(new Amount(point.price).minus(1).mul(100),6) })),
     coverage:points.length?'PARTIAL':'UNAVAILABLE',valuationStatus:vault.valuationStatus,
