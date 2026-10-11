@@ -44,5 +44,5 @@ export async function inTransaction<T>(
   }
 }
 
-
 export { captainPortfolio, vaultPerformance } from './captain-portfolio.js';
+export { refreshCaptainDiscovery } from './captain-discovery.js';
