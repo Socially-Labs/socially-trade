@@ -5,8 +5,10 @@ export type Amount = Decimal;
 
 export const USDC_DECIMALS = 6;
 export const SHARE_DECIMALS = 18;
-export const MAX_PRICE_AGE_MS = 90_000;
-export const MAX_SIMULATED_ORDER_USDC = "1000";
+import { paperPolicy } from "./paper-policy.js";
+export * from "./paper-policy.js";
+export const MAX_PRICE_AGE_MS = paperPolicy.priceMaxAgeMs;
+export const MAX_SIMULATED_ORDER_USDC = String(paperPolicy.maxOrderUsdc);
 
 const decimalInput = /^(0|[1-9]\d*)(\.\d+)?$/;
 
