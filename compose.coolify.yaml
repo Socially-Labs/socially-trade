@@ -15,6 +15,11 @@ x-backend: &backend
     REDIS_URL: ${REDIS_URL:?REDIS_URL is required. Use the internal Redis URL.}
     SWAP_ENABLED: ${SWAP_ENABLED:?Set SWAP_ENABLED=false unless this API is on Solana devnet.}
   stop_grace_period: 30s
+  # Internal Postgres and Redis names resolve on the destination network.
+  # default stays so the Coolify proxy can still reach the API.
+  networks:
+    - default
+    - coolify
 
 services:
   api:
@@ -36,9 +41,12 @@ services:
     <<: *backend
     command: ["worker"]
     restart: unless-stopped
+    # service_healthy marks a crash-loop unhealthy in about a second and
+    # compose up -d exits before the API stderr is kept. service_started
+    # leaves that stderr in the API logs.
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
 
   ingestor:
     <<: *backend
@@ -47,4 +55,9 @@ services:
     restart: always
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
+
+networks:
+  coolify:
+    name: ${COOLIFY_NETWORK:-coolify}
+    external: true
