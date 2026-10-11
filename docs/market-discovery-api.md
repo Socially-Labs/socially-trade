@@ -39,3 +39,25 @@ Token logos use the public [cached image endpoint](token-icons.md):
 API origin; the JSON catalog retains the provider's metadata URL.
 
 Current mobile charts use 24 hours only. Historical backfill requires explicit `backfill=true`; list reads never enqueue provider work. See [chart flow and free-tier limits](market-charts.md).
+
+## Invested markets and portfolio history
+
+The APK's Invested list derives its mint set from the selected vault's authenticated
+trading context, rather than filtering Supported or a page of Top traded.
+`GET /v0/market/tokens?mints=<comma-separated mints>` resolves up to ten distinct
+identities from the stored registry, metadata and latest prices. It rejects mixing
+`mints` with `query`, makes no provider requests, and retains registered tokens when
+optional metadata is missing. The APK loads all holdings in bounded batches and
+coalesces matching token batches for 15 seconds. Search and filters apply locally
+to those holdings; account and vault changes discard the previous selection.
+
+The ingestor independently prioritizes pending orders, then positive positions
+in non-completed funds, then visible/default tokens. Each distinct held instrument
+is monitored once across all captains, with a five-second refresh target subject
+to quotas and upstream backoff. It does not depend on an open screen.
+New prices enqueue affected fund valuations. Recorded NAV snapshots feed hourly
+and daily vault/AUM rollups and chained Captain return rollups.
+`GET /v1/me/captain/performance?range=7D` reads hourly AUM history; `30D` and `90D`
+read daily history. `GET /v1/me/captain/returns?range=7D` reports trading returns
+excluding contributions. Missing prices/history stay unavailable; no graph points
+are invented. A new vault may have only one daily point despite many valuations.
