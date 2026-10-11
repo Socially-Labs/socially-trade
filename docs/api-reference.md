@@ -1241,115 +1241,24 @@ Cache: `public, max-age=86400, stale-while-revalidate=604800` + strong `ETag` (S
 
 ---
 
-## 12. Devnet Treasury Token Layer (`USDG_MINT` set)
-
-All routes in this group are registered **only** when the token layer is configured, and the server refuses to start if `USDG_MINT` is set without a matching mint.
-
-### `GET /v0/me/token-balance` — AUTH
-```json
-{
-  "mode":"PAPER",
-  "token": { "label":"Test USDC (devnet)","mint":"…","decimals":6,"cluster":"devnet" },
-  "wallet": "9xY…|null",
-  "onchain": { "amount":"100.000000","raw":"100000000" } | null,
-  "paper": { "cash": { "value":"7400.000000","asset":"USDC" },
-             "positions": [ /* myPositions */ ] }
-}
-```
-Reconciles pending payouts before reading.
-
-### `POST /v0/me/deposits/prepare` — AUTH
-**Body** `{ "amountUsdc": "decimal ≤6 dp, ≥1 token" }`
-Rate limited to `PREPARE_RATE_PER_HOUR` (default 20) per user under an advisory lock.
-
-**Response `200`**
-```json
-{ "mode":"PAPER","token":{…},"wallet":"9xY…","treasuryTokenAccount":"…",
-  "amountUsdc":"100.000000","transaction":"base64","encoding":"base64",
-  "lastValidBlockHeight":"123456" }
-```
-
-### `POST /v0/me/deposits` — AUTH
-**Body**
-| Field | Type | Required | Constraint |
-|---|---|---|---|
-| `signature` | string | yes | `^[1-9A-HJ-NP-Za-km-z]{64,88}$` |
-| `amountUsdc` | string | yes | ≤40 chars, ≥1 token |
-| `fundId` | uuid | no | optional auto-join target |
-
-**Response `202`** (still `PENDING`) or **`200`** (settled)
-```json
-{ "mode":"PAPER",
-  "deposit": { "signature":"…","status":"PENDING|CONFIRMED|FAILED|EXPIRED",
-               "amount":"100.000000","fundId":"uuid|null",
-               "failure":null,"eventId":"uuid|null",
-               "join": { "eventId":"uuid|null","error":null } | null } }
-```
-`409 deposit_conflict` when the signature was already submitted with a different amount or fund.
-
-### `GET /v0/me/deposits/:signature` — AUTH
-`200` / `202` → same `DepositView`. Verification never trusts a client success flag, signature, or sender address.
-
-### `POST /v0/me/withdrawals` — AUTH
-**Headers** `Idempotency-Key` (required)
-**Body** (all optional, at least one in practice)
-| Field | Type | Constraint |
-|---|---|---|
-| `amountUsdc` | string | ≤40 chars |
-| `fundId` | uuid | — |
-| `shares` | string | ≤40 chars (redeem a fund position) |
-
-**Response `201`** (confirmed) or **`202`** (pending)
-```json
-{ "mode":"PAPER",
-  "withdrawal": { "id":"uuid","kind":"WITHDRAWAL|SIGNUP_GRANT",
-                  "status":"PENDING|CONFIRMED","signature":null,
-                  "amount":"100.000000","wallet":"9xY…",
-                  "attempts":0,"lastError":null },
-  "exit": { "mode":"PAPER","fundId":"uuid","eventId":"uuid",
-            "shares":"…","virtualUsdc":"…","sharePrice":"…" } | null }
-```
-
-### `GET /v0/me/withdrawals/:withdrawalId` — AUTH
-`{ "mode":"PAPER","withdrawal":{ …PayoutView } }`
+## 12. Paper Wallet Summary
 
 ### `GET /v0/me/wallet` — AUTH
-Funding summary.
+
+Read-only paper cash and Captain allocations. Wallet funding uses direct SOL or Circle devnet USDC transfers and never credits paper cash.
+
 ```json
 {
-  "mode":"PAPER",
-  "enabled": true,
-  "token": { "label":"Test USDC (devnet)","mint":"…","decimals":6,"cluster":"devnet" } | null,
-  "available": { "amount":"7400.000000","asset":"USDC" },
-  "positions": [ /* myPositions */ ],
-  "deposits": [ /* QR deposit views, newest 50 */ ]
+  "mode": "PAPER",
+  "enabled": false,
+  "token": null,
+  "available": { "amount": "7400.000000", "asset": "USDC" },
+  "positions": [],
+  "deposits": []
 }
 ```
 
-### `POST /v0/me/qr-deposits` — AUTH → **201**
-**Headers** `Idempotency-Key` (required)
-**Body** `{ "amount": "decimal ≤6 dp, 1 – 1 000 000 test USDC" }`
-
-**Response `201`**
-```json
-{ "deposit": {
-  "canPay": true,
-  "id":"uuid","reference":"pubkey",
-  "amount":"100.000000","creditedAmount":"0.000000",
-  "status":"WAITING|CONFIRMING|CONFIRMED|EXPIRED",
-  "signature":null,"lastError":null,
-  "expiresAt":"ISO","createdAt":"ISO",
-  "token": { "label":"Test USDC (devnet)","mint":"…","decimals":6,"cluster":"devnet" },
-  "paymentUrl": "solana:<owner>?amount=…&spl-token=…&reference=…&label=Socially&message=…"
-} }
-```
-`canPay` is `false` when the request has expired, the mint/recipient/ATA no longer match the live configuration, or the status left `WAITING`/`CONFIRMING`. 20 requests/hour → `429 rate_limited`. The Solana Pay recipient is the treasury **owner**, not its token account.
-
-### `GET /v0/me/qr-deposits/:id` — AUTH
-`{ "deposit": { …QR deposit view } }`. `404 deposit_not_found`.
-A payment is credited only when a finalized transaction has exactly one transfer, exactly one matching reference, an allowed instruction set, the expected destination and mint, and matching balance deltas. Rejections recorded: `transaction_failed`, `unexpected_transfers`, `wrong_reference`, `unexpected_instruction`, `wrong_destination`, `wrong_mint`, `wrong_amount`, `already_credited`.
-
----
+The custom USDG mint, treasury deposits/withdrawals, and QR payment endpoints have been removed. The `enabled`, `token`, and `deposits` fields remain as compatibility fields for installed clients.
 
 ## 13. Wallet Swaps (Raydium, devnet)
 
@@ -1721,14 +1630,6 @@ PATCH  /v0/captains/:captainId
 POST   /v0/me/support-requests
 POST   /v0/auth/privy
 GET    /v0/me/wallet
-POST   /v0/me/qr-deposits
-GET    /v0/me/qr-deposits/:id
-GET    /v0/me/token-balance                (token layer)
-POST   /v0/me/deposits/prepare             (token layer)
-POST   /v0/me/deposits                     (token layer)
-GET    /v0/me/deposits/:signature          (token layer)
-POST   /v0/me/withdrawals                  (token layer)
-GET    /v0/me/withdrawals/:withdrawalId     (token layer)
 POST   /v0/me/assets/uploads
 POST   /v0/me/assets/uploads/:uploadId/complete
 POST   /v0/captains/:captainId/assets/uploads
@@ -1813,8 +1714,6 @@ POST /v0/funds/:fundId/exits
 POST /v0/funds/:fundId/orders
 POST /v0/funds/:fundId/messages
 POST /v0/funds/:fundId/orders/:orderId/notes
-POST /v0/me/qr-deposits
-POST /v0/me/withdrawals
 POST /v1/vaults
 POST /v1/vaults/:id/contributions
 POST /v1/vaults/:id/contribution-cancellations
@@ -1847,6 +1746,8 @@ POST /v1/vaults/:id/orders
 
 ## 21. Source Map
 
+Paper wallet summary: `apps/api/src/wallet-routes.ts`. Wallet ownership checks: `apps/api/src/wallet-identity.ts`.
+
 | Area | File |
 |---|---|
 | App composition, error handler, `/health` | `apps/api/src/app.ts` |
@@ -1876,8 +1777,6 @@ POST /v1/vaults/:id/orders
 | Order / crew history | `apps/api/src/history.ts`, `paper-activity.ts` |
 | Social | `apps/api/src/social.ts` |
 | Notifications | `apps/api/src/notifications.ts` |
-| Treasury token layer | `apps/api/src/token-routes.ts`, `token-flows.ts`, `token-chain.ts` |
-| QR deposits | `apps/api/src/qr-deposit-routes.ts`, `qr-deposits.ts` |
 | Wallet swaps | `apps/api/src/swap-routes.ts`, `swap-flows.ts`, `swap-chain.ts`, `swap-types.ts`, `swap-config.ts` |
 | Paper portfolio | `apps/api/src/paper-portfolio.ts` |
 | Ledger accounting | `apps/api/src/accounting.ts` |
