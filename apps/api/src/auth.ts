@@ -1,3 +1,4 @@
+import { fixed } from '@socially/domain';
 import { randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { inTransaction, ledgerAccountId, type DbPool } from "@socially/db";
@@ -36,7 +37,7 @@ export async function requireActor(request: FastifyRequest, pool: DbPool): Promi
     `SELECT id,auth_subject AS subject,display_name AS "displayName",paper_cash::text AS "paperCash",username,role,bio,
       avatar_url AS "avatarUrl",banner_url AS "bannerUrl",hide_balances AS "hideBalances",avatar_kind AS "avatarKind"
      FROM users WHERE auth_subject=$1`,[subject])).rows[0];
-  if (known) return known;
+  if (known) return {...known,paperCash:fixed(known.paperCash,6)};
   return inTransaction(pool, async (client) => {
     const id = randomUUID();
     const inserted = await client.query<Actor>(
@@ -46,7 +47,7 @@ export async function requireActor(request: FastifyRequest, pool: DbPool): Promi
        RETURNING id, auth_subject AS subject, display_name AS "displayName", paper_cash::text AS "paperCash", username, role, bio, avatar_url AS "avatarUrl", banner_url AS "bannerUrl", hide_balances AS "hideBalances", avatar_kind AS "avatarKind"`,
       [id, subject, displayName, tokenLayerOn() ? "0" : VIRTUAL_ALLOWANCE],
     );
-    if (inserted.rows[0] && tokenLayerOn()) return inserted.rows[0];
+    if (inserted.rows[0] && tokenLayerOn()) return {...inserted.rows[0],paperCash:fixed(inserted.rows[0].paperCash,6)};
     if (inserted.rows[0]) {
       const eventId = randomUUID();
       await client.query(
@@ -60,13 +61,13 @@ export async function requireActor(request: FastifyRequest, pool: DbPool): Promi
          VALUES ($1, $2, $3), ($1, $4, -$3::numeric)`,
         [eventId, userAccount, VIRTUAL_ALLOWANCE, issuanceAccount],
       );
-      return inserted.rows[0];
+      return {...inserted.rows[0],paperCash:fixed(inserted.rows[0].paperCash,6)};
     }
     const existing = await client.query<Actor>(
       `SELECT id, auth_subject AS subject, display_name AS "displayName", paper_cash::text AS "paperCash", username, role, bio, avatar_url AS "avatarUrl", banner_url AS "bannerUrl", hide_balances AS "hideBalances", avatar_kind AS "avatarKind"
        FROM users WHERE auth_subject = $1`,
       [subject],
     );
-    return existing.rows[0]!;
+    return {...existing.rows[0]!,paperCash:fixed(existing.rows[0]!.paperCash,6)};
   });
 }

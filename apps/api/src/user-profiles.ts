@@ -1,3 +1,4 @@
+import { fixed } from '@socially/domain';
 import type { DbPool } from "@socially/db";
 import { inTransaction } from "@socially/db";
 import type { Actor } from "./auth.js";
@@ -11,7 +12,7 @@ export function accountView(user: Actor) {
   return { id: user.id, displayName: user.displayName, username: user.username,
     role: user.role, bio: user.bio, avatarUrl: user.avatarUrl, bannerUrl: user.bannerUrl,
     hideBalances: user.hideBalances, avatarKind: user.avatarKind,
-    mode: "PAPER", paperCash: { value: user.paperCash, asset: "USDC" } };
+    mode: "PAPER", paperCash: { value: fixed(user.paperCash,6), asset: "USDC" } };
 }
 export interface ProfileUpdate {
   username?: string; role?: "crew" | "captain"; displayName?: string;

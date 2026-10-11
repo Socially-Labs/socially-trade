@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { inTransaction, ledgerAccountId, type DbClient, type DbPool } from "@socially/db";
-import { Amount, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
+import { Amount,fixed, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { beginIdempotent, finishIdempotent } from "./accounting.js";
 import type { Actor } from "./auth.js";
 import { joinFundInTransaction, leaveFundInTransaction, myPositions, type CrewChange } from "./crew.js";
@@ -123,6 +123,7 @@ async function createSignupGrant(
   // Linking a personal wallet later must not convert or mint that balance again.
   const funded = await client.query("SELECT 1 FROM token_deposit_receipts WHERE user_id=$1 LIMIT 1", [userId]);
   if (funded.rowCount) return;
+  if(!new Amount(cash.paper_cash).eq(cash.convertible))throw new ApiFault(409,'balance_precision','Paper cash must be reconciled to six decimal places before conversion');
   let amountRaw = toRaw(cash.convertible);
   let eventId: string | null = null;
   if (amountRaw > 0n) {
@@ -606,6 +607,6 @@ export async function tokenBalances(pool: DbPool, chain: TokenChain, actor: Acto
     token: tokenInfo(chain),
     wallet,
     onchain: raw === null ? null : { amount: fromRaw(raw), raw: raw.toString() },
-    paper: { cash: { value: cash.rows[0]!.paper_cash, asset: "USDC" }, positions: await myPositions(pool, actor.id) },
+    paper: { cash: { value: fixed(cash.rows[0]!.paper_cash,6), asset: "USDC" }, positions: await myPositions(pool, actor.id) },
   };
 }
