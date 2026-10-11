@@ -8,22 +8,19 @@ x-backend: &backend
     dockerfile: Dockerfile
   env_file:
     - .env
+  # A required interpolation is how Coolify creates the variable and injects it.
+  # env_file alone does not register the name, so migrate exited 1 with the reason omitted.
+  environment:
+    DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required. Use the internal Postgres URL.}
+    REDIS_URL: ${REDIS_URL:?REDIS_URL is required. Use the internal Redis URL.}
+    SWAP_ENABLED: ${SWAP_ENABLED:?Set SWAP_ENABLED=false unless this API is on Solana devnet.}
   stop_grace_period: 30s
 
 services:
-  migrate:
-    <<: *backend
-    command: ["migrate"]
-    # Quoted. A bare no is YAML false, and Coolify excludes health only for the string no.
-    restart: "no"
-
   api:
     <<: *backend
     command: ["api"]
     restart: unless-stopped
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
@@ -40,8 +37,8 @@ services:
     command: ["worker"]
     restart: unless-stopped
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      api:
+        condition: service_healthy
 
   ingestor:
     <<: *backend
@@ -49,5 +46,5 @@ services:
     # Leader connection loss returns exit 0. on-failure would not start it again.
     restart: always
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      api:
+        condition: service_healthy

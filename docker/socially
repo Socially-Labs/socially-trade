@@ -12,6 +12,13 @@ case "$role" in
       echo "SWAP_ENABLED is unset. Set false unless this API is on Solana devnet. The app default is true and calls devnet genesis before listen." >&2
       exit 64
     fi
+    if [ "$role" = "api" ]; then
+      # Coolify's compose up -d does not print a one-shot container's stderr.
+      # Migrate in this process so a failure stays in the API logs.
+      cd /app/packages/db
+      node --input-type=module -e 'const raw=process.env.DATABASE_URL??""; try { console.error("migrate database host: "+(raw?new URL(raw).host:"missing")) } catch { console.error("migrate database host: invalid") }'
+      node --env-file-if-exists=../../.env dist/migrate.js
+    fi
     cd "/app/apps/$role"
     exec node --env-file-if-exists=../../.env dist/index.js
     ;;
