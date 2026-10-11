@@ -1,3 +1,4 @@
+import { paperObservation } from '@socially/db';
 import { Amount, MAX_PRICE_AGE_MS } from "@socially/domain";
 import type { DbClient } from "@socially/db";
 
@@ -22,27 +23,16 @@ export async function lockValuedFund(client: DbClient, fundId: string) {
   );
   const fund = fundResult.rows[0];
   if (!fund || fund.status === "COMPLETED" || new Amount(fund.total_shares).lte(0)) return null;
-  const positions = await client.query<{
-    instrument_id: string; quantity: string; cost_basis_usdc: string;
-    observation_id: string | null; price_usdc: string | null; source_at: Date | null;
-  }>(
-    `SELECT p.instrument_id,p.quantity::text,p.cost_basis_usdc::text,
-       o.id observation_id,o.price_usdc::text,o.source_at
-     FROM positions p LEFT JOIN LATERAL (
-       SELECT id,price_usdc,source_at FROM price_observations WHERE instrument_id=p.instrument_id
-        AND (source='JUPITER_PRICE_V3' OR ($2::boolean AND source='DEV_SEED'))
-       ORDER BY source_at DESC,received_at DESC LIMIT 1
-     ) o ON true WHERE p.fund_id=$1 AND p.quantity>0 ORDER BY p.instrument_id`,
-    [fundId, process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true"],
-  );
+  const rows=await client.query<{instrument_id:string;quantity:string;cost_basis_usdc:string}>(
+    'SELECT instrument_id,quantity::text,cost_basis_usdc::text FROM positions WHERE fund_id=$1 AND quantity>0 ORDER BY instrument_id',[fundId]);
+  const positions: Array<{instrument_id:string;quantity:string;cost_basis_usdc:string;observation_id:string;price_usdc:string;source_at:Date}>=[];
   let nav = new Amount(fund.cash_usdc);
   let pricedAt = new Date();
-  for (const position of positions.rows) {
-    if (!position.price_usdc || !position.source_at) return null;
-    const age = Date.now() - position.source_at.getTime();
-    if (age > MAX_PRICE_AGE_MS || age < -5_000) return null;
-    nav = nav.plus(new Amount(position.quantity).mul(position.price_usdc));
-    if (position.source_at < pricedAt) pricedAt = position.source_at;
+  for(const row of rows.rows){
+    const mark=await paperObservation(client,row.instrument_id);if(!mark)return null;
+    positions.push({...row,observation_id:mark.id,price_usdc:mark.price_usdc,source_at:mark.source_at});
+    nav=nav.plus(new Amount(row.quantity).mul(mark.price_usdc));
+    if(mark.source_at<pricedAt)pricedAt=mark.source_at;
   }
-  return { fund, nav, pricedAt, positions: positions.rows };
+  return { fund, nav, pricedAt, positions };
 }

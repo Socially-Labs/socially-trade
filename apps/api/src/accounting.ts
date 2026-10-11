@@ -1,3 +1,4 @@
+import { paperObservation } from '@socially/db';
 import { createHash } from "node:crypto";
 import { saveFundNav, type DbClient } from "@socially/db";
 import { Amount, fixed, MAX_PRICE_AGE_MS, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
@@ -22,45 +23,26 @@ export async function valueFund(
   client: DbClient,
   fund: { id: string; cash_usdc: string; total_shares: string },
 ): Promise<Valuation> {
-  const rows = await client.query<{
-    instrument_id: string;
-    quantity: string;
-    cost_basis_usdc: string;
-    decimals: number;
-    price_usdc: string | null;
-    source_at: Date | null;
-  }>(
-    `SELECT p.instrument_id, p.quantity::text, p.cost_basis_usdc::text, i.decimals,
-            o.price_usdc::text, o.source_at
-     FROM positions p JOIN instruments i ON i.id = p.instrument_id
-     LEFT JOIN LATERAL (
-       SELECT price_usdc, source_at FROM price_observations
-       WHERE instrument_id = p.instrument_id
-         AND (source = 'JUPITER_PRICE_V3' OR ($2::boolean AND source = 'DEV_SEED'))
-       ORDER BY source_at DESC, received_at DESC LIMIT 1
-     ) o ON true
-     WHERE p.fund_id = $1 AND p.quantity > 0`,
-    [fund.id, process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true"],
-  );
+  const rows = await client.query<{instrument_id:string;quantity:string;cost_basis_usdc:string;decimals:number}>(
+    `SELECT p.instrument_id,p.quantity::text,p.cost_basis_usdc::text,i.decimals FROM positions p JOIN instruments i ON i.id=p.instrument_id WHERE p.fund_id=$1 AND p.quantity>0`,[fund.id]);
   let nav = new Amount(fund.cash_usdc);
   const now = Date.now();
   let pricedAt = new Date(now);
-  const positions = rows.rows.map((row) => {
-    const sourceTime = row.source_at?.getTime();
-    if (!row.price_usdc || sourceTime === undefined || now - sourceTime > MAX_PRICE_AGE_MS || sourceTime - now > 5_000) {
-      throw new ApiFault(503, "valuation_unavailable", `Fresh price unavailable for ${row.instrument_id}`);
-    }
-    if (sourceTime < pricedAt.getTime()) pricedAt = row.source_at!;
+  const positions: PositionValue[] = [];
+  for (const row of rows.rows) {
+    const mark=await paperObservation(client,row.instrument_id);
+    if(!mark)throw new ApiFault(503,'valuation_unavailable',`Fresh price unavailable for ${row.instrument_id}`);
+    if(mark.source_at < pricedAt)pricedAt=mark.source_at;
     const position = {
       instrumentId: row.instrument_id,
       quantity: new Amount(row.quantity),
       costBasis: new Amount(row.cost_basis_usdc),
       decimals: row.decimals,
-      price: new Amount(row.price_usdc),
+      price: new Amount(mark.price_usdc),
     };
     nav = nav.plus(position.quantity.mul(position.price));
-    return position;
-  });
+    positions.push(position);
+  }
   const shares = new Amount(fund.total_shares);
   if (shares.lte(0)) throw new ApiFault(409, "invalid_share_supply", "Fund has no shares");
   return { nav, sharePrice: nav.div(shares), positions, pricedAt };
