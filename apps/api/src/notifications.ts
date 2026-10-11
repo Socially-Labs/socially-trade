@@ -5,19 +5,27 @@ import { ApiFault } from "./errors.js";
 import { sequenceCursor } from "./request.js";
 
 export function registerNotificationRoutes(app: FastifyInstance, db: () => DbPool): void {
-  app.get<{ Querystring: { after?: string } }>("/v0/me/notifications", async (request) => {
+  app.get<{ Querystring: { after?: string; before?: string } }>("/v0/me/notifications", async (request, reply) => {
+    reply.header("cache-control", "no-store");
     const actor = await requireActor(request, db());
     const after = sequenceCursor(request.query.after);
+    const before = sequenceCursor(request.query.before);
+    if (after && before) throw new ApiFault(400, "invalid_cursor", "Use after or before, not both");
+    const incremental = request.query.after !== undefined;
+
     const result = await db().query<{
       id: string; fund_id: string; type: string; payload: Record<string, unknown>;
       created_at: Date; read_at: Date | null;
     }>(
       `SELECT id::text, fund_id, type, payload, created_at, read_at
-       FROM notifications WHERE user_id = $1 AND id > $2
-       ORDER BY notifications.id ASC LIMIT 100`,
-      [actor.id, after],
+       FROM notifications WHERE user_id = $1
+       AND ($2::bigint = 0 OR id > $2) AND ($3::bigint = 0 OR id < $3)
+       ORDER BY ${incremental ? 'notifications.id ASC' : 'notifications.id DESC'} LIMIT 101`,
+      [actor.id, after, before],
     );
-    return { mode: "PAPER", notifications: result.rows.map((row) => ({
+    return { mode: "PAPER", nextCursor: !incremental && result.rows.length > 100 ? result.rows[99]!.id : null,
+      hasMore: result.rows.length > 100,
+      notifications: result.rows.slice(0, 100).map((row) => ({
       id: row.id, fundId: row.fund_id, type: row.type, payload: row.payload,
       createdAt: row.created_at.toISOString(), readAt: row.read_at?.toISOString() ?? null,
     })) };
