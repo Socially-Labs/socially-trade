@@ -1,4 +1,4 @@
-export const executionStages=['WAITING_DELAY','WAITING_PRICE','WAITING_VALUATION','READY','FILLED','PARTIALLY_FILLED','REJECTED','CANCELLED'] as const;
+export const executionStages=['WAITING_DELAY','WAITING_PRICE','WAITING_VALUATION','FILLED','REJECTED','CANCELLED'] as const;
 export type ExecutionProgress={stage:typeof executionStages[number];eligibleAt:string;expiresAt:string;lastAttemptedAt:string|null;attempts:number;observationSourceAt:string|null;observationAgeMs:number|null;reason:string|null;retryAfterMs:number};
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const date=(v:unknown)=>typeof v==='string'&&Number.isFinite(Date.parse(v));

@@ -439,7 +439,7 @@ Example pending order:
 }
 ```
 
-Render fill values only when present. Recognize PARTIALLY_FILLED in the wire contract even though current SOL execution normally fills or rejects the whole order. Rejected/cancelled orders still belong in history.
+Render fill values only when present. Current execution fills the whole order or rejects it; PARTIALLY_FILLED is not an execution-stage contract value. Rejected/cancelled orders still belong in history.
 
 ### 19. `POST /v0/funds/:fundId/orders/:orderId/cancel`
 
@@ -539,7 +539,7 @@ The illustrative payload above is shortened; real order_filled events contain ex
 
 Reconnect with backoff and the last successfully applied sequence. Deduplicate by event UUID/sequence, and reconcile REST reads on reconnect. Close the stream when leaving the fund screen. Public streams need no auth header.
 
-Known event types include `fund_started`, `crew_joined`, `crew_left`, `order_submitted`, `order_filled`, `order_rejected`, `order_cancelled`, `fund_marked`, `drawdown_breaker`, `fee_assessed`, `trial_liquidated`, `trial_completed`, `chat_message_posted`, `trade_note_posted`. Treat types as extensible strings. Public event payloads can contain local user IDs and settlement payout data; do not treat this stream as a private inbox.
+Known event types include `fund_started`, `crew_joined`, `crew_left`, `order_submitted`, `order_filled`, `order_rejected`, `order_cancelled`, `fund_marked`, `drawdown_breaker`, `fee_assessed`, `trial_liquidated`, `trial_completed`, `chat_message_posted`, `trade_note_posted`. Treat types as extensible strings. Event pages and streams require captain/current-member permission. Trading payload fields are allowlisted; membership identifiers and payout arrays are omitted.
 
 Useful invalidation rules:
 
