@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DbClient, DbPool } from "@socially/db";
 import { appendFundEvent, inTransaction, ledgerAccountId } from "@socially/db";
-import { Amount, fixed, MAX_PRICE_AGE_MS, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
+import { Amount, paperPolicy, fixed, MAX_PRICE_AGE_MS, parsePositiveAmount, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { type Actor } from "./auth.js";
 import { beginIdempotent, finishIdempotent, saveNav, valueFund } from "./accounting.js";
 import { ApiFault } from "./errors.js";
@@ -145,6 +145,8 @@ export async function leaveFundInTransaction(
 ): Promise<CrewChange> {
   const sharesText = fixed(shares, SHARE_DECIMALS);
   const fund = await lockFund(client, fundId);
+  if((await client.query("SELECT 1 FROM orders WHERE fund_id=$1 AND status='PENDING' LIMIT 1",[fundId])).rowCount)
+    throw new ApiFault(409,'orders_pending','Wait for pending orders or ask the Captain to cancel them before exiting');
   await client.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [actor.id]);
   if (fund.captain_id === actor.id) throw new ApiFault(403, "captain_stake_locked", "Captain stake stays in the trial");
   const held = await client.query<{ shares: string }>(
@@ -163,7 +165,7 @@ export async function leaveFundInTransaction(
       : new Amount(fund.cash_usdc).mul(fraction),
     USDC_DECIMALS,
   ));
-  const exitSpread = new Amount("0.002");
+  const exitSpread = new Amount(paperPolicy.unwindCostBps).div(10000);
   let proceeds = new Amount(0);
   let markedAssetsRemoved = new Amount(0);
   const sales: Array<{ instrumentId: string; quantity: string; proceeds: string; costBasis: string }> = [];

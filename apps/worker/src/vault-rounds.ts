@@ -1,5 +1,6 @@
+import { cancelFundOrders,paperObservation } from '@socially/db';
 import { appendFundEvent, inTransaction, ledgerAccountId, saveFundNav, type DbClient, type DbPool } from '@socially/db';
-import { Amount, dueRoundPhase, fixed, MAX_PRICE_AGE_MS, roundSettlement, type VaultPhase } from '@socially/domain';
+import { Amount, paperPolicy, dueRoundPhase, fixed, MAX_PRICE_AGE_MS, roundSettlement, type VaultPhase } from '@socially/domain';
 
 interface Round {
   id: string; phase: VaultPhase; cash_usdc: string; total_shares: string; accepted_capital_usdc: string;
@@ -10,7 +11,7 @@ async function move(client: DbClient,event: string,from: string,to: string,amoun
   await client.query('INSERT INTO ledger_entries(event_id,account_id,amount) VALUES($1,$2,-$4::numeric),($1,$3,$4)',[event,from,to,amount]);
 }
 /** One transition, one asset unwind, or finalization per round per tick. Each checkpoint commits
- * atomically with its ledger/event. No pending order is locked while holding the fund lock.
+ * atomically with its ledger/event. Orders, cancellation and settlement consistently lock the fund before any order.
  */
 export async function advanceVaultRound(pool: DbPool,id: string): Promise<boolean> {
   return inTransaction(pool,async client => {
@@ -20,7 +21,7 @@ export async function advanceVaultRound(pool: DbPool,id: string): Promise<boolea
     if (!locked.rowCount) return false;
     const round = (await client.query<Round>(`SELECT f.id,f.cash_usdc::text,f.total_shares::text,r.phase,
       r.accepted_capital_usdc::text,r.funding_closes_at,r.trading_ends_at
-      FROM funds f JOIN vault_rounds r ON r.fund_id=f.id WHERE f.id=$1`,[id])).rows[0];
+      FROM funds f JOIN vault_rounds r ON r.fund_id=f.id WHERE f.id=$1 AND NOT EXISTS(SELECT 1 FROM discovery_demo_seeds d WHERE d.fund_id=f.id)`,[id])).rows[0];
     if (!round) return false;
     await client.query('UPDATE vault_rounds SET last_attempted_at=clock_timestamp() WHERE fund_id=$1',[id]);
     const now = (await client.query<{ now: Date }>('SELECT clock_timestamp() AS now')).rows[0]!.now;
@@ -33,20 +34,18 @@ export async function advanceVaultRound(pool: DbPool,id: string): Promise<boolea
       return true;
     }
     if (phase !== 'SETTLING' && phase !== 'REFUNDING') return false;
+    await cancelFundOrders(client,id,'fund_not_tradable');
     const position = (await client.query<{ instrument_id: string; quantity: string }>(
       'SELECT instrument_id,quantity::text FROM positions WHERE fund_id=$1 AND quantity>0 ORDER BY instrument_id LIMIT 1',[id])).rows[0];
     if (position) {
       if (phase === 'REFUNDING') throw new Error('Fundraising round unexpectedly has market exposure');
-      const mark = (await client.query<{ id: string; price_usdc: string; source_at: Date }>(`SELECT id,price_usdc::text,source_at FROM price_observations
-        WHERE instrument_id=$1 AND source_at<=$3 AND price_usdc>0
-        AND (source='JUPITER_PRICE_V3' OR ($2::boolean AND source='DEV_SEED')) ORDER BY source_at DESC,received_at DESC LIMIT 1`,
-        [position.instrument_id,process.env.NODE_ENV !== 'production' && process.env.DEV_PRICE_SEED_ENABLED === 'true',now])).rows[0];
+      const mark = await paperObservation(client,position.instrument_id);
       if (!mark) {
         await client.query("UPDATE vault_rounds SET blocked_reason='price_unavailable' WHERE fund_id=$1",[id]);
         return false;
       }
-      const proceeds = fixed(new Amount(position.quantity).mul(mark.price_usdc).mul('0.998'),6);
-      const event = await appendFundEvent(client,id,'vault_asset_unwound',{ instrumentId: position.instrument_id,quantity: position.quantity,proceedsUsdc: proceeds,observationId: mark.id,modelVersion: 1,priceSourceAt: mark.source_at.toISOString(),priceAgeMs: now.getTime()-mark.source_at.getTime(),pricingPolicy: now.getTime()-mark.source_at.getTime()>MAX_PRICE_AGE_MS ? 'LAST_RECORDED_PRICE' : 'FRESH_PRICE' });
+      const proceeds = fixed(new Amount(position.quantity).mul(mark.price_usdc).mul(new Amount(1).minus(new Amount(paperPolicy.unwindCostBps).div(10000))),6);
+      const event = await appendFundEvent(client,id,'vault_asset_unwound',{ instrumentId: position.instrument_id,quantity: position.quantity,proceedsUsdc: proceeds,observationId: mark.id,modelVersion: 1,priceSourceAt: mark.source_at.toISOString(),priceAgeMs: now.getTime()-mark.source_at.getTime(),pricingPolicy: 'FRESH_PRICE',priceSource:'JUPITER_PRICE_V3',unwindCostBps:paperPolicy.unwindCostBps });
       const fundAsset = await ledgerAccountId(client,'FUND',id,position.instrument_id), marketAsset = await ledgerAccountId(client,'MARKET','paper-market',position.instrument_id);
       const fundCash = await ledgerAccountId(client,'FUND',id,'USDC'), marketCash = await ledgerAccountId(client,'MARKET','paper-market','USDC');
       await move(client,event,fundAsset,marketAsset,position.quantity);
@@ -72,9 +71,9 @@ export async function advanceVaultRound(pool: DbPool,id: string): Promise<boolea
   });
 }
 export async function advanceDueVaultRounds(pool: DbPool): Promise<number> {
-  const rows = (await pool.query<{ fund_id: string }>(`SELECT fund_id FROM vault_rounds WHERE
+  const rows = (await pool.query<{ fund_id: string }>(`SELECT fund_id FROM vault_rounds r WHERE NOT EXISTS(SELECT 1 FROM discovery_demo_seeds d WHERE d.fund_id=r.fund_id) AND (
     (phase='FUNDRAISING' AND funding_closes_at<=clock_timestamp()) OR
-    (phase='ACTIVE' AND trading_ends_at<=clock_timestamp()) OR phase IN ('REFUNDING','SETTLING')
+    (phase='ACTIVE' AND trading_ends_at<=clock_timestamp()) OR phase IN ('REFUNDING','SETTLING'))
     ORDER BY last_attempted_at NULLS FIRST,fund_id LIMIT 100`)).rows;
   let advanced = 0;
   const errors:unknown[]=[];

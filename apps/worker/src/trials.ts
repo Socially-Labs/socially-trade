@@ -1,5 +1,5 @@
-import { appendFundEvent, inTransaction, ledgerAccountId, saveFundNav, type DbPool } from "@socially/db";
-import { Amount, fixed, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
+import { appendFundEvent, inTransaction, cancelFundOrders, ledgerAccountId, saveFundNav, type DbPool } from "@socially/db";
+import { Amount, paperPolicy, fixed, SHARE_DECIMALS, USDC_DECIMALS } from "@socially/domain";
 import { assessFundFee } from "./fees.js";
 import { lockValuedFund } from "./valuation.js";
 import { eligibleFundBatches } from "./fund-batches.js";
@@ -10,12 +10,13 @@ export async function completeTrial(pool: DbPool, fundId: string, now = new Date
     const valuation = await lockValuedFund(client, fundId);
     if (!valuation || valuation.fund.round_model_version !== 1 || valuation.fund.ends_at > now) return false;
     const { fund, positions, pricedAt } = valuation;
+    await cancelFundOrders(client,fundId,'fund_not_tradable');
     let cash = new Amount(fund.cash_usdc);
     let liquidationCost = new Amount(0);
     if (positions.length) {
       const sales = positions.map(position => {
         const marked = new Amount(position.quantity).mul(position.price_usdc!);
-        const proceeds = new Amount(fixed(marked.mul("0.998"), USDC_DECIMALS));
+        const proceeds = new Amount(fixed(marked.mul(new Amount(1).minus(new Amount(paperPolicy.unwindCostBps).div(10000))), USDC_DECIMALS));
         cash = cash.plus(proceeds);
         liquidationCost = liquidationCost.plus(marked.minus(proceeds));
         return { instrumentId: position.instrument_id, quantity: position.quantity,
