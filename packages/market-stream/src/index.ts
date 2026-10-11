@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+import { freshPaperPrice } from "@socially/domain";
 import { inTransaction, type DbPool } from "@socially/db";
 
 export interface MarketPrice {
@@ -19,7 +20,7 @@ export function currentPrice(price: MarketPrice, now = Date.now()): MarketPrice 
   if (price.status === "UNAVAILABLE") return price;
   const source = price.sourceAt ? Date.parse(price.sourceAt) : NaN;
   const received = Date.parse(price.receivedAt);
-  return Number.isFinite(source) && source <= now + 5_000 && now - source <= 15_000 && received <= now + 5_000 && now - received <= 15_000
+  return freshPaperPrice(price.sourceAt, price.receivedAt, now)
     ? { ...price, status: "CURRENT", reason: null }
     : { ...price, status: "STALE", reason: "observation_stale" };
 }
