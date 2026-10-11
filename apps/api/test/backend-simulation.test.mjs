@@ -65,7 +65,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
     await pool.query("UPDATE orders SET submitted_at=now()-$2*interval '1 second' WHERE id=$1", [id, seconds]);
   }
   async function settled(id, price = '150') { await ageOrder(id); await seed(price); await processOrder(pool, id);
-    return (await request('GET', route(`/orders/${id}`))).order; }
+    return (await request('GET', route(`/orders/${id}`),'captain')).order; }
   async function reconcile() {
     const unbalanced = await pool.query(`SELECT e.event_id,a.asset_id FROM ledger_entries e
       JOIN ledger_accounts a ON a.id=e.account_id GROUP BY e.event_id,a.asset_id HAVING SUM(e.amount)<>0`);
@@ -87,7 +87,8 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       await pool.query(await readFile(new URL(name, migrationDir), 'utf8'));
     }
     await t.test('health, unauthorized access, malformed requests and identifiers', async () => {
-      await request('GET', '/health');
+      await request('GET', '/live');
+      await request('GET','/health',undefined,undefined,undefined,503);
       await request('GET', '/v0/me', undefined, undefined, undefined, 401);
       await request('GET', '/v0/funds/not-a-uuid', undefined, undefined, undefined, 400);
       await request('GET', `/v0/funds/${randomUUID()}`, undefined, undefined, undefined, 404);
@@ -171,7 +172,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       const observation = await seed('151');
       const results = await Promise.all(Array.from({ length: 8 }, () => processOrder(pool, buyId)));
       assert.equal(results.filter(Boolean).length, 1);
-      const record = (await request('GET', route(`/orders/${buyId}`))).order;
+      const record = (await request('GET', route(`/orders/${buyId}`),'captain')).order;
       assert.equal(record.status, 'FILLED');
       assert.equal(record.observation_id, observation);
       assert.equal(record.model_version, 1);
@@ -182,11 +183,11 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
     });
     await t.test('mark uses source timestamp and repeated observation creates no extra mark', async () => {
       await clearPrices();
-      await seed('160', 20);
+      await seed('160', 10);
       await markActiveFunds(pool);
       assert.equal(await markActiveFunds(pool), 0);
       const nav = (await pool.query('SELECT priced_at FROM nav_snapshots WHERE fund_id=$1 ORDER BY event_sequence DESC LIMIT 1', [fundId])).rows[0];
-      assert.ok(Date.now() - nav.priced_at.getTime() >= 19_000);
+      assert.ok(Date.now() - nav.priced_at.getTime() >= 9_000);
     });
     await t.test('Crew entry/exit at a marked price preserves share price and ledger', async () => {
       await seed('160');
@@ -203,16 +204,16 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       const sell = await settled(await order('SELL', '10'), '160');
       assert.equal(sell.status, 'FILLED');
       assert.ok(new Amount(sell.fill_price_usdc).lt(160));
-      const oversell = await settled(await order('SELL', '90'), '160');
-      assert.equal(oversell.reject_reason, 'insufficient_position');
-      const large = await settled(await order('BUY', '500'), '160');
-      assert.equal(large.reject_reason, 'order_too_large');
+      const oversell = await request('POST',route('/orders'),'captain',{side:'SELL',instrumentId:'SOL',notionalUsdc:'90'},randomUUID(),422);
+      assert.equal(oversell.error, 'insufficient_position');
+      const large = await request('POST',route('/orders'),'captain',{side:'BUY',instrumentId:'SOL',notionalUsdc:'500'},randomUUID(),422);
+      assert.equal(large.error, 'order_too_large');
       await reconcile();
     });
     await t.test('position cap prevents excessive exposure', async () => {
       await pool.query('UPDATE fund_policy_versions SET max_position_bps=1 WHERE fund_id=$1', [fundId]);
-      const record = await settled(await order(), '160');
-      assert.equal(record.reject_reason, 'position_limit');
+      const record = await request('POST',route('/orders'),'captain',{side:'BUY',instrumentId:'SOL',notionalUsdc:'50'},randomUUID(),422);
+      assert.equal(record.error, 'position_limit');
       await pool.query('UPDATE fund_policy_versions SET max_position_bps=2500 WHERE fund_id=$1', [fundId]);
       await reconcile();
     });
@@ -220,7 +221,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       const id = await order(); await ageOrder(id); await seed();
       await pool.query("UPDATE instruments SET active=false WHERE id='SOL'");
       await processOrder(pool, id);
-      const record = (await request('GET', route(`/orders/${id}`))).order;
+      const record = (await request('GET', route(`/orders/${id}`),'captain')).order;
       await pool.query("UPDATE instruments SET active=true WHERE id='SOL'");
       assert.equal(record.reject_reason, 'asset_disabled');
     });
@@ -247,7 +248,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
         CREATE TRIGGER fail_fill BEFORE INSERT ON fills FOR EACH ROW EXECUTE FUNCTION fail_fill()`);
       await assert.rejects(processOrder(pool, id), /simulation fill failure/);
       assert.deepEqual(await request('GET', route('/holdings')), before);
-      assert.equal((await request('GET', route(`/orders/${id}`))).order.status, 'PENDING');
+      assert.equal((await request('GET', route(`/orders/${id}`),'captain')).order.status, 'PENDING');
       await pool.query('DROP TRIGGER fail_fill ON fills; DROP FUNCTION fail_fill()');
       assert.equal(await processOrder(pool, id), true);
       assert.equal(await processOrder(pool, id), false);
@@ -256,16 +257,17 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
     await t.test('unpriced order times out without any fill', async () => {
       const id = await order(); await ageOrder(id, 180); await clearPrices();
       assert.equal(await processOrder(pool, id), true);
-      assert.equal((await request('GET', route(`/orders/${id}`))).order.reject_reason, 'price_unavailable');
+      assert.equal((await request('GET', route(`/orders/${id}`),'captain')).order.reject_reason, 'order_expired');
     });
     await t.test('price-ingestion failure does not block timeouts or notification delivery', async () => {
+      await seed();
       const id = await order(); await ageOrder(id, 180); await clearPrices();
       const result = await runWorkerCycle(pool, async () => { throw new Error('Simulated source outage'); });
       assert.equal(result.failures.length, 1);
       assert.equal(result.failures[0].job, 'price_ingestion');
       assert.equal(result.processed, 1);
       assert.ok(result.delivered > 0);
-      assert.equal((await request('GET', route(`/orders/${id}`))).order.reject_reason, 'price_unavailable');
+      assert.equal((await request('GET', route(`/orders/${id}`),'captain')).order.reject_reason, 'order_expired');
     });
     await t.test('stale holdings block joins/exits and report unavailable valuation', async () => {
       await clearPrices();
@@ -282,7 +284,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       await request('POST', route(`/orders/${id}/cancel`), 'captain');
       await ageOrder(id); await seed();
       assert.equal(await processOrder(pool, id), false);
-      assert.equal((await request('GET', route(`/orders/${id}`))).order.status, 'CANCELLED');
+      assert.equal((await request('GET', route(`/orders/${id}`),'captain')).order.status, 'CANCELLED');
     });
     await t.test('cancellation racing execution has one terminal result', async () => {
       const id = await order(); await ageOrder(id); await seed();
@@ -291,7 +293,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
         processOrder(pool, id),
       ]);
       assert.ok([200, 409].includes(cancel.statusCode));
-      const record = (await request('GET', route(`/orders/${id}`))).order;
+      const record = (await request('GET', route(`/orders/${id}`),'captain')).order;
       assert.ok(['FILLED', 'CANCELLED'].includes(record.status));
       const fills = (await pool.query('SELECT 1 FROM fills WHERE order_id=$1', [id])).rowCount;
       assert.equal(fills, record.status === 'FILLED' ? 1 : 0);
@@ -325,12 +327,12 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       assert.equal((await request('GET', route(`/decisions?after=${notes[0].sequence}`))).notes.length, 1);
     });
     await t.test('events have gap-free sequences and exactly one outbox intent', async () => {
-      const events = (await request('GET', route('/events'))).events;
+      const events = (await request('GET', route('/events'),'captain')).events;
       events.forEach((event, index) => assert.equal(Number(event.sequence), index + 1));
       const absent = await pool.query('SELECT e.id FROM fund_events e LEFT JOIN outbox_events o ON o.fund_event_id=e.id WHERE e.fund_id=$1 AND o.id IS NULL', [fundId]);
       assert.equal(absent.rowCount, 0);
-      await request('GET', route('/events?after=-1'), undefined, undefined, undefined, 400);
-      await request('GET', route('/events?after=9007199254740992'), undefined, undefined, undefined, 400);
+      await request('GET', route('/events?after=-1'), 'captain', undefined, undefined, 400);
+      await request('GET', route('/events?after=9007199254740992'), 'captain', undefined, undefined, 400);
     });
     await t.test('concurrent outbox delivery deduplicates inbox and protects ownership', async () => {
       await Promise.all([deliverOutbox(pool), deliverOutbox(pool), deliverOutbox(pool)]);
@@ -376,12 +378,13 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       }
     });
     await t.test('concurrent join, exit and fill serialize without projection drift', async () => {
+      await pool.query('UPDATE fund_policy_versions SET max_position_bps=10000 WHERE fund_id=$1',[fundId]);
       for (let i = 0; i < 12; i++) {
         await seed('150');
         const id = await order('BUY', '5'); await ageOrder(id); await seed('150');
         await Promise.all([
           request('POST', route('/joins'), 'crew', { amountUsdc: '5' }, randomUUID(), 201),
-          request('POST', route('/exits'), 'crew', { shares: '1' }, randomUUID()),
+          app.inject({method:'POST',url:route('/exits'),headers:headers('crew',randomUUID()),payload:{shares:'1'}}).then(r=>{assert.ok([200,409].includes(r.statusCode),r.body);if(r.statusCode===409)assert.equal(r.json().error,'orders_pending');}),
           processOrder(pool, id),
         ]);
         await reconcile();
@@ -408,7 +411,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
     await t.test('event pagination recovers all history beyond 100 events', async () => {
       const seen = []; let after = '0';
       for (;;) {
-        const page = (await request('GET', route(`/events?after=${after}`))).events;
+        const page = (await request('GET', route(`/events?after=${after}`),'captain')).events;
         if (!page.length) break;
         seen.push(...page.map(x => x.sequence)); after = page.at(-1).sequence;
       }
@@ -445,14 +448,14 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       await request('POST', route('/joins'), 'crew', { amountUsdc: '1' }, randomUUID(), 409);
       await request('POST', route('/orders'), 'captain', { side: 'BUY', instrumentId: 'SOL', notionalUsdc: '1' }, randomUUID(), 409);
       assert.equal(await processOrder(pool, id), true);
-      assert.equal((await request('GET', route(`/orders/${id}`))).order.reject_reason, 'fund_not_tradable');
+      assert.equal((await request('GET', route(`/orders/${id}`),'captain')).order.reject_reason, 'fund_not_tradable');
     });
     await t.test('SSE replays after cursor and Last-Event-ID on a real connection', async () => {
       const address = await app.listen({ host: '127.0.0.1', port: 0 });
       for (const byHeader of [false, true]) {
         const controller = new AbortController();
         const response = await fetch(address + route('/events/stream') + (byHeader ? '' : '?after=1'), {
-          headers: byHeader ? { 'Last-Event-ID': '1' } : {}, signal: controller.signal,
+          headers: {...headers('captain'),...(byHeader ? { 'Last-Event-ID': '1' } : {})}, signal: controller.signal,
         });
         assert.equal(response.status, 200);
         const reader = response.body.getReader(); let text = '';
@@ -531,7 +534,7 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       ]);
       assert.equal(results[0], true);
       await reconcile();
-      settlementPendingOrder = await order('BUY', '1');
+      settlementPendingOrder = await order('SELL', '1');
       await ageOrder(settlementPendingOrder);
     });
     await t.test('API performance periods and fee totals match persisted valuations and assessments', async () => {
@@ -608,8 +611,9 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       assert.equal(results.filter(Boolean).length, 1);
       assert.equal((await pool.query("SELECT id FROM fund_events WHERE fund_id=$1 AND type='trial_completed'", [fundId])).rowCount, 1);
       assert.equal((await pool.query('SELECT * FROM positions WHERE fund_id=$1 AND quantity<>0', [fundId])).rowCount, 0);
-      assert.equal(await processOrder(pool, settlementPendingOrder), true);
-      assert.equal((await request('GET', route(`/orders/${settlementPendingOrder}`))).order.reject_reason, 'fund_not_tradable');
+      assert.equal(await processOrder(pool, settlementPendingOrder), false);
+      assert.equal((await request('GET',route(`/orders/${settlementPendingOrder}`),'captain')).order.status,'CANCELLED');
+      assert.equal((await request('GET', route(`/orders/${settlementPendingOrder}`),'captain')).order.reject_reason, 'fund_not_tradable');
       await reconcile();
     });
     await t.test('final records preserve returns and personal realized P&L', async () => {

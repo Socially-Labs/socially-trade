@@ -29,7 +29,7 @@ test('wallet snapshots, paper vault funding, cancellation and claims remain isol
  const pool=new pg.Pool({connectionString,options:`-c search_path=${schema}`,max:8});let app,reads=0,captain,crew,id;
  const source={read:async()=>{reads++;return {solLamports:'5600000000',usdcRaw:'40000000',slot:10};}};
  const options={token:{chain:{mint:process.env.USDG_MINT},allowUnverifiedWallet:false},paperSnapshotSource:source};
- async function req(method,url,subject,payload,key,status=200){const r=await app.inject({method,url,payload,headers:{...(subject?{authorization:`Bearer ${tokenFor(subject)}`} :{}),...(key?{'idempotency-key':key}:{})}});assert.equal(r.statusCode,status,`${method} ${url}: ${r.body}`);return r.json();}
+ async function req(method,url,subject,payload,key,status=200){const r=await app.inject({method,url,payload,headers:{...(subject?{authorization:`Bearer ${tokenFor(subject)}`} :{}),...((key||(url.endsWith('/initialize')&&status!==400))?{'idempotency-key':key??`paper-init:${payload.wallet}`}:{})}});assert.equal(r.statusCode,status,`${method} ${url}: ${r.body}`);return r.json();}
  async function seedPrices(age=0){for(const [index,price]of marks(age).entries()){const payload={price};await pool.query('INSERT INTO market_events(sequence,id,instrument_id,payload) VALUES($1,$2,$3,$4) ON CONFLICT(sequence) DO UPDATE SET payload=EXCLUDED.payload',[index+1,randomUUID(),price.instrumentId,payload]);await pool.query('INSERT INTO market_latest(instrument_id,sequence,payload) VALUES($1,$2,$3) ON CONFLICT(instrument_id) DO UPDATE SET payload=EXCLUDED.payload',[price.instrumentId,index+1,payload]);}}
  async function cash(user){return (await pool.query('SELECT vault_paper_cash::text AS virtual,paper_cash::text AS redeemable FROM users WHERE id=$1',[user.id])).rows[0];}
  try{
@@ -38,6 +38,10 @@ test('wallet snapshots, paper vault funding, cancellation and claims remain isol
   captain=await req('GET','/v0/me','captain');crew=await req('GET','/v0/me','crew');await req('POST','/v0/me/onboarding','captain',{username:'paper_captain',role:'captain'});
   await t.test('authentication, ownership, server-only amounts and stale marks',async()=>{
    await req('GET','/v1/me/paper-portfolio',undefined,undefined,undefined,401);
+   await req('POST','/v1/me/paper-portfolio/initialize','captain',{wallet:wallets.captain},undefined,400);
+   process.env.PAPER_WALLET_SNAPSHOT_ENABLED='false';
+   await req('POST','/v1/me/paper-portfolio/initialize','captain',{wallet:wallets.captain},randomUUID(),503);
+   process.env.PAPER_WALLET_SNAPSHOT_ENABLED='true';
    await req('POST','/v1/me/paper-portfolio/initialize','captain',{wallet:wallets.crew},undefined,403);
    await req('POST','/v1/me/paper-portfolio/initialize','captain',{wallet:wallets.captain,amount:'1000000'},undefined,400);
    await seedPrices(91000);await req('POST','/v1/me/paper-portfolio/initialize','stale',{wallet:wallets.stale},undefined,503);assert.equal((await pool.query('SELECT 1 FROM paper_wallet_snapshots')).rowCount,0);await seedPrices();

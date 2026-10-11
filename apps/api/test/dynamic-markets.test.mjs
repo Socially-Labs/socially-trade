@@ -77,6 +77,8 @@ test('dynamic mint registration, versioned execution, recovery, charts and priva
     await t.test('tracking warms, selected context resolves and buy persists accepted policy evidence',async()=>{
       const tracking=await call('POST',`/v1/markets/${mint}/tracking`,'captain');assert.equal(tracking.state,'WARMING');
       await observe();assert.equal((await call('POST',`/v1/markets/${mint}/tracking`,'captain')).state,'READY');
+      const snapshot=await call('GET','/v0/market/prices');assert.ok(snapshot.prices.some(p=>p.instrumentId===instrument.id));
+      if(snapshot.transport==='database'){assert.equal(snapshot.cursor,null);assert.equal(snapshot.firstCursor,null);}
       assert.equal((await ctx()).limits.find(l=>l.instrumentId===instrument.id).canBuy,true);
       const intent={side:'BUY',instrumentId:instrument.id,notionalUsdc:'10'},key=randomUUID();
       const preview=await call('POST',`/v0/funds/${fund}/orders/preview`,'captain',intent);assert.equal(preview.policy.allowed,true);
@@ -120,7 +122,7 @@ test('dynamic mint registration, versioned execution, recovery, charts and priva
       console.log('100 warm authorized context readers ms',Math.round(performance.now()-started));
       await pool.query("UPDATE instruments SET eligibility='DISABLED' WHERE id=$1",[instrument.id]);assert.equal((await ctx()).limits.find(l=>l.instrumentId===instrument.id).canBuy,false);
       await pool.query("UPDATE instruments SET eligibility='ELIGIBLE' WHERE id=$1",[instrument.id]);assert.equal((await ctx()).limits.find(l=>l.instrumentId===instrument.id).canBuy,true);
-      const progress=(await call('GET',`/v0/funds/${fund}/orders/${buy}`)).order.execution;assert.equal(progress.stage,'FILLED');assert.ok(progress.attempts>0);
+      const progress=(await call('GET',`/v0/funds/${fund}/orders/${buy}`,'captain')).order.execution;assert.equal(progress.stage,'FILLED');assert.ok(progress.attempts>0);
     });
     await t.test('paused new buys still allow partial and exact sell-all with balanced immutable fills',async()=>{
       process.env.PAPER_DYNAMIC_MARKETS_ENABLED='false';await pool.query('UPDATE instruments SET active=false WHERE id=$1',[instrument.id]);

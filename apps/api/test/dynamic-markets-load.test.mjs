@@ -9,14 +9,14 @@ test('bounded authenticated workload matrix with independent user and mint count
  const url=process.env.TEST_DATABASE_URL,admin=new pg.Pool({connectionString:url}),schema=`dynamic_load_${randomUUID().replaceAll('-','')}`;
  const dir=await mkdtemp(join(tmpdir(),'dynamic-load-')),socket=join(dir,'redis.sock'),server=spawn('redis-server',['--port','0','--unixsocket',socket,'--save','','--appendonly','no','--dir',dir],{stdio:['ignore','pipe','pipe']});
  let output='';server.stdout.on('data',c=>output+=c);server.stderr.on('data',c=>output+=c);
- let pool,app,redis;const originalFetch=globalThis.fetch,old={...process.env};let queries=0,dbMs=0;
+ let pool,app,redis;const originalFetch=globalThis.fetch,old={...process.env};let queries=0,scanQueries=0,dbMs=0;
  const results=[];let upstreamCalls=0;
  try{
   for(let i=0;i<100&&!output.toLowerCase().includes('ready to accept connections');i++)await delay(20);assert.match(output,/Ready to accept connections/i);
   redis=new Redis(socket);await new Promise(r=>redis.once('ready',r));
   await admin.query(`CREATE SCHEMA ${schema}`);pool=new pg.Pool({connectionString:url,options:`-c search_path=${schema}`,max:10});
   const migrations=new URL('../../../packages/db/migrations/',import.meta.url);for(const f of(await readdir(migrations)).filter(f=>f.endsWith('.sql')).sort())await pool.query(await readFile(new URL(f,migrations),'utf8'));
-  process.env.PAPER_DYNAMIC_MARKETS_ENABLED='true';process.env.PAPER_PRIVATE_UPDATES_ENABLED='true';process.env.REDIS_URL=socket;delete process.env.USDG_MINT;process.env.NODE_ENV='development';
+  process.env.PAPER_MARKET_WS_MAX_PER_IP='200';process.env.PAPER_DYNAMIC_MARKETS_ENABLED='true';process.env.PAPER_PRIVATE_UPDATES_ENABLED='true';process.env.REDIS_URL=socket;delete process.env.USDG_MINT;process.env.NODE_ENV='development';
   globalThis.fetch=async()=>{upstreamCalls++;throw new Error('Unexpected upstream request in cached workload');};
   const tokenFor=configurePrivyFixture();app=createApp(pool);app.log.level='silent';
   // Explicit fixtures: never contact a provider, seed executable fills, or claim live capacity.
@@ -36,7 +36,7 @@ test('bounded authenticated workload matrix with independent user and mint count
   await app.inject({method:'GET',url:`/v0/funds/${users[0].fund}/trading-context`,headers:{authorization:`Bearer ${users[0].token}`}});
   await delay(50);
   // Count pool and transaction queries, after pool acquisition.
-  const wrap=client=>{const original=client.query.bind(client);client.query=(...args)=>{const start=performance.now();queries++;const done=()=>dbMs+=performance.now()-start;const callback=args.at(-1);if(typeof callback==='function')args[args.length-1]=(...values)=>{done();return callback(...values);};const promise=original(...args);if(promise?.then)return promise.finally(done);return promise;};};
+  const wrap=client=>{const original=client.query.bind(client);client.query=(...args)=>{const start=performance.now();queries++;if(typeof args[0]==='string'&&!/^(BEGIN|COMMIT|ROLLBACK|SET )/.test(args[0]))scanQueries++;const done=()=>dbMs+=performance.now()-start;const callback=args.at(-1);if(typeof callback==='function')args[args.length-1]=(...values)=>{done();return callback(...values);};const promise=original(...args);if(promise?.then)return promise.finally(done);return promise;};};
   pool.on('connect',wrap);
   // Existing idle clients need instrumentation once too.
   for(const client of pool._clients)wrap(client);
@@ -66,13 +66,13 @@ test('bounded authenticated workload matrix with independent user and mint count
     ws.send(JSON.stringify({type:'authenticate',accessToken:user.token}));await wait(m=>m.type==='authenticated');
     ws.send(JSON.stringify({type:'subscribe',channel:'vault.context',vaultId:user.fund}));await wait(m=>m.type==='resync_required');ws.send(JSON.stringify({type:'subscribe',channel:'captain.dashboard'}));await wait(m=>m.type==='resync_required'&&m.channel==='captain.dashboard');return {wait,messages};
    }));
-   const q0=queries;await delay(2000);const idleQueries=queries-q0;
+   const q0=queries,scansBefore=scanQueries;await delay(2000);const idleQueries=queries-q0,idleScans=scanQueries-scansBefore;
    const start=performance.now();await pool.query('UPDATE funds SET event_sequence=event_sequence+1 WHERE id=ANY($1::uuid[])',[users.map(u=>u.fund)]);
    await pool.query("INSERT INTO fund_events(id,fund_id,sequence,type,payload) SELECT gen_random_uuid(),id,event_sequence,'load_invalidation','{}'::jsonb FROM funds WHERE id=ANY($1::uuid[])",[users.map(u=>u.fund)]);
    const captainUpdates=await Promise.all(connected.map(c=>c.wait(m=>m.type==='captain.updated'))),captainLags=captainUpdates.map(m=>m.at-start).sort((a,b)=>a-b);
    const updates=await Promise.all(connected.map(c=>c.wait(m=>m.type==='vault.updated'))),lags=updates.map(m=>m.at-start).sort((a,b)=>a-b);
    socketEvidence={users:100,captainUpdateDeliveryP95Ms:Number(captainLags[94].toFixed(2)),idleObservationMs:2000,idleGatewayQueries:idleQueries,updateDeliveryP95Ms:Number(lags[94].toFixed(2)),measurement:'In-process WebSocket gateway, synthetic committed revision invalidations; latency includes SQL update, excludes app rendering and device network. Client 60-second reconciliation implies 300 private resource reads/minute for 100 idle Captains versus 3600 previously; that client estimate is not a sustained device measurement.'};
-   assert.ok(idleQueries<20,'Gateway must batch private scans across users');assert.equal(upstreamCalls,0);
+   assert.ok(idleScans<20,'Gateway must batch private scans across users');assert.equal(upstreamCalls,0);
   }finally{for(const ws of sockets)ws.terminate();}
   const report={at:new Date().toISOString(),environment:'Single API app.inject process; local Docker PostgreSQL 17, temporary Redis; synthetic metadata and auth; no live provider calls; burst requests, not sustained capacity. Cold chart concurrency is bounded and may return 503. Context cache Redis connection is primed once before the measurement. Both vault and Captain invalidation channels are subscribed in the gateway measurement. Query durations measure execution after pool acquisition; peakPoolWaiting records queue depth.',socketEvidence,priceCapacityModel:[10,50,100,500].map(mints=>({mintsIncludingQuote:mints+1,callsPerMinuteAtFiveSeconds:Math.ceil((mints+1)/50)*12})),results};
   await writeFile(new URL('../../../docs/paper-trading-load-evidence.json',import.meta.url),JSON.stringify(report,null,2)+'\n');

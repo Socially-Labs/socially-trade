@@ -47,7 +47,7 @@ test('market catalog, history, watchlist and multi-asset paper execution', { tim
   const fill = async id => {
     await pool.query("UPDATE orders SET submitted_at=now()-interval '5 seconds' WHERE id=$1", [id]);
     await ingest(); assert.equal(await processOrder(pool, id), true);
-    return (await route('GET', `/v0/funds/${fundId}/orders/${id}`)).order;
+    return (await route('GET', `/v0/funds/${fundId}/orders/${id}`,'captain')).order;
   };
   try {
     for (const file of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) await pool.query(await readFile(new URL(file, dir), 'utf8'));
@@ -62,6 +62,8 @@ test('market catalog, history, watchlist and multi-asset paper execution', { tim
       assert.equal(rows.find(r => r.instrument_id === 'SOL').payload.price.status, 'CURRENT');
       assert.ok(new Amount(rows.find(r => r.instrument_id === 'SOL').payload.price.priceUsdc).eq(new Amount(100).div('1.01').toDecimalPlaces(18)));
       await ingest(null, 'BONK'); assert.equal((await pool.query("SELECT payload FROM market_latest WHERE instrument_id='BONK'")).rows[0].payload.price.status, 'UNAVAILABLE');
+      assert.equal((await pool.query("SELECT eligibility FROM instruments WHERE id='BONK'")).rows[0].eligibility,'DISABLED');
+      await pool.query("UPDATE instruments SET active=true,eligibility='ELIGIBLE',eligibility_reason=NULL WHERE id='BONK'");
       await ingest('USDC'); rows = (await pool.query('SELECT payload FROM market_latest')).rows; assert.ok(rows.every(row => row.payload.price.status === 'UNAVAILABLE'));
       await ingest();
     });
@@ -72,7 +74,8 @@ test('market catalog, history, watchlist and multi-asset paper execution', { tim
       await recordMarketPrice(pool, { ...previous, sourceAt: new Date(Date.parse(previous.sourceAt)-10000).toISOString(), sourceBlockId: '1' }, '1.01');
       await recordMarketPrice(pool, unavailable('upstream_unavailable', supportedTokens.find(t => t.id === 'JUP')));
       const last = (await pool.query("SELECT payload FROM market_latest WHERE instrument_id='JUP'")).rows[0].payload.price;
-      assert.equal(last.receivedAt, previous.receivedAt); assert.equal(last.priceUsd, previous.priceUsd); assert.equal(last.status, 'UNAVAILABLE');
+      assert.ok(Date.parse(last.receivedAt)>=Date.parse(previous.receivedAt));
+      assert.equal((await pool.query('SELECT received_at FROM price_observations WHERE id=$1',[previous.observationId])).rows[0].received_at.toISOString(),previous.receivedAt); assert.equal(last.priceUsd, previous.priceUsd); assert.equal(last.status, 'UNAVAILABLE');
       assert.equal((await pool.query("SELECT count(*)::int AS n FROM market_samples WHERE instrument_id='JUP'")).rows[0].n, count);
       await ingest();
     });
@@ -147,7 +150,7 @@ test('market catalog, history, watchlist and multi-asset paper execution', { tim
       await pool.query("UPDATE price_observations SET source_at=now()-interval '3 minutes' WHERE instrument_id='SOL'");
       assert.equal(await processOrder(pool,placed.orderId), false);
       await pool.query("UPDATE orders SET submitted_at=now()-interval '3 minutes' WHERE id=$1",[placed.orderId]);
-      assert.equal(await processOrder(pool,placed.orderId), true); assert.equal((await route('GET', `/v0/funds/${fundId}/orders/${placed.orderId}`)).order.reject_reason, 'valuation_unavailable');
+      assert.equal(await processOrder(pool,placed.orderId), true); assert.equal((await route('GET', `/v0/funds/${fundId}/orders/${placed.orderId}`,'captain')).order.reject_reason, 'order_expired');
     });
     await t.test('history downsamples to bounded real points, detects gaps and computes returns only with a valid baseline', async () => {
       const token = supportedTokens[2], now = new Date(), start = new Date(now.getTime()-3600000);

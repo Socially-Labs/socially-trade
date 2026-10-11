@@ -102,7 +102,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       const [first] = results.map(r => r.json());
       assert.equal(first.wallet, wallets.alice);
       assert.equal(first.token.mint, chain.mint);
-      assert.equal(first.user.paperCash.value, '0.000000000000000000', 'no paper grant when the token layer is on');
+      assert.equal(first.user.paperCash.value, '0.000000', 'no paper grant when the token layer is on');
       const retry = (await bootstrap('alice')).json();
       assert.equal(retry.signupGrant.status, 'CONFIRMED');
       assert.equal(chain.landedFor(wallets.alice, 'mint').length, 1, 'one mint landed');
@@ -176,7 +176,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       const results = await Promise.all(Array.from({ length: 5 }, () =>
         call('POST', '/v0/me/deposits', 'alice', { signature, amountUsdc: '500' })));
       for (const r of results) { assert.equal(r.statusCode, 200, r.body); assert.equal(r.json().deposit.status, 'CONFIRMED'); }
-      assert.equal(await paperCash('alice'), '500.000000000000000000');
+      assert.equal(await paperCash('alice'), '500.000000');
       assert.equal((await pool.query("SELECT 1 FROM fund_events WHERE type = 'devnet_deposit_confirmed'")).rowCount, 1);
       const again = await call('POST', '/v0/me/deposits', 'alice', { signature, amountUsdc: '500.000000' });
       assert.equal(again.json().deposit.status, 'CONFIRMED');
@@ -184,7 +184,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(conflict.statusCode, 409); assert.equal(conflict.json().error, 'deposit_conflict');
       const status = await call('GET', `/v0/me/deposits/${signature}`, 'alice');
       assert.equal(status.statusCode, 200); assert.equal(status.json().deposit.amount, '500.000000');
-      assert.equal(await paperCash('alice'), '500.000000000000000000');
+      assert.equal(await paperCash('alice'), '500.000000');
     });
 
     await t.test('wrong mint, amount, destination, owner and failed transactions never credit', async () => {
@@ -201,7 +201,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
         assert.equal(r.statusCode, 200, r.body);
         assert.equal(r.json().deposit.status, 'FAILED'); assert.equal(r.json().deposit.failure, failure);
       }
-      assert.equal(await paperCash('alice'), '500.000000000000000000');
+      assert.equal(await paperCash('alice'), '500.000000');
     });
 
     await t.test('a stranger who posts a signature first cannot steal or block it', async () => {
@@ -210,8 +210,8 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(stolen.json().deposit.failure, 'wrong_owner');
       const owner = await call('POST', '/v0/me/deposits', 'bob', { signature, amountUsdc: '20' });
       assert.equal(owner.json().deposit.status, 'CONFIRMED');
-      assert.equal(await paperCash('bob'), '20.000000000000000000');
-      assert.equal(await paperCash('alice'), '500.000000000000000000');
+      assert.equal(await paperCash('bob'), '20.000000');
+      assert.equal(await paperCash('alice'), '500.000000');
       assert.equal((await call('GET', `/v0/me/deposits/${fakeSignature()}`, 'bob')).statusCode, 404);
     });
 
@@ -227,7 +227,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       const expired = await call('GET', `/v0/me/deposits/${signature}`, 'alice');
       assert.equal(expired.statusCode, 200); assert.equal(expired.json().deposit.status, 'EXPIRED');
       assert.equal(expired.json().deposit.failure, 'not_found_before_expiry');
-      assert.equal(await paperCash('alice'), '500.000000000000000000');
+      assert.equal(await paperCash('alice'), '500.000000');
       // The transfer is found finalized after expiry: 5 parallel polls credit it exactly once.
       chain.txs.set(signature, chain.txs.get(chain.transfer({ owner: wallets.alice, raw: 30n * ONE })));
       const found = await Promise.all(Array.from({ length: 5 }, () => call('GET', `/v0/me/deposits/${signature}`, 'alice')));
@@ -235,11 +235,11 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
         assert.equal(r.statusCode, 200, r.body);
         assert.equal(r.json().deposit.status, 'CONFIRMED'); assert.equal(r.json().deposit.failure, null);
       }
-      assert.equal(await paperCash('alice'), '530.000000000000000000');
+      assert.equal(await paperCash('alice'), '530.000000');
       const credits = await pool.query("SELECT 1 FROM fund_events WHERE type = 'devnet_deposit_confirmed' AND payload->>'signature' = $1", [signature]);
       assert.equal(credits.rowCount, 1);
       assert.equal((await call('GET', `/v0/me/deposits/${signature}`, 'alice')).json().deposit.status, 'CONFIRMED');
-      assert.equal(await paperCash('alice'), '530.000000000000000000');
+      assert.equal(await paperCash('alice'), '530.000000');
     });
 
     await t.test('a transfer that landed but is not finalized stays pending past expiry, then credits', async () => {
@@ -253,7 +253,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(lagging.statusCode, 202); assert.equal(lagging.json().deposit.status, 'PENDING');
       chain.txs.set(signature, chain.txs.get(chain.transfer({ owner: wallets.bob, raw: 15n * ONE })));
       assert.equal((await call('GET', `/v0/me/deposits/${signature}`, 'bob')).json().deposit.status, 'CONFIRMED');
-      assert.equal(await paperCash('bob'), '35.000000000000000000');
+      assert.equal(await paperCash('bob'), '35.000000');
     });
 
     let fundId;
@@ -269,14 +269,14 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(r.statusCode, 200, r.body);
       assert.equal(r.json().deposit.status, 'CONFIRMED'); assert.equal(r.json().deposit.join.error, null);
       assert.ok(r.json().deposit.join.eventId);
-      assert.equal(await paperCash('alice'), '530.000000000000000000');
+      assert.equal(await paperCash('alice'), '530.000000');
       const positions = (await call('GET', '/v0/me/paper-positions', 'alice')).json().positions;
       assert.equal(positions[0].fundId, fundId); assert.equal(Number(positions[0].shares), 100);
       // The Captain cannot join its own fund. The payment still lands as paper cash.
       const own = chain.transfer({ owner: wallets.cap, raw: 5n * ONE });
       const captain = (await call('POST', '/v0/me/deposits', 'cap', { signature: own, amountUsdc: '5', fundId })).json().deposit;
       assert.equal(captain.status, 'CONFIRMED'); assert.equal(captain.join.error, 'captain_seed_fixed');
-      assert.equal(await paperCash('cap'), '5.000000000000000000');
+      assert.equal(await paperCash('cap'), '5.000000');
     });
 
     await t.test('withdraw sends once per idempotency key, even under parallel retries', async () => {
@@ -291,7 +291,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(status.status, 'CONFIRMED'); assert.equal(status.amount, '200.000000');
       const sent = chain.sends.slice(before);
       assert.equal(new Set(sent.map(s => s.signature)).size, 1, 'one signature was ever broadcast');
-      assert.equal(await paperCash('alice'), '330.000000000000000000');
+      assert.equal(await paperCash('alice'), '330.000000');
       const conflict = await call('POST', '/v0/me/withdrawals', 'alice', { amountUsdc: '1' }, 'withdraw-key-0001');
       assert.equal(conflict.statusCode, 409);
       assert.equal((await call('POST', '/v0/me/withdrawals', 'alice', { amountUsdc: '999999' }, 'withdraw-key-0002')).json().error, 'insufficient_virtual_cash');
@@ -330,13 +330,13 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(r.statusCode, 201, r.body);
       assert.equal(r.json().exit.virtualUsdc, '40.000000');
       assert.equal(r.json().withdrawal.amount, '40.000000'); assert.equal(r.json().withdrawal.status, 'CONFIRMED');
-      assert.equal(await paperCash('alice'), '299.000000000000000000');
+      assert.equal(await paperCash('alice'), '299.000000');
     });
 
     await t.test('withdrawals have a minimum of 1 token', async () => {
       const r = await call('POST', '/v0/me/withdrawals', 'alice', { amountUsdc: '0.999999' }, 'withdraw-key-min1');
       assert.equal(r.statusCode, 400); assert.equal(r.json().error, 'amount_too_small');
-      assert.equal(await paperCash('alice'), '299.000000000000000000');
+      assert.equal(await paperCash('alice'), '299.000000');
     });
 
     const creations = async wallet =>
@@ -359,7 +359,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       const refused = await call('POST', '/v0/me/withdrawals', 'gina', { amountUsdc: '1' }, 'gina-close-4');
       assert.equal(refused.statusCode, 409); assert.equal(refused.json().error, 'token_account_required');
       assert.match(refused.json().message, /Create the associated token account/);
-      assert.equal(await paperCash('gina'), '98.000000000000000000');
+      assert.equal(await paperCash('gina'), '98.000000');
       // With its own token account the user withdraws as before, and the transaction creates nothing.
       chain.atas.add(wallet);
       const own = await call('POST', '/v0/me/withdrawals', 'gina', { amountUsdc: '1' }, 'gina-own-1');
@@ -378,7 +378,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(done.status, 'CONFIRMED'); assert.equal(done.attempts, 2);
       assert.equal(chain.sends.at(-1).createAta, false);
       assert.equal(await creations(wallet), 3);
-      assert.equal(await paperCash('gina'), '96.000000000000000000');
+      assert.equal(await paperCash('gina'), '96.000000');
     });
 
     await t.test('withdrawals and deposit prepares are rate limited per user', async () => {
@@ -392,7 +392,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       }
       const limited = await call('POST', '/v0/me/withdrawals', 'hank', { amountUsdc: '1' }, 'hank-withdraw-10');
       assert.equal(limited.statusCode, 429); assert.equal(limited.json().error, 'rate_limited');
-      assert.equal(await paperCash('hank'), '40.000000000000000000');
+      assert.equal(await paperCash('hank'), '40.000000');
       // A retry of an accepted request still returns its first result, and other users are not limited.
       const replay = await call('POST', '/v0/me/withdrawals', 'hank', { amountUsdc: '1' }, 'hank-withdraw-0');
       assert.equal(replay.statusCode, 201, replay.body);
@@ -415,7 +415,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       const wallet = await newAddress();
       delete process.env.USDG_MINT; // The account is created and trades while the layer is off.
       try {
-        assert.equal(await paperCash('legacy'), '10000.000000000000000000');
+        assert.equal(await paperCash('legacy'), '10000.000000');
         const join = await call('POST', `/v0/funds/${fundId}/joins`, 'legacy', { amountUsdc: '250' }, 'legacy-join-0001');
         assert.equal(join.statusCode, 201, join.body);
       } finally { process.env.USDG_MINT = chain.mint; }
@@ -425,13 +425,13 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       const grant = first.json().signupGrant;
       assert.equal(grant.amount, '9750.000000', 'the grant equals the current paper cash, not SIGNUP_GRANT');
       assert.equal(grant.status, 'CONFIRMED');
-      assert.equal(await paperCash('legacy'), '0.000000000000000000');
+      assert.equal(await paperCash('legacy'), '0.000000');
       assert.equal(await chain.balance(wallet), 9_750n * ONE);
       const again = await call('POST', '/v0/me/withdrawals', 'legacy', { amountUsdc: '1' }, 'legacy-withdraw-1');
       assert.equal(again.statusCode, 422); assert.equal(again.json().error, 'insufficient_virtual_cash');
       // The layer goes off and on again: no paper grant, no second mint.
       delete process.env.USDG_MINT;
-      try { assert.equal(await paperCash('legacy'), '0.000000000000000000'); }
+      try { assert.equal(await paperCash('legacy'), '0.000000'); }
       finally { process.env.USDG_MINT = chain.mint; }
       const retry = (await bootstrap('legacy', wallet)).json();
       assert.equal(retry.signupGrant.id, grant.id);
@@ -478,7 +478,7 @@ test('devnet token layer with a fake chain', { timeout: 120_000 }, async t => {
       assert.equal(body.wallet, wallets.alice); assert.equal(body.token.label, 'Test USDC (devnet)');
       // Fake wallet balance counts only backend sends: grant 10000 + withdrawals 200 + 30 + 1 + 40.
       assert.equal(body.onchain.amount, '10271.000000');
-      assert.equal(body.paper.cash.value, '299.000000000000000000');
+      assert.equal(body.paper.cash.value, '299.000000');
       assert.equal(body.paper.positions[0].shares.startsWith('60'), true);
       const unbalanced = await pool.query(`SELECT e.event_id FROM ledger_entries e JOIN ledger_accounts a ON a.id = e.account_id
         GROUP BY e.event_id, a.asset_id HAVING SUM(e.amount) <> 0`);

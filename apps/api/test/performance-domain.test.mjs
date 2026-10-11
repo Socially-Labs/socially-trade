@@ -73,7 +73,7 @@ function responseFixture({ status = 'ACTIVE', hasPositions = false, snapshotStat
     starts_at: old, ends_at: new Date(now.getTime() + 86_400_000), total_shares: status === 'COMPLETED' ? '0' : '1000',
     final_nav_usdc: finalNav, final_share_price_usdc: finalPrice, has_positions: hasPositions };
   const query = async (sql, args) => {
-    if (/^(BEGIN|COMMIT|ROLLBACK|SET TRANSACTION)/.test(sql)) return { rows: [] };
+    if (/^(BEGIN|COMMIT|ROLLBACK|SET TRANSACTION|SET LOCAL)/.test(sql)) return { rows: [] };
     if (sql.includes('FROM funds f JOIN trials')) return { rows: [fund] };
     if (sql.includes('SELECT 1 FROM funds')) return { rows: [{}], rowCount: 1 };
     if (sql.includes('FROM nav_snapshots')) {

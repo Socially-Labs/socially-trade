@@ -17,7 +17,7 @@ test('paper history pagination and privacy', async t => {
   const pool=new pg.Pool({connectionString,options:`-c search_path=${schema}`});
   const app=createApp(pool); app.log.level='silent';
   const headers=subject=>({authorization:`Bearer ${tokenFor(subject)}`});
-  async function get(url,subject,status=200){const r=await app.inject({url,headers:subject?headers(subject):{}});assert.equal(r.statusCode,status,r.body);return r.json();}
+  async function get(url,subject='captain',status=200){const r=await app.inject({url,headers:subject?headers(subject):{}});assert.equal(r.statusCode,status,r.body);return r.json();}
   async function all(url,key,subject){const rows=[];let cursor;do {const r=await get(`${url}?limit=17${cursor?'&after='+cursor:''}`,subject);rows.push(...r[key]);cursor=r.nextCursor;}while(cursor);return rows;}
   try {
     const dir=new URL('../../../packages/db/migrations/',import.meta.url);
@@ -82,9 +82,9 @@ test('paper history pagination and privacy', async t => {
       assert.equal(rows.length,105);assert.equal(new Set(rows.map(x=>x.id)).size,105);
     });
     await t.test('invalid and foreign cursors and limits reject',async()=>{
-      for(const suffix of ['?limit=0','?limit=101','?after=nope','?extra=1']) await get(`/v0/funds/${f1}/orders${suffix}`,null,400);
-      await get(`/v0/funds/${f1}/orders?after=${foreignOrder}`,null,400);
-      await get(`/v0/captains/${captain}/orders?after=${foreignOrder}`,null,400);
+      for(const suffix of ['?limit=0','?limit=101','?after=nope','?extra=1']) await get(`/v0/funds/${f1}/orders${suffix}`,'captain',400);
+      await get(`/v0/funds/${f1}/orders?after=${foreignOrder}`,'captain',400);
+      await get(`/v0/captains/${captain}/orders?after=${foreignOrder}`,'captain',400);
       await get(`/v0/me/crew-transactions?after=${joinIds[0]}`,'other',400);
       await get(`/v0/captains/${randomUUID()}/trade-statistics`,null,404);
     });

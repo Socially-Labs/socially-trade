@@ -9,13 +9,14 @@ test('API closes without waiting for a suspended WebSocket client handshake', as
   const previous = process.env.USDG_MINT;
   delete process.env.USDG_MINT;
   const app = createApp(null);
+  app.register(async scope=>{scope.get('/shutdown-test',{websocket:true},()=>{});});
   let socket;
   try {
     await app.listen({ port: 0, host: '127.0.0.1' });
     const { port } = app.server.address();
     socket = net.connect(port, '127.0.0.1');
     await once(socket, 'connect');
-    socket.write('GET /v1/vaults/ws HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n');
+    socket.write('GET /shutdown-test HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n');
     const [handshake] = await once(socket, 'data');
     assert.match(handshake.toString(), /101 Switching Protocols/);
     // Raw TCP never acknowledges WebSocket close, like a suspended phone.

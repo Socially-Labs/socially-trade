@@ -152,7 +152,7 @@ test('paper vault lifecycle and concurrency', { timeout:120_000 }, async t => {
       assert.ok(!events.includes(captain.id) && !events.includes(crew.id) && !events.includes('payout'));
     });
     await t.test('WS fanout sends sanitized invalidations and reconnect requires REST resync',async()=>{
-      const clients=[await app.injectWS('/v1/vaults/ws'),await app.injectWS('/v1/vaults/ws')];
+      const clients=[await app.injectWS('/v1/vaults/ws',{headers:{authorization:`Bearer ${tokenFor('vault-captain')}`}}),await app.injectWS('/v1/vaults/ws',{headers:{authorization:`Bearer ${tokenFor('vault-captain')}`}})];
       const messages=clients.map(()=>[]);
       const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
       const waitFor=async(index,predicate)=>{ for(let n=0;n<100;n++){const result=messages[index].find(predicate);if(result)return result;await delay(25);}assert.fail(JSON.stringify(messages[index])); };
@@ -189,7 +189,7 @@ test('paper vault lifecycle and concurrency', { timeout:120_000 }, async t => {
       await advanceVaultRound(pool,id); await advanceVaultRound(pool,id);
       await request('POST',route('/claims'),'vault-captain',{},randomUUID());
     });
-    await t.test('real paper order, last-recorded-price settlement, restart resume and profit conservation',async()=>{
+    await t.test('real paper order, fresh-price settlement, restart resume and profit conservation',async()=>{
       process.env.DEV_PRICE_SEED_ENABLED='true';
       id=(await request('POST','/v1/vaults','vault-captain',body,randomUUID(),201)).vaultId;
       await join('vault-crew','900'); await travel(1); await advanceVaultRound(pool,id);
@@ -214,10 +214,13 @@ test('paper vault lifecycle and concurrency', { timeout:120_000 }, async t => {
       await seed('200');
       await travel(200); await advanceVaultRound(pool,id);
       await pool.query("UPDATE price_observations SET source_at=source_at-interval '5 minutes'");
-      assert.equal(await advanceVaultRound(pool,id),true); // unwind using the last recorded price
+      assert.equal(await advanceVaultRound(pool,id),false); // stale mark blocks settlement
+      assert.equal((await pool.query('SELECT blocked_reason FROM vault_rounds WHERE fund_id=$1',[id])).rows[0].blocked_reason,'price_unavailable');
+      await seed('200');
+      assert.equal(await advanceVaultRound(pool,id),true); // resume with a fresh source
       const audit=(await pool.query("SELECT payload FROM fund_events WHERE fund_id=$1 AND type='vault_asset_unwound' ORDER BY sequence DESC LIMIT 1",[id])).rows[0].payload;
-      assert.equal(audit.pricingPolicy,'LAST_RECORDED_PRICE');
-      assert.ok(audit.priceAgeMs>=300000);
+      assert.equal(audit.pricingPolicy,'FRESH_PRICE');
+      assert.ok(audit.priceAgeMs<15000);
       assert.ok(audit.observationId);
       assert.equal((await request('GET',route(''))).phase,'SETTLING');
       assert.equal(await advanceVaultRound(pool,id),true); // finalize on a separate checkpoint
