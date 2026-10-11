@@ -1,3 +1,4 @@
+import { registerPaperActivity } from './paper-activity.js';
 import { registerPaperTradingHealth } from './paper-trading-health.js';
 import { registerMarketTrackingRoutes } from "./market-tracking.js";
 import { registerTokenIconRoutes } from './token-icons.js';
@@ -141,6 +142,7 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   registerNotificationRoutes(app, db);
   registerPerformanceRoutes(app, db);
   registerHistoryRoutes(app, db);
+  registerPaperActivity(app, db);
 
   app.addHook("onClose", async () => {
     await logs.close();

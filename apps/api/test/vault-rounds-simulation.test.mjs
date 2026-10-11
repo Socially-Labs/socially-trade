@@ -19,6 +19,8 @@ test('paper vault lifecycle and concurrency', { timeout:120_000 }, async t => {
   assert.match(new URL(connectionString).hostname,/^(localhost|127\.0\.0\.1|\[::1\])$/);
   process.env.VAULT_PAPER_ENABLED='true'; process.env.VAULT_TERMS_APPROVAL='locked-v1-retain-residue'; delete process.env.USDG_MINT;
   process.env.NODE_ENV='development';
+  process.env.PAPER_TEST_SKIP_FUNDRAISING='false';
+  process.env.PAPER_WALLET_SNAPSHOT_ENABLED='false';
   const tokenFor=configurePrivyFixture();
   const schema=`vault_test_${randomUUID().replaceAll('-','')}`;
   const admin=new pg.Pool({ connectionString }); await admin.query(`CREATE SCHEMA ${schema}`);
@@ -198,6 +200,17 @@ test('paper vault lifecycle and concurrency', { timeout:120_000 }, async t => {
       await pool.query("UPDATE orders SET submitted_at=now()-interval '10 seconds' WHERE id=$1",[order.orderId]); await seed('100');
       assert.equal(await processOrder(pool,order.orderId),true);
       assert.equal((await request('GET',route(`/orders/${order.orderId}`),'vault-captain')).order.status,'FILLED');
+      const activity=await request('GET','/v1/me/paper-activity?limit=1','vault-captain');
+      assert.equal(activity.items.length,1);
+      const allActivity=await request('GET','/v1/me/paper-activity?limit=100','vault-captain');
+      assert.equal(allActivity.items.find(item=>item.id===order.orderId).kind,'BUY');
+      assert.ok(activity.nextCursor);
+      const older=await request('GET',`/v1/me/paper-activity?limit=1&after=${activity.nextCursor}`,'vault-captain');
+      assert.notEqual(older.items[0].id,activity.items[0].id);
+      await request('GET',`/v1/me/paper-activity?after=${order.orderId}`,'vault-crew',undefined,undefined,400);
+      const crewActivity=await request('GET','/v1/me/paper-activity','vault-crew');
+      assert.ok(crewActivity.items.every(item=>!['BUY','SELL','CREATE'].includes(item.kind)));
+
       await travel(200); await advanceVaultRound(pool,id);
       await pool.query("UPDATE price_observations SET source_at=now()-interval '5 minutes'");
       assert.equal(await advanceVaultRound(pool,id),false);
