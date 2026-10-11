@@ -71,6 +71,9 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
       reply.code(error.statusCode).send({ error: error.code, message: error.message });
       return;
     }
+    if(typeof error==='object'&&error!==null&&'code' in error&&(error.code==='55P03'||error.code==='57014')){
+      reply.header('retry-after','1').code(503).send({error:error.code==='55P03'?'lock_timeout':'query_timeout',message:'The operation is busy. Retry shortly.'});return;
+    }
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       reply.code(409).send({ error: "conflict", message: "Resource already exists" });
       return;
