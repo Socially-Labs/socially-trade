@@ -116,18 +116,12 @@ To process orders with local seeded prices, keep `DEV_PRICE_SEED_ENABLED=true`, 
 
 All v0 financial values are virtual. The current API does not accept orders or hold assets.
 
-### Devnet token layer
+### Wallet funding
 
-With `USDG_MINT` set, money in and out uses one SPL test token on Solana devnet, "USDG (devnet)" (6 decimals, we hold the mint authority). Signup mints the grant to the user's wallet, deposits are user-signed transfers to the treasury that the backend verifies before it credits paper cash or joins a fund, and withdrawals send tokens from the treasury. Trading stays paper. Create the mint and treasury with `node apps/api/scripts/devnet-setup.mjs`. See [the devnet token layer](docs/devnet-token-layer.md) for flows, endpoints, env vars and the app integration.
+Wallet funding uses SOL and Circle devnet USDC directly. Paper balances stay in PostgreSQL and are never minted or redeemed through a custom token treasury. The former USDG integration has been removed.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/v0/me/token-balance` | On-chain USDG (devnet) balance plus paper balances |
-| POST | `/v0/me/deposits/prepare` | Fee-paid transfer transaction for the wallet to sign |
-| POST | `/v0/me/deposits` | Claim a deposit by signature; optional `fundId` joins a fund |
-| GET | `/v0/me/deposits/:signature` | Deposit state (`PENDING`, `CONFIRMED`, `FAILED`, `EXPIRED`) |
-| POST | `/v0/me/withdrawals` | Withdraw paper cash or a fund exit payout; requires `Idempotency-Key` |
-| GET | `/v0/me/withdrawals/:withdrawalId` | Withdrawal state and signature |
+`GET /v0/me/wallet` returns paper cash and Captain allocations. Deposit and Receive show the user’s wallet address for direct SOL or Circle devnet USDC transfers.
+
 ## Knowledge graph
 
 See [Graphify setup and refresh instructions](docs/graphify.md) for the backend,

@@ -1,3 +1,5 @@
+> Archived: the custom USDG token layer, setup script, deposit routes, and treasury redemption were removed. Use direct wallet transfers of SOL and Circle devnet USDC. This document describes historical behavior only.
+
 # Devnet token layer
 
 The product is paper trading. Only money in and out touches Solana devnet, with one SPL
