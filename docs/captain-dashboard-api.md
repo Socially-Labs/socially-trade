@@ -1,5 +1,7 @@
 # Captain dashboard API and storage
 
+The proposed aggregate performance card uses the additive [Captain portfolio API](captain-portfolio-api.md). The routes below retain their existing contracts.
+
 The authenticated Captain home uses round-v2 vault records. It never falls back to the former sample balances or chart. Legacy v0 trial performance and personal wallet holdings remain separate.
 
 ## Storage

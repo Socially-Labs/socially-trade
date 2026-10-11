@@ -6,6 +6,7 @@ import { requireActor, type Actor } from './auth.js';
 import { ApiFault } from './errors.js';
 import { vaultConfig } from './vaults.js';
 import { captainTradingReturns } from './captain-returns.js';
+import { registerCaptainPortfolioRoutes } from './captain-portfolio.js';
 
 function captain(actor: Actor) {
   if (actor.role !== 'captain') throw new ApiFault(403,'captain_required','Choose the Captain role first');
@@ -21,6 +22,7 @@ const crewSql = `SELECT u.id,u.display_name AS "displayName",u.username,u.avatar
  WHERE f.captain_id=$1 AND c.user_id<>$1 AND c.state='ACCEPTED' AND r.phase IN ${openPhases}
  GROUP BY u.id`;
 export function registerCaptainDashboardRoutes(app: FastifyInstance, db: () => DbPool) {
+  registerCaptainPortfolioRoutes(app, db);
   app.get('/v1/me/captain/dashboard',async(req,reply)=>{
     const actor=await requireActor(req,db()); captain(actor); reply.header('cache-control','no-store');
     return inTransaction(db(),async client=>{
