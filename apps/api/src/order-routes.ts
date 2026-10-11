@@ -1,3 +1,4 @@
+import { requireFundReader } from './paper-access.js';
 import type { FastifyInstance } from "fastify";
 import type { DbPool } from "@socially/db";
 import { requireActor } from "./auth.js";
@@ -43,12 +44,16 @@ export function registerOrderRoutes(app: FastifyInstance, db: () => DbPool): voi
   );
 
   app.get<{ Params: { fundId: string }; Querystring: HistoryQuery }>("/v0/funds/:fundId/orders", { schema: historySchema }, async (request) => {
+    const actor=await requireActor(request,db());
+    await requireFundReader(db(),actor,request.params.fundId);
     await getFund(db(), request.params.fundId);
     return { mode: "PAPER", ...await orderHistory(db(), "fund", request.params.fundId, request.query) };
   });
 
   app.get<{ Params: { fundId: string; orderId: string } }>(
     "/v0/funds/:fundId/orders/:orderId", async (request) => {
+      const actor=await requireActor(request,db());
+      await requireFundReader(db(),actor,request.params.fundId);
       return { mode: "PAPER", order: await getOrder(db(), request.params.fundId, request.params.orderId) };
     },
   );
