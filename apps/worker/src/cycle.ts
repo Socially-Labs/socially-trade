@@ -2,7 +2,7 @@ import { advanceDueVaultRounds } from "./vault-rounds.js";
 import type { DbPool } from "@socially/db";
 import { processPendingOrders } from "./orders.js";
 import { processValuationJobs } from './valuation-jobs.js';
-import { reconcilePaperFunds } from './reconciliation.js';
+import { reconcilePaperFunds,reconcilePaperUsers } from './reconciliation.js';
 import { deliverOutbox } from "./notifications.js";
 import { assessDailyFees } from "./fees.js";
 import { completeExpiredTrials } from "./trials.js";
@@ -35,5 +35,7 @@ export async function runWorkerCycle(pool: DbPool, ingestPrice?: () => Promise<u
   let reconciled=0;
   try { reconciled=await reconcilePaperFunds(pool); }
   catch(error){failures.push({job:'accounting_reconciliation',error});}
-  return { roundsAdvanced, marked, processed, delivered, feesAssessed, trialsCompleted, reconciled, failures };
+  let usersReconciled=0;
+  try{usersReconciled=await reconcilePaperUsers(pool);}catch(error){failures.push({job:'user_accounting_reconciliation',error});}
+  return { usersReconciled, roundsAdvanced, marked, processed, delivered, feesAssessed, trialsCompleted, reconciled, failures };
 }
