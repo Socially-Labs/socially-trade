@@ -1,3 +1,4 @@
+import { registerCrewDiscovery } from './crew-discovery.js';
 import { registerReadiness } from './readiness.js';
 import { registerPaperActivity } from './paper-activity.js';
 import { registerPaperTradingHealth } from './paper-trading-health.js';
@@ -112,7 +113,7 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
     },
   });
   app.register(async scope => { registerMarketRoutes(scope, db); registerVaultStream(scope, db); });
-  app.register(async scope => { registerVaultRateLimit(scope); registerCaptainDashboardRoutes(scope, db); registerPaperPortfolioRoutes(scope,db,options.paperSnapshotSource??new DevnetPaperSnapshotSource(process.env.SOLANA_RPC_URL??process.env.DEVNET_RPC_URL??'https://api.devnet.solana.com')); registerVaultRoutes(scope, db); registerVaultUploadRoutes(scope, db); });
+  app.register(async scope => { registerVaultRateLimit(scope); registerCaptainDashboardRoutes(scope, db); registerPaperPortfolioRoutes(scope,db,options.paperSnapshotSource??new DevnetPaperSnapshotSource(process.env.SOLANA_RPC_URL??process.env.DEVNET_RPC_URL??'https://api.devnet.solana.com')); registerVaultRoutes(scope, db); registerCrewDiscovery(scope, db); registerVaultUploadRoutes(scope, db); });
   app.register(async scope => { registerVaultRateLimit(scope); registerLiveVaultRoutes(scope, db, options.liveVaults ?? null); });
   let stopLiveVaultWorker: (() => Promise<void>) | undefined;
   app.addHook('onReady', async () => { if (pool && options.liveVaults && options.liveVaultWorker !== false) stopLiveVaultWorker = startLiveVaultWorker(pool,options.liveVaults,error=>app.log.error(error)); });
