@@ -24,7 +24,7 @@ export async function recordMarketPrice(pool: DbPool, price: MarketPrice, quoteU
       price = { ...prior, status: "UNAVAILABLE", reason: price.reason };
     }
     if (prior && prior.status === price.status && prior.reason === price.reason && prior.sourceAt === price.sourceAt &&
-      prior.sourceBlockId === price.sourceBlockId && prior.priceUsdc === price.priceUsdc) return;
+      prior.sourceBlockId === price.sourceBlockId && prior.priceUsdc === price.priceUsdc && price.status === 'UNAVAILABLE') return;
     if (price.sourceAt) {
       const accepted = (await client.query<{ source_at: Date; source_block_id: string | null }>("SELECT source_at,source_block_id::text FROM price_observations WHERE instrument_id=$1 AND source='JUPITER_PRICE_V3' ORDER BY source_at DESC,received_at DESC LIMIT 1", [price.instrumentId])).rows[0];
       if (accepted && (Date.parse(price.sourceAt) < accepted.source_at.getTime() ||
@@ -37,12 +37,12 @@ export async function recordMarketPrice(pool: DbPool, price: MarketPrice, quoteU
       const inserted = await client.query<{ id: string }>(`INSERT INTO price_observations
         (id,instrument_id,source,source_ref,price_usdc,source_at,received_at,source_block_id,price_usd,quote_usd,quote_source_block_id,quote_source_at)
         VALUES($1,$11,'JUPITER_PRICE_V3',$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        ON CONFLICT(source,instrument_id,source_ref) DO NOTHING RETURNING id`,
+        ON CONFLICT(source,instrument_id,source_ref) DO UPDATE SET last_confirmed_at=GREATEST(COALESCE(price_observations.last_confirmed_at,price_observations.received_at),EXCLUDED.received_at) RETURNING id`,
         [observationId, ref, price.priceUsdc, price.sourceAt, price.receivedAt, price.sourceBlockId, price.priceUsd, quoteUsd, price.quoteSourceBlockId, price.quoteSourceAt, price.instrumentId]);
       const stored = (await client.query<{ id: string; received_at: Date }>(
         "SELECT id,received_at FROM price_observations WHERE source='JUPITER_PRICE_V3' AND instrument_id=$2 AND source_ref=$1", [ref, price.instrumentId],
       )).rows[0]!;
-      price = { ...price, observationId: inserted.rows[0]?.id ?? stored.id, receivedAt: stored.received_at.toISOString() };
+      price = { ...price, observationId: inserted.rows[0]?.id ?? stored.id };
       await client.query(`INSERT INTO market_samples(instrument_id,source_at,price_usd,observation_id)
         VALUES($1,$2,$3,$4) ON CONFLICT(instrument_id,source_at) DO UPDATE SET price_usd=EXCLUDED.price_usd,observation_id=EXCLUDED.observation_id`,
         [price.instrumentId, price.sourceAt, price.priceUsd, price.observationId]);
@@ -80,6 +80,10 @@ export async function ingestJupiter(pool: DbPool, jupiter: Pick<JupiterClient, "
   for (const token of tokens) {
     signal?.throwIfAborted();
     const mark = result.get(token.mint);
+    if (mark && mark.decimals !== token.decimals) {
+      await pool.query("UPDATE instruments SET eligibility='DISABLED',eligibility_reason='decimals_changed',active=false WHERE id=$1",[token.id]);
+      await recordMarketPrice(pool,unavailable('decimals_changed',token)); continue;
+    }
     let reason: string | null = !mark || mark.decimals !== token.decimals || !usdc || usdc.decimals !== 6 ? "price_missing_or_invalid" : null;
     const tokenAt = mark && !reason ? await at(mark.blockId) : null;
     if (!reason && (!tokenAt || !usdcAt)) reason = "source_time_unavailable";
@@ -92,7 +96,7 @@ export async function ingestJupiter(pool: DbPool, jupiter: Pick<JupiterClient, "
       quoteSourceBlockId: String(usdc.blockId), quoteSourceAt: usdcAt.toISOString(),
       priceUsd: mark.priceUsd, priceUsdc: fixed(new Amount(mark.priceUsd).div(usdc.priceUsd), 18), change24h: mark.change24h ?? null,
       sourceAt: sourceAt.toISOString(), receivedAt, observationId: null,
-      status: age > 15_000 ? "STALE" : "CURRENT", reason: age > 15_000 ? "observation_stale" : null,
+      status: "CURRENT", reason: null,
     }, usdc.priceUsd);
   }
 }
