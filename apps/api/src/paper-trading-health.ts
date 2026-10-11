@@ -30,8 +30,17 @@ export function registerPaperTradingHealth(app:FastifyInstance,db:()=>DbPool){
    FROM fund_valuation_jobs j JOIN funds f ON f.id=j.fund_id WHERE ($1::uuid IS NULL OR f.captain_id=$1)`,[captainId])).rows[0];
   const reconciliation=(await client.query(`SELECT COALESCE(s.status,'UNCHECKED') AS status,count(*)::int AS funds,min(s.checked_at) AS oldest_check_at
    FROM funds f LEFT JOIN paper_reconciliation_state s ON s.fund_id=f.id WHERE f.mode='PAPER' AND ($1::uuid IS NULL OR f.captain_id=$1) GROUP BY s.status`,[captainId])).rows;
+  const settlement=(await client.query(`SELECT r.phase,r.blocked_reason,count(*)::int AS count,
+    min(r.last_attempted_at) AS oldest_attempt_at
+    FROM vault_rounds r JOIN funds f ON f.id=r.fund_id
+    WHERE r.phase IN ('SETTLING','REFUNDING') AND ($1::uuid IS NULL OR f.captain_id=$1)
+    GROUP BY r.phase,r.blocked_reason`,[captainId])).rows;
+  const capacity=captainId?undefined:(await client.query(`WITH demand AS (
+    SELECT p.instrument_id FROM positions p JOIN funds f ON f.id=p.fund_id WHERE p.quantity>0 AND f.status<>'COMPLETED'
+    UNION SELECT instrument_id FROM orders WHERE status='PENDING'
+  ) SELECT count(*)::int AS tracked_assets,100 AS asset_limit FROM demand`)).rows[0];
   const history=captainId?undefined:(await client.query(`SELECT status,count(*)::int AS count,min(next_run_at) AS oldest_due_at FROM market_history_jobs GROUP BY status`)).rows;
-  return {mode:'PAPER',asOf:new Date().toISOString(),orders,valuation,reconciliation,...(history?{history}:{}),orderSampleLimit:10000,orderWindowHours:24};
+  return {mode:'PAPER',asOf:new Date().toISOString(),orders,valuation,reconciliation,settlement,...(capacity?{capacity}:{}),...(history?{history}:{}),orderSampleLimit:10000,orderWindowHours:24};
  });
  app.get('/v1/me/captain/paper-health',async(request,reply)=>{
   const actor=await requireActor(request,db());reply.header('cache-control','no-store');
