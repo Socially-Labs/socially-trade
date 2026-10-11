@@ -5,10 +5,12 @@ import { readdir,readFile } from 'node:fs/promises';
 import pg from 'pg';
 import { configurePrivyFixture } from './privy-fixture.mjs';
 import { createApp } from '../dist/app.js';
+import { deliverOutbox } from '../../worker/dist/notifications.js';
 
 test('Captain dashboard uses owned rounds, unique Crew, exact fees and recorded AUM', { timeout:120000 },async t=>{
  const connectionString=process.env.TEST_DATABASE_URL;assert.ok(connectionString,'TEST_DATABASE_URL is required');
  assert.match(new URL(connectionString).hostname,/^(localhost|127\.0\.0\.1|\[::1\])$/);
+ process.env.PAPER_WALLET_SNAPSHOT_ENABLED='false';process.env.PAPER_TEST_SKIP_FUNDRAISING='false';delete process.env.VAULT_CONTRIBUTIONS_PAUSED;
  process.env.VAULT_PAPER_ENABLED='true';process.env.VAULT_TERMS_APPROVAL='locked-v1-retain-residue';delete process.env.USDG_MINT;process.env.NODE_ENV='development';
  const tokenFor=configurePrivyFixture(),schema=`captain_test_${randomUUID().replaceAll('-','')}`;
  const admin=new pg.Pool({connectionString});await admin.query(`CREATE SCHEMA ${schema}`);
@@ -49,6 +51,37 @@ test('Captain dashboard uses owned rounds, unique Crew, exact fees and recorded 
   process.env.VAULT_PAPER_ENABLED='false';assert.equal((await call('GET','/v1/me/captain/dashboard','other')).creation.reason,'funding_unavailable');process.env.VAULT_PAPER_ENABLED='true';
   const other=await call('GET','/v0/me','other');await pool.query('UPDATE users SET paper_cash=0 WHERE id=$1',[other.id]);
   assert.equal((await call('GET','/v1/me/captain/dashboard','other')).creation.reason,'insufficient_seed');
+ });
+ await t.test('investment inbox is Captain-only, durable, newest first and paginated',async()=>{
+  await deliverOutbox(pool);
+  let inbox=await call('GET','/v0/me/notifications','captain');
+  const investments=inbox.notifications.filter(n=>n.type==='vault_contributed');
+  assert.equal(investments.length,3);
+  assert.equal(investments.find(n=>n.payload.amountUsdc==='50.000001').payload.userId,crew.id);
+  assert.equal(investments[0].payload.vaultName,'Actual vault');
+  assert.ok(investments[0].createdAt);assert.equal(investments[0].readAt,null);
+  assert.deepEqual((await call('GET','/v0/me/notifications','crew')).notifications,[]);
+  assert.deepEqual((await call('GET','/v0/me/notifications','other')).notifications,[]);
+  await deliverOutbox(pool);
+  assert.equal((await call('GET','/v0/me/notifications','captain')).notifications.length,3);
+  const newest=investments[0].id;
+  await call('POST',`/v0/me/notifications/${newest}/read`,'captain',{});
+  assert.ok((await call('GET','/v0/me/notifications','captain')).notifications[0].readAt);
+  await call('POST',`/v0/me/notifications/${newest}/read`,'crew',{},404);
+  assert.deepEqual((await call('GET',`/v0/me/notifications?after=${newest}`,'captain')).notifications,[]);
+  await pool.query(`WITH events AS (
+    INSERT INTO fund_events(id,fund_id,type,payload) SELECT gen_random_uuid(),$1,'order_filled','{}'::jsonb FROM generate_series(1,103) RETURNING id
+  ), outbox AS (
+    INSERT INTO outbox_events(id,fund_event_id,type,payload) SELECT gen_random_uuid(),id,'order_filled','{}'::jsonb FROM events RETURNING id
+  ) INSERT INTO notifications(outbox_event_id,user_id,fund_id,type,payload) SELECT id,$2,$1,'order_filled','{}'::jsonb FROM outbox`,[id,captain.id]);
+  inbox=await call('GET','/v0/me/notifications','captain');
+  assert.equal(inbox.notifications.length,100);assert.equal(inbox.hasMore,true);assert.ok(inbox.nextCursor);
+  assert.ok(BigInt(inbox.notifications[0].id)>BigInt(inbox.notifications[99].id));
+  const older=await call('GET',`/v0/me/notifications?before=${inbox.nextCursor}`,'captain');
+  assert.equal(older.notifications.length,6);assert.equal(older.nextCursor,null);
+  assert.equal(new Set([...inbox.notifications,...older.notifications].map(n=>n.id)).size,106);
+  const incremental=await call('GET',`/v0/me/notifications?after=${newest}`,'captain');
+  assert.equal(incremental.hasMore,true);assert.ok(BigInt(incremental.notifications[0].id)<BigInt(incremental.notifications[99].id));
  });
  await t.test('recorded points retain unknown marks; cancellation removes Crew and capital',async()=>{
   await pool.query(`INSERT INTO captain_vault_aum_rollups(fund_id,interval_seconds,bucket_at,recorded_at,nav_usdc,valuation_status)

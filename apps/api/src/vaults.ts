@@ -186,8 +186,9 @@ export async function contributeVault(pool: DbPool, actor: Actor, id: string, am
     const reason = contributionReason({ phase: row.phase,now: now.getTime(),fundingClosesAt: row.funding_closes_at.getTime(),
       acceptedCapitalUsdc: row.accepted_capital_usdc,amountUsdc,isCaptain: row.captain_id === actor.id });
     if (reason) throw new ApiFault(409,reason,'This contribution cannot be accepted');
-    if ((process.env.USDG_MINT && row.balance_source!=='WALLET_SNAPSHOT') || process.env.VAULT_CONTRIBUTIONS_PAUSED === 'true') throw new ApiFault(503,'contributions_paused','New contributions are temporarily paused');
-    const event = await appendFundEvent(client,id,'vault_contributed',{});
+    if (process.env.VAULT_CONTRIBUTIONS_PAUSED === 'true') throw new ApiFault(503,'contributions_paused','New contributions are temporarily paused');
+    const investor = (await client.query<{ username: string | null; display_name: string }>('SELECT username,display_name FROM users WHERE id=$1',[actor.id])).rows[0]!;
+    const event = await appendFundEvent(client,id,'vault_contributed',{ userId: actor.id, username: investor.username, displayName: investor.display_name, amountUsdc, vaultName: row.name });
     await fundContribution(client,actor,id,amountUsdc,event,row.balance_source==='WALLET_SNAPSHOT');
     const result = await operation(client,actor,key,id,'CONTRIBUTE',event,amountUsdc); return result;
   });
