@@ -14,6 +14,21 @@ export const demoCaptains=[
  {key:'quiet-harbor',name:'Silas Crow',vault:'Quiet Harbor',capital:3200,crew:5,portrait:5},
 ].map((c,i)=>({...c,captainId:demoId(`captain:${c.key}`),fundId:demoId(`vault:${c.key}`),reference:provenance.references[i]}));
 
+// Presentation changes must also reach databases seeded by earlier versions.
+export async function refreshSeedPresentation(client) {
+ for(const c of demoCaptains){
+  await client.query(`UPDATE users SET display_name=$2,username=$3,bio=$4
+   WHERE id=$1 AND auth_subject=$5`,[c.captainId,c.name,c.key.replaceAll('-','_'),
+   'Paper trading Captain exploring disciplined spot strategies.',`demo:discovery:v1:${c.key}`]);
+  await client.query(`UPDATE funds SET name=$2,description=$3 WHERE id=$1
+   AND EXISTS(SELECT 1 FROM discovery_demo_seeds d WHERE d.fund_id=funds.id)`,
+   [c.fundId,c.vault,'A read-only paper trading vault with simulated performance.']);
+ }
+ for(let i=1;i<=22;i++)await client.query(`UPDATE users SET display_name=$2,username=$3,bio=$4
+  WHERE id=$1 AND auth_subject=$5`,[demoId(`crew:${i}`),`Crew Member ${i}`,`crew_member_${i}`,
+  'Exploring paper trading strategies with Captains.',`demo:discovery:v1:crew:${i}`]);
+}
+
 /** Original demo identities, exact balanced ledger entries, synthetic fixed-capital
  * NAV history. Uses the normal NAV trigger and discovery reader, never overrides
  * a real Captain's projections or pretends these are executed trading fills.
@@ -25,21 +40,22 @@ export async function seedDiscoveryDemo(pool, now=new Date()) {
   const existing=(await client.query('SELECT captain_id,fund_id,media_key FROM discovery_demo_seeds')).rows;
   if(existing.length){
    if(existing.length!==5||!demoCaptains.every(c=>existing.some(r=>r.captain_id===c.captainId&&r.fund_id===c.fundId&&r.media_key===c.key)))throw new Error('Unexpected demo seed ownership; refusing to overwrite records.');
+   await refreshSeedPresentation(client);
    return 'already present';
   }
   const start=new Date(now.getTime()-35*86400000);
   const crewIds=Array.from({length:22},(_,i)=>demoId(`crew:${i+1}`));
   for(const [i,id] of crewIds.entries())await client.query(`INSERT INTO users(id,auth_subject,display_name,username,role,bio)
-   VALUES($1,$2,$3,$4,'crew','DEMO: fictional Crew member for development previews.')`,[id,`demo:discovery:v1:crew:${i+1}`,`Demo Crew ${i+1}`,`demo_crew_${i+1}`]);
+   VALUES($1,$2,$3,$4,'crew','Exploring paper trading strategies with Captains.')`,[id,`demo:discovery:v1:crew:${i+1}`,`Crew Member ${i+1}`,`crew_member_${i+1}`]);
   for(const [i,c] of demoCaptains.entries()){
    const isNew=i===4, fundingStart=isNew?now:start;
    const close=new Date(fundingStart.getTime()+72*3600000),end=new Date(close.getTime()+90*86400000);
    const terms={...VAULT_RULES,universeMode:'LEGACY_ALLOWLIST',fundingWindowHours:72,durationDays:90,fundingCancellation:'FULL_BEFORE_DEADLINE',captainCancellation:'BEFORE_FIRST_CREW_COMMITMENT',residuePolicy:'RETAIN_AS_LIABILITY',emergencyUnwind:'DISABLED',captainTopUps:false,mode:'PAPER',demo:true};
    const termsHash=createHash('sha256').update(JSON.stringify(terms)).digest('hex');
    await client.query(`INSERT INTO users(id,auth_subject,display_name,username,role,bio,created_at) VALUES($1,$2,$3,$4,'captain',$5,$6)`,
-    [c.captainId,`demo:discovery:v1:${c.key}`,`${c.name} · Demo`,`demo_${c.key.replaceAll('-','_')}`,'DEMO: fictional Captain. Simulated performance inspired by public vault P&L shapes; no real trading activity.',fundingStart]);
+    [c.captainId,`demo:discovery:v1:${c.key}`,c.name,c.key.replaceAll('-','_'),'Paper trading Captain exploring disciplined spot strategies.',fundingStart]);
    await client.query(`INSERT INTO funds(id,captain_id,name,description,status,round_model_version,cash_usdc,total_shares,created_at)
-    VALUES($1,$2,$3,$4,$5,2,$6,$6,$7)`,[c.fundId,c.captainId,`${c.vault} · Demo`,'DEMO ONLY: synthetic paper NAV history. Read-only preview; contributions are disabled.',isNew?'FROZEN':'ACTIVE',c.capital,fundingStart]);
+    VALUES($1,$2,$3,$4,$5,2,$6,$6,$7)`,[c.fundId,c.captainId,c.vault,'A read-only paper trading vault with simulated performance.',isNew?'FROZEN':'ACTIVE',c.capital,fundingStart]);
    await client.query(`INSERT INTO vault_rounds(fund_id,balance_source,terms_version,terms,terms_hash,phase,funding_window_hours,duration_days,funding_started_at,funding_closes_at,trading_ends_at,actual_activated_at,accepted_capital_usdc,blocked_reason)
     VALUES($1,'LEGACY',1,$2,$3,$4,72,90,$5,$6,$7,$8,$9,'demo_read_only')`,[c.fundId,terms,termsHash,isNew?'FUNDRAISING':'ACTIVE',fundingStart,close,end,isNew?null:close,c.capital]);
    await client.query(`INSERT INTO fund_policy_versions(fund_id,version,max_order_bps,max_position_bps,drawdown_breaker_bps,allowed_instruments,effective_at)
