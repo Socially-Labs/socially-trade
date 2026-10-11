@@ -2,7 +2,7 @@
 
 Run `pnpm build` then `node scripts/seed-discovery-demo.mjs` to preview. `node scripts/seed-discovery-demo.mjs --apply` applies additive migration 037 and inserts the fixtures into a **local development** database. Migration 036 must already exist. The helper refuses production/nonlocal databases. Repeat runs preserve the same records and do not reset history or duplicate balances. Unexpected partial ownership causes a rollback rather than an overwrite.
 
-Five fictional Captains, five vaults, and 22 shared fictional Crew accounts are created. All names/descriptions identify demo data; public DTOs include `isDemo`. Contributions, cancellations, and claims are blocked for seeded vaults, and contribution quotes report `demo_read_only`. The lifecycle worker excludes demo vaults from its due-round queue. Seed auth subjects are distinct from Privy identities and do not grant login access.
+Five fictional Captains, five vaults, and 22 shared fictional Crew accounts are created. Names and handles use clean presentation without a “Demo” prefix or suffix; descriptions retain paper trading/simulated provenance, and public DTOs include `isDemo`. Repeat runs update this presentation on existing fixtures. Contributions, cancellations, and claims are blocked for seeded vaults, and contribution quotes report `demo_read_only`. The lifecycle worker excludes demo vaults from its due-round queue. Seed auth subjects are distinct from Privy identities and do not grant login access.
 
 | Captain | Vault | Principal USDC | Approx. simulated 30D return | Crew |
 | --- | --- | ---: | ---: | ---: |
@@ -26,4 +26,10 @@ Seed grants and contributions have balanced USDC and share ledger entries. Synth
 
 Five original pirate ship/coast covers were generated with the built-in imagegen tool and saved in `apk/assets/images/discovery-demo/`. Exact prompts and filenames are in that directory's `provenance.json`. The app bundles compressed JPEGs (about 1.8 MB total) and uses the existing five pirate Captain portraits. `discovery_demo_seeds.media_key` links each DB pair to its bundled cover; `apk/src/components/discover/demo-discovery-media.ts` maps stable seed IDs to those assets. Captain cards, public profiles, and vault views use the artwork offline. User-provided image URLs still take precedence.
 
-No external object storage setup is required. For live local previews, search `demo_` on the Captains tab or `Demo` on the Vaults tab. Browser screenshots are under `apk/.ui-review/discovery-demo/`.
+No external object storage setup is required. For local previews, search `silver_tide` on the Captains tab or `Silver Tide` on the Vaults tab. Browser screenshots are under `apk/.ui-review/discovery-demo/`.
+
+## Existing Captain history
+
+`node scripts/seed-captain-history.mjs --username=vikas` previews three completed paper vaults. Add `--apply` to insert them into the local development database. The Captain must already exist. Existing vaults and wallet balances are preserved. Stable IDs make reruns safe; the helper also updates discovery fixture presentation.
+
+Horizon Momentum, Coastal Growth, and Golden Current contain six simulated SOL fills each, five NAV snapshots each, and final settlement including the normal 10% performance fee. Net profits are 1,170 / 2,160 / 3,780 USDC (14.625% / 18% / 21%). Each trade, price observation, and funding event retains seed provenance; these are synthetic paper fixtures, not executed market trades. The script checks settlement, fund cash, shares, trade/chart counts, and balanced ledger entries before committing. It refuses production/nonlocal databases.
