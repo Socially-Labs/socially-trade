@@ -98,14 +98,16 @@ export { fetchJupiterPrices, blockTime, SOL_MINT, USDC_MINT, JupiterHttpError, J
 export type { JupiterPrice } from "./jupiter.js";
 
 /** Quantity sell keeps the token amount fixed while the future USDC proceeds vary. */
-export function simulateQuantitySell(quantity: string, marketPriceUsdc: string, assetDecimals: number) {
+export function simulateQuantitySell(quantity: string, marketPriceUsdc: string, assetDecimals: number, heldQuantity?: string) {
   const units = new Amount(quantity), price = new Amount(marketPriceUsdc);
   if (units.lte(0) || units.decimalPlaces() > assetDecimals || price.lte(0)) throw new Error("Invalid sell quantity");
   const gross = units.mul(price), notionalUsdc = fixed(gross, USDC_DECIMALS);
-  if (gross.lt(1) || gross.gt(MAX_SIMULATED_ORDER_USDC)) throw new Error("Sell notional must be 1-1000 USDC");
+  if ((gross.lt(1) && (heldQuantity === undefined || !units.eq(heldQuantity))) || gross.gt(MAX_SIMULATED_ORDER_USDC)) throw new Error("Sell notional must be 1-1000 USDC");
   const factor = new Amount(1).minus(new Amount(20).plus(Amount.min(50, gross.div(1000).ceil())).div(10000));
   const fillPrice = price.mul(factor), fee = new Amount(fixedUp(gross.mul("0.001"), USDC_DECIMALS));
+  const proceeds = fixed(units.mul(fillPrice).minus(fee), USDC_DECIMALS);
+  if (new Amount(proceeds).lte(0)) throw new Error("Sell proceeds are zero after fees");
   return { modelVersion: FILL_MODEL_VERSION, quantity: fixed(units, assetDecimals), marketPriceUsdc: fixed(price, 18),
     fillPriceUsdc: fixed(fillPrice, 18), feeUsdc: fixed(fee, USDC_DECIMALS),
-    cashChangeUsdc: fixed(units.mul(fillPrice).minus(fee), USDC_DECIMALS), notionalUsdc };
+    cashChangeUsdc: proceeds, notionalUsdc };
 }

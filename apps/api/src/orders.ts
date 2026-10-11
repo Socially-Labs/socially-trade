@@ -83,7 +83,8 @@ export async function previewOrder(pool: DbPool, actor: Actor, fundId: string, i
     const fund = await context(client, fundId);
     authorize(actor, fund, input.side);
     const instrument = (await registeredInstruments(client,[input.instrumentId]))[0];
-    const held = !!(await client.query('SELECT 1 FROM positions WHERE fund_id=$1 AND instrument_id=$2 AND quantity>0',[fundId,input.instrumentId])).rowCount;
+    const holding = (await client.query<{ quantity: string }>('SELECT quantity::text FROM positions WHERE fund_id=$1 AND instrument_id=$2 AND quantity>0',[fundId,input.instrumentId])).rows[0];
+    const held = !!holding;
     const assetReason = assetTradeReason(instrument,fund,input.side,held);
     if (assetReason) throw new ApiFault(422,assetReason,'Asset is not allowed by the fund policy');
     const quote = await client.query<{ id: string; price_usdc: string; source_at: Date }>(
@@ -100,11 +101,11 @@ export async function previewOrder(pool: DbPool, actor: Actor, fundId: string, i
     const valuation = await valueFund(client, fund);
     let fill;
     try {
-      fill = requestedQuantity ? simulateQuantitySell(requestedQuantity, observation.price_usdc, instrument!.decimals)
+      fill = requestedQuantity ? simulateQuantitySell(requestedQuantity, observation.price_usdc, instrument!.decimals, holding?.quantity)
         : simulateFill(input.side, notionalUsdc, observation.price_usdc, instrument!.decimals);
       if ("notionalUsdc" in fill && typeof fill.notionalUsdc === "string") notionalUsdc = fill.notionalUsdc;
     } catch { throw requestedQuantity
-      ? new ApiFault(422, "invalid_quantity", "Sell quantity must match token precision and the 1-1000 USDC order range")
+      ? new ApiFault(422, "invalid_quantity", "Sell must fit token precision and the order limit; amounts under 1 USDC must close the entire position")
       : new ApiFault(422, "invalid_order_amount", "Order amount is too small for this token's precision"); }
     const position = valuation.positions.find((item) => item.instrumentId === input.instrumentId);
     const reason = evaluateSpotOrder({
@@ -136,7 +137,8 @@ export async function submitOrder(
     const fund = await context(client, fundId);
     authorize(actor, fund, input.side);
     const instrument = (await registeredInstruments(client,[input.instrumentId]))[0];
-    const held = !!(await client.query('SELECT 1 FROM positions WHERE fund_id=$1 AND instrument_id=$2 AND quantity>0',[fundId,input.instrumentId])).rowCount;
+    const holding = (await client.query<{ quantity: string }>('SELECT quantity::text FROM positions WHERE fund_id=$1 AND instrument_id=$2 AND quantity>0',[fundId,input.instrumentId])).rows[0];
+    const held = !!holding;
     const assetReason = assetTradeReason(instrument,fund,input.side,held);
     if (assetReason) throw new ApiFault(422,assetReason,'Asset is not allowed by the fund policy');
     if (requestedQuantity) {
@@ -145,8 +147,8 @@ export async function submitOrder(
         [input.instrumentId, process.env.NODE_ENV !== "production" && process.env.DEV_PRICE_SEED_ENABLED === "true"])).rows[0];
       if (!observation || Date.now()-observation.source_at.getTime()>MAX_PRICE_AGE_MS || observation.source_at.getTime()>Date.now()+5000)
         throw new ApiFault(503, "price_unavailable", "Fresh market price unavailable");
-      try { notionalUsdc = simulateQuantitySell(requestedQuantity, observation.price_usdc, instrument!.decimals).notionalUsdc; }
-      catch { throw new ApiFault(422, "invalid_quantity", "Sell quantity must match token precision and the 1-1000 USDC order range"); }
+      try { notionalUsdc = simulateQuantitySell(requestedQuantity, observation.price_usdc, instrument!.decimals, holding?.quantity).notionalUsdc; }
+      catch { throw new ApiFault(422, "invalid_quantity", "Sell must fit token precision and the order limit; amounts under 1 USDC must close the entire position"); }
     }
     if(input.side==='BUY' && !held) {
       await client.query('SELECT pg_advisory_xact_lock(7810232)');

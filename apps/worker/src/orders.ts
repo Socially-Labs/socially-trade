@@ -148,7 +148,7 @@ export async function processOrder(pool: DbPool, orderId: string): Promise<boole
     let fill: ReturnType<typeof simulateFill>;
     try {
       if (order.requested_quantity) {
-        const estimate = simulateQuantitySell(order.requested_quantity, observation.price_usdc, instrument!.decimals);
+        const estimate = simulateQuantitySell(order.requested_quantity, observation.price_usdc, instrument!.decimals, held.quantity);
         order.notional_usdc = estimate.notionalUsdc; fill = estimate;
       } else fill = simulateFill(order.side, order.notional_usdc, observation.price_usdc, instrument!.decimals);
     }

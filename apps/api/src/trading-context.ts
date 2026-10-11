@@ -66,13 +66,14 @@ export function registerTradingContextRoutes(app: FastifyInstance, db: () => DbP
         const buyReason = assetTradeReason(token,policy,"BUY",!!held), sellReason = assetTradeReason(token,policy,"SELL",!!held);
         const reason = !usable ? "fund_not_tradable" : !valued ? "valuation_unavailable" : mark?.status !== "CURRENT" ? "price_unavailable" : null;
         const cap = valued ? Amount.min(1000, nav.mul(policy.max_order_bps).div(10000)) : new Amount(0);
+        const sellCap = held?.valueUsdc && new Amount(held.valueUsdc).lt(1) ? new Amount(held.valueUsdc) : cap;
         const headroom = valued ? Amount.max(0, nav.mul(policy.max_position_bps).div(10000).minus(held?.valueUsdc ?? 0)) : new Amount(0);
         return { instrumentId: token.id, canBuy: !buyReason && !reason && fund.status === "ACTIVE", canSell: !sellReason && !reason && !!held,
           reason: reason ?? buyReason ?? (fund.status === "FROZEN" ? "buys_frozen" : null),
           maxBuyNotionalUsdc: !buyReason && !reason && fund.status === "ACTIVE" ? fixed(Amount.min(cap, fund.cash_usdc, headroom), 6) : "0.000000",
-          maxSellNotionalUsdc: !sellReason && !reason && held ? fixed(Amount.min(cap, held.valueUsdc ?? 0), 6) : "0.000000",
+          maxSellNotionalUsdc: !sellReason && !reason && held ? fixed(Amount.min(sellCap, held.valueUsdc ?? 0), 6) : "0.000000",
           maxSellQuantity: !sellReason && !reason && held && mark?.priceUsdc
-            ? fixed(Amount.min(held.quantity, cap.div(mark.priceUsdc)), token.decimals) : fixed(0, token.decimals) };
+            ? fixed(Amount.min(held.quantity, sellCap.div(mark.priceUsdc)), token.decimals) : fixed(0, token.decimals) };
       });
       const value={ mode: "PAPER", fund: { id: fund.id, name: fund.name, status: fund.status, trialEnd: fund.ends_at.toISOString(), ...(fund.round_phase ? {phase:fund.round_phase} : {}) },
         cashUsdc: fund.cash_usdc, navUsdc: valued ? fixed(nav, 18) : null, holdings, policy: {

@@ -29,8 +29,9 @@ export function evaluateSpotOrder(input: SpotPolicyInput): PolicyReason | null {
   if (!input.allowedInstruments.includes(input.instrumentId)) return "asset_not_allowed";
   const notional = new Amount(input.notionalUsdc);
   const nav = new Amount(input.navUsdc);
-  if (notional.gt(MAX_SIMULATED_ORDER_USDC) ||
-      notional.gt(nav.mul(input.maxOrderBps).div(10_000))) return "order_too_large";
+  const closesDust = input.side === "SELL" && notional.gt(0) && notional.lt(1) && new Amount(input.quantity).eq(input.positionQuantity);
+  if (!closesDust && (notional.gt(MAX_SIMULATED_ORDER_USDC) ||
+      notional.gt(nav.mul(input.maxOrderBps).div(10_000)))) return "order_too_large";
   const quantity = new Amount(input.quantity);
   const position = new Amount(input.positionQuantity);
   if (input.side === "SELL") {

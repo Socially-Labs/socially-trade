@@ -53,7 +53,7 @@ test('development activation skips fundraising while production and settled vaul
     assert.equal((await pool.query("SELECT 1 FROM fund_events WHERE fund_id=$1 AND type='vault_active'",[created.vaultId])).rowCount,1);
     const observed=async()=>{const at=new Date().toISOString();await recordMarketPrice(pool,{instrumentId:'SOL',mint:'So11111111111111111111111111111111111111112',source:'JUPITER_PRICE_V3',priceUsd:'100',priceUsdc:'100',sourceBlockId:String(Date.now()),sourceAt:at,quoteSourceBlockId:String(Date.now()),quoteSourceAt:at,observationId:null,receivedAt:at,status:'CURRENT',reason:null},'1');};
     await observed();
-    const intent={side:'BUY',instrumentId:'SOL',notionalUsdc:'5'};
+    const intent={side:'BUY',instrumentId:'SOL',notionalUsdc:'1'};
     assert.equal((await call('POST',`${path}/orders/preview`,'captain',intent)).policy.allowed,true);
     const order=await call('POST',`${path}/orders`,'captain',intent,202);
     await pool.query("UPDATE orders SET submitted_at=now()-interval '5 seconds' WHERE id=$1",[order.orderId]);await observed();
