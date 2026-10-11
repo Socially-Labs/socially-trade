@@ -69,6 +69,21 @@ test('discovery HTTP, cache, restart, failure and cursor integration uses dispos
     app=createApp(pool);app.log.level='silent';await app.listen({host:'127.0.0.1',port:0});
     let origin=`http://127.0.0.1:${app.server.address().port}`;
     const get=async(path,status=200)=>{const res=await originalFetch(origin+path);assert.equal(res.status,status,await res.clone().text());return res.json();};
+    await t.test('held market batches use stored identities without provider calls or metadata dependence',async()=>{
+      const token=supportedTokens[0],before=upstreamCalls;
+      const original=(await pool.query('SELECT payload,fetched_at FROM market_token_metadata WHERE mint=$1',[token.mint])).rows[0];
+      try{
+      await pool.query('DELETE FROM market_token_metadata WHERE mint=$1',[token.mint]);
+      const batch=await get(`/v0/market/tokens?mints=${token.mint}`);
+      assert.equal(batch.tokens.length,1);assert.equal(batch.tokens[0].mint,token.mint);
+      assert.equal(batch.tokens[0].instrumentId,token.id);assert.equal(batch.tokens[0].symbol,token.symbol);
+      assert.equal(batch.tokens[0].icon,null);assert.equal(upstreamCalls,before);
+      await get(`/v0/market/tokens?mints=${token.mint},${token.mint}`,400);
+      await get(`/v0/market/tokens?mints=${token.mint}&query=SOL`,400);
+      await get('/v0/market/tokens?mints=invalid',400);
+      await get(`/v0/market/tokens?mints=${Array.from({length:11},(_,i)=>String(i+1).repeat(32)).join(',')}`,400);
+      }finally{if(original)await pool.query('INSERT INTO market_token_metadata(mint,payload,fetched_at) VALUES($1,$2,$3)',[token.mint,original.payload,original.fetched_at]);}
+    });
     await t.test('public supported identity, disabled flags and unavailable historical ranks',async()=>{
       const list=parseMarketList(await get('/v1/markets?limit=50'));assert.deepEqual(new Set(list.items.map(t=>t.mint)),new Set(supportedTokens.map(t=>t.mint)));
       assert.equal(list.items.find(t=>t.symbol==='USDC').tradable,false);

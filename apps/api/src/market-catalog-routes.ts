@@ -30,11 +30,18 @@ export function registerMarketCatalogRoutes(app: FastifyInstance, db: () => DbPo
     reply.header('cache-control','public, max-age=15');
     return {mode:'PAPER',range:'24H',items};
   });
-  app.get<{ Querystring: { query?: string } }>("/v0/market/tokens", { schema: { querystring: {
-    type: "object", additionalProperties: false, properties: { query: { type: "string", maxLength: 100 } },
+  app.get<{ Querystring: { query?: string; mints?: string } }>("/v0/market/tokens", { schema: { querystring: {
+    type: "object", additionalProperties: false, properties: { query: { type: "string", maxLength: 100 }, mints: {type:'string',maxLength:449} },
   } } }, async (request, reply) => {
     reply.header("cache-control", "no-store");
-    return { mode: "PAPER", asOf: new Date().toISOString(), tokens: await service().list(request.query.query?.trim() ?? "") };
+    const addresses=request.query.mints?.split(',');
+    if(addresses){
+      if(request.query.query!==undefined || addresses.length>10 || new Set(addresses).size!==addresses.length)
+        throw new ApiFault(400,'invalid_token_batch','Choose at most ten distinct markets without a search query');
+      addresses.forEach(mint);
+    }
+    // Explicit holdings batches use stored registry/metadata/prices only.
+    return { mode: "PAPER", asOf: new Date().toISOString(), tokens: await service().list(request.query.query?.trim() ?? "", addresses) };
   });
   app.get<{ Params: { mint: string } }>("/v0/market/tokens/:mint", async (request, reply) => {
     reply.header("cache-control", "no-store");

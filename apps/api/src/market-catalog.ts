@@ -85,7 +85,11 @@ export class MarketCatalog {
     const prices = (await this.pool.query<{ payload: MarketEvent }>("SELECT payload FROM market_latest WHERE instrument_id=ANY($1::text[])", [resolved.map(t=>t.id)])).rows;
     const active = new Map(resolved.map(row => [row.id, row.active]));
     const marks = new Map(prices.map(row => [row.payload.price.mint, currentPrice(row.payload.price)]));
-    const universe = savedMints ? rows.map(row => ({ ...row.payload, supported: byMint.get(row.payload.mint) }))
+    const universe = savedMints ? savedMints.flatMap<Pick<TokenMetadata,'mint'|'symbol'|'name'|'decimals'|'icon'|'verified'|'suspicious'> & {supported: typeof registry[number] | undefined}>(mint => {
+      const stored=metadata.get(mint)?.payload, registered=byMint.get(mint);
+      // Held assets must remain visible even when optional provider metadata is missing.
+      return stored ? [{...stored,supported:registered}] : registered ? [{...registered,icon:null,verified:null,suspicious:null,supported:registered}] : [];
+    })
       : query ? matches.map(token => ({ ...token, supported: byMint.get(token.mint) }))
       : supportedTokens.map(token => ({ ...metadata.get(token.mint)?.payload, ...token, supported: byMint.get(token.mint) }));
     return universe.map(token => {
