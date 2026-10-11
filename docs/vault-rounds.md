@@ -80,8 +80,10 @@ Set `NODE_ENV=development` and `PAPER_TEST_SKIP_FUNDRAISING=true` to test paper
 trading without waiting for fundraising or reaching the $1,000 minimum. New
 seeded paper vaults activate in the creation transaction. Existing fundraising
 vaults can be activated by their Captain through
-`POST /v1/vaults/:id/test-activation`; Discover exposes “Start test trading” only
-when the authenticated trading context returns `testActivationAllowed: true`.
+`POST /v1/vaults/:id/test-activation`. Discover now calls this automatically when
+the authenticated trading context returns `testActivationAllowed: true`, then
+reloads the real active phase and trading limits before enabling any orders.
+No extra activation tap is required for an existing open test vault.
 
 This ends fundraising and moves the round to `ACTIVE`, so the normal preview,
 order worker, valuation and settlement paths remain in use. The seed is still
@@ -90,3 +92,13 @@ required; no test cash is minted. Activation records a `vault_active` event with
 risk-paused fundraising vaults cannot be reopened through this route. Production
 rejects activation even if the flag is set. Restore the flag to `false` for normal
 fundraising behavior; previously activated test rounds remain active.
+
+## Paper readiness follow-up (2026-10-11)
+
+- `GET /v1/me/paper-activity?limit=20&after=<uuid>` returns the authenticated account's paper orders and vault CREATE/CONTRIBUTE/CANCEL/CLAIM operations, newest first. The cursor is owner-scoped and retains database timestamp precision. APK links are in Captain Discover, vault detail and Wallet Activity. This is paper history, not on-chain wallet history.
+- Quantity sells below 1 USDC may close the entire current position. Partial sub-dollar sells, zero proceeds after fees, stale execution prices and the upper order cap remain rejected. The worker rechecks the actual holding at execution time.
+- Per the product decision, settlement uses the latest recorded positive, non-future price if no fresh price exists. Unwind events record observation ID, source timestamp, price age and `LAST_RECORDED_PRICE`/`FRESH_PRICE`. No observation still blocks settlement. Review this provisional policy in `../../todo.paper-trading-production.md` before public launch.
+- Admin paper-health responses now include settlement blockers and the global held/pending asset count against the existing 100-asset cap. Connect deployment alerts to these metrics; a response alone is not an alerting system.
+- Empty-wallet initialization retains wallet-based funding and presents Open wallet / Retry guidance. It does not issue an arbitrary virtual grant or resnapshot an initialized wallet.
+- Market charts remain absent; Discover skips unused chart-history hydration. Invested rows show cost and unrealized P&L. This does not add a market chart or change the home dashboard.
+- The asset infrastructure policy includes both `captains/*` and `vaults/*`, restricted to the same CloudFront distribution. `scripts/repair-vault-media-policy.mjs` supports a dry run and scoped repair with a local rollback backup.
