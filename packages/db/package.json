@@ -15,7 +15,9 @@
     "migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "@socially/domain": "workspace:*",
+    "@socially/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
