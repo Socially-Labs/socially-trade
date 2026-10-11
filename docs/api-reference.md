@@ -52,7 +52,8 @@ All errors return this shape (from `app.setErrorHandler`):
 | 410 | Gone | `asset_upload_expired` |
 | 422 | Semantically invalid | `invalid_username`, `username_taken`, `insufficient_virtual_cash`, `watchlist_full`, `mint_metadata_conflict` |
 | 429 | Rate limit | `vault_rate_limited`, `diagnostic_rate_limited`, `support_rate_limited`, `upload_rate_limited`, `rate_limited`, `tracking_capacity` |
-| 503 | Unavailable | `internal_error`, `database_unconfigured`, `market_unavailable`, `history_busy`, `gateway_busy`, `contributions_paused` |
+| 500 | Server error | `internal_error` |
+| 503 | Unavailable | `lock_timeout`, `query_timeout`, `database_unconfigured`, `market_unavailable`, `history_busy`, `gateway_busy`, `contributions_paused` |
 
 Postgres errors are mapped: `23505` → `409 conflict`, `22P02` → `400 invalid_identifier`.
 
@@ -144,7 +145,7 @@ Postgres errors are mapped: `23505` → `409 conflict`, `22P02` → `400 invalid
 
 ```json
 {
-  "stage": "WAITING_DELAY|WAITING_PRICE|WAITING_VALUATION|READY|FILLED|PARTIALLY_FILLED|REJECTED|CANCELLED",
+  "stage": "WAITING_DELAY|WAITING_PRICE|WAITING_VALUATION|FILLED|REJECTED|CANCELLED",
   "eligibleAt": "ISO", "expiresAt": "ISO",
   "lastAttemptedAt": "ISO|null", "attempts": 2,
   "observationSourceAt": "ISO|null", "observationAgeMs": 340,
@@ -175,13 +176,16 @@ Freshness: `sourceAt`/`receivedAt` must be ≤ 5 s in the future and ≤ 15 s ol
 
 ## 1. System & Admin
 
-### `GET /health`
-Public. Liveness probe.
+### `GET /live`
+Public. Process liveness probe.
 
 **Response `200`**
 ```json
 { "status": "ok", "mode": "PAPER" }
 ```
+
+### `GET /ready` and `GET /health`
+Public. Readiness checks PostgreSQL, Redis, and worker/ingestor completion heartbeats. Returns `200` when ready or `503` when a dependency is unavailable or a heartbeat is stale. Use `/live` for process restarts.
 
 ### `OPTIONS /*`
 CORS preflight. Returns `204`. See [Conventions](#0-conventions).
@@ -243,13 +247,16 @@ Same `authorize()` gate. Operational health for the paper engine plus this proce
   "orderSampleLimit": 10000, "orderWindowHours": 24,
   "requestMetrics": {
     "scope": "THIS_API_PROCESS",
-    "boundsMs": [25,50,100,250,500,1000,2500,5000],
+    "bucketSemantics": "NON_CUMULATIVE",
+    "boundsMs": [25,50,100,250,500,1000,2500,5000,null],
     "series": { "GET /v1/vaults/:id/trading-context 2xx":
-                { "count":40, "totalMs":3100, "buckets":[12,20,8,0,0,0,0,0] } }
+                { "count":40, "totalMs":3100, "buckets":[12,20,8,0,0,0,0,0,0] } }
   }
 }
 ```
 `capacity` and `history` are omitted on the captain-scoped variant.
+
+`GET /admin/paper-trading/metrics` requires the same admin authorization and exports cumulative Prometheus histogram buckets in seconds. Scrape each API process with an external collector for fleet metrics.
 
 ---
 
@@ -579,7 +586,7 @@ Requires a price observation fresher than `MAX_PRICE_AGE_MS`, else `503 price_un
 
 Errors: `403 captain_required`, `409 fund_not_tradable`, `400 order_size_out_of_range`, `503 market_capacity` (global 100 tracked-asset limit reached for a new BUY).
 
-### `GET /v0/funds/:fundId/orders` — PUBLIC
+### `GET /v0/funds/:fundId/orders` — AUTH
 **Query** `after` (uuid), `limit` (`^[1-9]$|^[1-9][0-9]$|^100$`, default 100)
 Cursor must belong to the same fund else `400 invalid_cursor`.
 
@@ -598,7 +605,7 @@ Cursor must belong to the same fund else `400 invalid_cursor`.
 }
 ```
 
-### `GET /v0/funds/:fundId/orders/:orderId` — PUBLIC
+### `GET /v0/funds/:fundId/orders/:orderId` — AUTH
 **Response `200`** `{ "mode":"PAPER", "order": { /* order row + */ "execution": { …ExecutionProgress } } }`
 `404 order_not_found`.
 
@@ -644,7 +651,7 @@ Requires captain **or** a positive `fund_shares` balance, else `403 crew_require
 Captain-only (`403 captain_required`); `404 order_not_found`; `404 note_not_found`.
 **Response `201`** → `{ "mode":"PAPER", "message": { …Message } }`
 
-### `GET /v0/funds/:fundId/events` — PUBLIC
+### `GET /v0/funds/:fundId/events` — AUTH
 **Query** `after` (non-negative integer, default `0`)
 **Response `200`**
 ```json
@@ -654,7 +661,7 @@ Captain-only (`403 captain_required`); `404 order_not_found`; `404 note_not_foun
 ```
 Ascending, limit 100. `type` includes `fund_started`, `crew_joined`, `crew_left`, `chat_message_posted`, `trade_note_posted`, `order_submitted`, `order_cancelled`, `trial_completed`.
 
-### `GET /v0/funds/:fundId/events/stream` — PUBLIC (SSE)
+### `GET /v0/funds/:fundId/events/stream` — AUTH (SSE)
 Server-Sent Events fallback for clients that cannot hold a WebSocket. Hijacks the raw response.
 
 **Headers**: `text/event-stream; charset=utf-8`, `cache-control: no-cache, no-transform`, `connection: keep-alive`, `x-accel-buffering: no`.
@@ -790,7 +797,7 @@ Universe: most recent 100 funds with `elapsedDays ≥ 7` and a current/final val
   "funds":[{ "rank":1, /* performance object */ }] }
 ```
 
-### `GET /v0/captains/:captainId/orders` — PUBLIC
+### `GET /v0/captains/:captainId/orders` — AUTH
 Same schema/response as `GET /v0/funds/:fundId/orders` but scoped to `captain_id`. `404 captain_not_found`.
 
 ### `GET /v0/captains/:captainId/trade-statistics` — PUBLIC
@@ -952,7 +959,7 @@ Preview `200` → `{ "mode":"PAPER", "estimate":{…}, "policy":{…}, "observat
 Submit `202` → `{ "mode":"PAPER", "orderId":"uuid", "status":"PENDING" }`
 
 `GET /v1/vaults/:id/orders/:orderId` — AUTH → `{ "mode":"PAPER","order":{ …order + execution } }`
-`POST /v1/vaults/:id/orders/:orderId/cancel` — AUTH → `{ "mode":"PAPER","orderId":"…","status":"CANCELLED" }`
+`POST /v1/vaults/:id/orders/:orderId/cancel` — AUTH, captain-only → `{ "mode":"PAPER","orderId":"…","status":"CANCELLED" }`
 
 ### `POST /v1/vaults/:id/test-activation` — AUTH
 Development-only. Active only when `NODE_ENV === 'development'` **and** `PAPER_TEST_SKIP_FUNDRAISING === 'true'`; otherwise `404 test_activation_disabled`. Captain-owned vault in `FUNDRAISING`/`ACTIVE` with a positive seed.
@@ -1508,13 +1515,16 @@ Gated by `PAPER_WALLET_SNAPSHOT_ENABLED=true`. When on, vaults use the isolated 
 ```
 
 ### `POST /v1/me/paper-portfolio/initialize` — AUTH
+Requires `Idempotency-Key` (8–128 characters). Same-key retries replay the original response; changed input conflicts.
 **Body** `{ "wallet": "base58, ^[1-9A-HJ-NP-Za-km-z]{32,44}$" }`
 
 **Response `200`** → `PaperPortfolio` as above.
 Reads finalized devnet SOL + USDC balances, prices them with **fresh** marks, and mints the equivalent paper USDC. One-shot per account and per wallet.
-Errors: `503 paper_portfolio_disabled`, `503 auth_unconfigured`, `403 wallet_not_owned`, `409 wallet_already_snapshotted`, `422 empty_wallet`, `503 prices_unavailable`, `422 balance_out_of_range`, `503 wrong_cluster`.
+Errors: `400 idempotency_key_required`, `409 idempotency_conflict`, `409 portfolio_already_initialized`, `503 balance_unavailable`, `503 paper_portfolio_disabled`, `503 auth_unconfigured`, `403 wallet_not_owned`, `409 wallet_already_snapshotted`, `422 empty_wallet`, `503 prices_unavailable`, `422 balance_out_of_range`, `503 wrong_cluster`.
 
 ---
+
+> Paper production policy, authorization, reservations, Redis admission, readiness and rollout: [production guide](paper-trading-production.md). Where older examples differ, this guide defines the current behavior.
 
 ## 16. WebSocket 1 — Market & Private Gateway (`GET /v0/ws`)
 
@@ -1596,15 +1606,17 @@ Rejection codes (all delivered as a generic `error` frame): `invalid_message`, `
 
 ## 17. WebSocket 2 — Vault Event Stream (`GET /v1/vaults/ws`)
 
-Registered by `vault-stream.ts`. Unauthenticated invalidation-only stream: notifications never carry payloads, so **every reconnect requires a REST snapshot**.
+Registered by `vault-stream.ts`. Authenticated invalidation stream retained for existing clients: notifications never carry payloads, so **every reconnect requires a REST snapshot**.
 
 ### Handshake
 
 | Check | Failure |
 |---|---|
 | `Origin` ∈ `WS_ALLOWED_ORIGINS` (same rule as above) | `403 origin_forbidden` |
+| Verified bearer identity | `401` |
 | < 10 connections from this IP | `429 connection_limit` |
-| < 200 connections globally | `503 gateway_busy` |
+| < 200 connections globally, < 5 for this user (configurable) | `429 connection_limit` |
+| Shared Redis admission available | `503 stream_unavailable` |
 
 Frame limit `maxPayload: 8192`.
 
@@ -1623,10 +1635,10 @@ Replies, one per vaultId, **always** — including when the cursor is unchanged:
 ```json
 { "type":"vault.updated", "vaultId":"uuid", "eventSequence":"43" }
 ```
-One bounded database scan per gateway tick (1 s), shared across all local subscribers — no per-client SQL loops and no Redis dependency.
+One bounded database scan per gateway tick (1 s), shared across all local subscribers. Redis leases enforce admission limits across replicas. Bearer authentication is required at upgrade, and subscriptions require captain or positive-share membership. Tokens expire and membership is rechecked during delivery. New clients should use `vault.context` on `/v0/ws`.
 
 ### Lifecycle
-- Heartbeat ping every 25 s; missed pong → `terminate()`.
+- Independent heartbeat ping every 20 s by default (`PAPER_WS_HEARTBEAT_MS`); missed pong or expired authentication → `terminate()`.
 - `bufferedAmount > 64 KiB` → close `1013 "Reconnect and resync"`.
 - A failed scan is **not** a successful delivery: all clients get `1013 "Resync required"`.
 - The interval stops when the last client disconnects and all cached sequences are cleared.
@@ -1771,7 +1783,6 @@ POST   /v1/vaults/:id/contribution-quotes
 POST   /v1/vaults/:id/contributions
 POST   /v1/vaults/:id/contribution-cancellations
 POST   /v1/vaults/:id/claims
-GET    /v1/vaults/:id/orders/preview
 POST   /v1/vaults/:id/orders
 POST   /v1/vaults/:id/orders/preview
 GET    /v1/operations/:id
