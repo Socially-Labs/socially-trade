@@ -49,11 +49,11 @@ function requireCreationEnabled() {
 }
 export interface RoundRow {
   id: string; captain_id: string; name: string; description: string; status: string; cash_usdc: string; total_shares: string;
-  balance_source:'LEGACY'|'WALLET_SNAPSHOT'; phase: VaultSummary['phase']; risk_state: 'NORMAL' | 'FROZEN'; terms_hash: string; terms: Record<string, unknown>; duration_days: number; funding_window_hours: number;
+  is_demo:boolean; balance_source:'LEGACY'|'WALLET_SNAPSHOT'; phase: VaultSummary['phase']; risk_state: 'NORMAL' | 'FROZEN'; terms_hash: string; terms: Record<string, unknown>; duration_days: number; funding_window_hours: number;
   accepted_capital_usdc: string; funding_closes_at: Date; trading_ends_at: Date; actual_activated_at: Date | null;
   event_sequence: string; blocked_reason: string | null; avatar_url:string|null; banner_url:string|null; final_assets_usdc: string | null; residue_liability_usdc: string | null; final_supply: string | null; distribution_pool_usdc: string | null; captain_fee_usdc: string | null;
 }
-const roundSql = `SELECT f.id,f.captain_id,f.name,f.description,f.status,f.cash_usdc::text,f.total_shares::text,
+const roundSql = `SELECT EXISTS(SELECT 1 FROM discovery_demo_seeds d WHERE d.fund_id=f.id) AS is_demo,f.id,f.created_at,f.captain_id,f.name,f.description,f.status,f.cash_usdc::text,f.total_shares::text,
  f.event_sequence::text,r.balance_source,r.phase,r.risk_state,r.terms_hash,r.terms,r.duration_days,r.funding_window_hours,r.accepted_capital_usdc::text,
  (SELECT public_url FROM vault_media WHERE fund_id=f.id AND kind='avatar') AS avatar_url,
  (SELECT public_url FROM vault_media WHERE fund_id=f.id AND kind='banner') AS banner_url,
@@ -64,6 +64,7 @@ export async function lockedRound(client: DbClient, id: string) {
   // Read the joined round only after the lock: a waiting joined SELECT can retain old round fields.
   const row = (await client.query<RoundRow>(`${roundSql} WHERE f.id=$1`, [id])).rows[0];
   if (!row) throw new ApiFault(404, 'vault_not_found', 'Vault not found');
+  if(row.is_demo)throw new ApiFault(409,'demo_read_only','This is a read-only demo vault with simulated performance.');
   return row;
 }
 export async function databaseNow(client: DbClient): Promise<Date> {
@@ -72,7 +73,7 @@ export async function databaseNow(client: DbClient): Promise<Date> {
 function summary(row: RoundRow & { participants: number; nav_usdc: string | null; priced_at: Date | null; valuation_status: string | null; has_positions: boolean }, now: Date): VaultSummary {
   const fresh = !row.has_positions || !!row.priced_at && now.getTime() - row.priced_at.getTime() <= 90_000 && row.priced_at.getTime() <= now.getTime() + 5000;
   const available = fresh && row.valuation_status === 'CURRENT' && row.phase !== 'SETTLING';
-  return { schemaVersion: 1, roundModelVersion: 2, mode: 'PAPER', id: row.id, captainId: row.captain_id,
+  return { schemaVersion: 1, roundModelVersion: 2, mode: 'PAPER', isDemo:row.is_demo, id: row.id, captainId: row.captain_id,
     name: row.name, description: row.description,avatarUrl:row.avatar_url,bannerUrl:row.banner_url, phase: row.phase, riskState: row.risk_state,
     termsVersion: 1, termsHash: row.terms_hash, durationDays: row.duration_days, fundingWindowHours: row.funding_window_hours,
     universeMode: row.terms.universeMode === 'DYNAMIC_SPOT' ? 'DYNAMIC_SPOT' : 'LEGACY_ALLOWLIST',
@@ -98,15 +99,24 @@ export async function vaultDetail(pool: DbPool | DbClient, id: string) {
   if (!row) throw new ApiFault(404,'vault_not_found','Vault not found');
   return summary(row,new Date());
 }
-export async function vaultList(pool: DbPool, input: { after?: string; limit: number; phase?: string; durationGroup?: string }, actorId?: string, ownedOnly=false) {
-  const rows = (await pool.query(`${detailSql} WHERE ($1::uuid IS NULL OR base.id<$1)
-    AND ($3::text IS NULL OR base.phase=$3) AND ($4::text IS NULL OR
+export async function vaultList(pool: DbPool, input: { after?: string; limit: number; phase?: string; durationGroup?: string; query?: string; captainId?: string; sort?: string }, actorId?: string, ownedOnly=false) {
+  const rows = (await pool.query(`WITH filtered AS (${detailSql} WHERE ($3::text IS NULL OR base.phase=$3) AND ($4::text IS NULL OR
       ($4='short' AND base.duration_days<30) OR ($4='long' AND base.duration_days>=30))
     AND ($5::uuid IS NULL OR base.captain_id=$5 OR EXISTS(SELECT 1 FROM vault_contributions c WHERE c.fund_id=base.id AND c.user_id=$5 AND c.state='ACCEPTED'))
     AND (NOT $6::boolean OR base.captain_id=$5)
-    ORDER BY base.id DESC LIMIT $2`,[input.after ?? null,input.limit+1,input.phase ?? null,input.durationGroup ?? null,actorId ?? null,ownedOnly])).rows;
+    AND ($7::text='' OR strpos(lower(base.name),lower($7))>0)
+    AND ($8::uuid IS NULL OR base.captain_id=$8)), ranked AS (
+      SELECT *,row_number() OVER(ORDER BY
+      CASE WHEN $9='AUM' AND valuation_status='CURRENT' AND phase NOT IN ('SETTLING','REFUNDING')
+        AND (NOT has_positions OR priced_at>=clock_timestamp()-interval '90 seconds' AND priced_at<=clock_timestamp()+interval '5 seconds')
+        THEN nav_usdc::numeric END DESC NULLS LAST,
+      CASE WHEN $9 IN ('RECENT','AUM') THEN created_at END DESC NULLS LAST,id DESC) AS list_rank FROM filtered)
+    SELECT * FROM ranked WHERE ($1::uuid IS NULL OR list_rank>(SELECT list_rank FROM ranked WHERE id=$1))
+    ORDER BY list_rank LIMIT $2`,[input.after ?? null,input.limit+1,input.phase ?? null,input.durationGroup ?? null,actorId ?? null,ownedOnly,input.query?.trim() ?? '',input.captainId ?? null,input.sort ?? 'ID'])).rows;
   const now = new Date();
-  return { vaults: rows.slice(0,input.limit).map(row => summary(row,now)), nextCursor: rows.length>input.limit ? rows[input.limit-1]!.id : null };
+  const captains = rows.length ? (await pool.query<{id:string;username:string|null}>('SELECT id,username FROM users WHERE id=ANY($1::uuid[])', [[...new Set(rows.map(row=>row.captain_id))]])).rows : [];
+  const handles = new Map(captains.map(c=>[c.id,c.username]));
+  return { vaults: rows.slice(0,input.limit).map(row => ({...summary(row,now),captainUsername:handles.get(row.captain_id) ?? null})), nextCursor: rows.length>input.limit ? rows[input.limit-1]!.id : null };
 }
 async function transfer(client: DbClient, event: string, fromType: string, from: string, toType: string, to: string, asset: string, amount: string, isolated=false) {
   if(isolated&&asset==='USDC'){if(fromType==='USER')from=paperOwner(from);if(toType==='USER')to=paperOwner(to);}

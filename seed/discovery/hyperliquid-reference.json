@@ -1,0 +1,111 @@
+{
+  "source": "https://stats-data.hyperliquid.xyz/Mainnet/vaults",
+  "retrievedAt": "2026-10-11T17:37:12.198179+00:00",
+  "methodology": "Public dollar P&L samples only. APR is recorded as reference, never displayed as a 30D return. Seed NAV is a simulated constant-capital series scaled by tvl minus final monthly P&L; these are not original vault TWR returns. Names/addresses are provenance only, never demo identities.",
+  "references": [
+    {
+      "name": "Hyperliquidity Provider (HLP)",
+      "vaultAddress": "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303",
+      "tvlUsdc": "180245532.8252870142",
+      "apr": 0.03332123148945976,
+      "monthPnlSamplesUsdc": [
+        "0.0",
+        "62473.889436",
+        "139553.996492",
+        "192530.87877",
+        "320811.971159",
+        "423574.469465",
+        "472489.735348",
+        "503536.007361",
+        "543658.648961",
+        "586638.0383050001",
+        "597652.048279",
+        "601523.130027",
+        "593393.808368"
+      ]
+    },
+    {
+      "name": "Growi HF",
+      "vaultAddress": "0x1e37a337ed460039d1b15bd3bc489de789768d5e",
+      "tvlUsdc": "13624526.9180340003",
+      "apr": 0.3923298724108377,
+      "monthPnlSamplesUsdc": [
+        "0.0",
+        "22209.045557",
+        "178133.929028",
+        "285962.664387",
+        "178792.32589",
+        "286175.107245",
+        "210292.747276",
+        "213090.835273",
+        "236712.645884",
+        "275546.135789",
+        "337257.835995",
+        "371953.446685",
+        "431550.590754"
+      ]
+    },
+    {
+      "name": "drkmttr",
+      "vaultAddress": "0xc179e03922afe8fa9533d3f896338b9fb87ce0c8",
+      "tvlUsdc": "9253605.6179649998",
+      "apr": -0.08693925951333292,
+      "monthPnlSamplesUsdc": [
+        "0.0",
+        "295437.700123",
+        "2704360.1179240001",
+        "2633832.9436440002",
+        "2631048.5485419999",
+        "2020384.810944",
+        "-187302.322067",
+        "249400.828127",
+        "-340783.891518",
+        "-2459091.4204270002",
+        "-2244482.4067250001",
+        "-2031339.920927",
+        "-1584452.318765"
+      ]
+    },
+    {
+      "name": "DOUBLETOP Vault",
+      "vaultAddress": "0x53f8f390fd4f70941c5d160a964f6893c8dbceff",
+      "tvlUsdc": "6870365.0972570004",
+      "apr": 1.066966414426953,
+      "monthPnlSamplesUsdc": [
+        "0.0",
+        "58932.521818",
+        "422880.317751",
+        "766054.1425890001",
+        "639102.378942",
+        "581085.315653",
+        "620221.914215",
+        "664747.397882",
+        "714858.015169",
+        "504712.453206",
+        "457036.02937",
+        "479780.370783",
+        "562181.9045750001"
+      ]
+    },
+    {
+      "name": "HLP Liquidator 2",
+      "vaultAddress": "0xb0a55f13d22f66e6d495ac98113841b2326e9540",
+      "tvlUsdc": "30000000.0",
+      "apr": 0.0,
+      "monthPnlSamplesUsdc": [
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0",
+        "0.0"
+      ]
+    }
+  ]
+}

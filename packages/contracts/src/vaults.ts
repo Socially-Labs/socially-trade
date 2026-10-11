@@ -11,7 +11,7 @@ export const vaultCreateSchema = {
   },
 } as const;
 export interface VaultSummary {
-  schemaVersion: 1; roundModelVersion: 2; mode: 'PAPER'; id: string; captainId: string;
+  schemaVersion: 1; roundModelVersion: 2; mode: 'PAPER'; isDemo?: boolean; id: string; captainId: string;
   name: string; description: string; avatarUrl?: string|null; bannerUrl?:string|null; phase: VaultPhase; riskState: 'NORMAL' | 'FROZEN';
   termsVersion: 1; termsHash: string; durationDays: number; fundingWindowHours: number;
   universeMode?: 'LEGACY_ALLOWLIST' | 'DYNAMIC_SPOT';
@@ -40,7 +40,7 @@ export function parseVaultSummary(value: unknown): VaultSummary {
   const image = (s:unknown) => { if (s===undefined || s===null) return true; try { const url=new URL(String(s)); return typeof s==='string' && url.protocol==='https:' && !url.username && !url.password; } catch { return false; } };
   const uuid = (s: unknown) => typeof s === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s);
   if (v.schemaVersion !== 1 || v.roundModelVersion !== 2 || v.mode !== 'PAPER' || !uuid(v.id) || !uuid(v.captainId) ||
-    !image(v.avatarUrl) || !image(v.bannerUrl) || typeof v.name !== 'string' || typeof v.description !== 'string' || !vaultPhases.includes(v.phase as VaultPhase) ||
+    (v.isDemo!==undefined&&typeof v.isDemo!=='boolean') || !image(v.avatarUrl) || !image(v.bannerUrl) || typeof v.name !== 'string' || typeof v.description !== 'string' || !vaultPhases.includes(v.phase as VaultPhase) ||
     !['NORMAL','FROZEN'].includes(String(v.riskState)) || v.termsVersion !== 1 ||
     (v.universeMode !== undefined && !['LEGACY_ALLOWLIST','DYNAMIC_SPOT'].includes(String(v.universeMode))) ||
     typeof v.termsHash !== 'string' || !/^[a-f0-9]{64}$/.test(v.termsHash) ||

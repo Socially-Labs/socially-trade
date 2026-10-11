@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DbPool } from '@socially/db';
 import { vaultCreateSchema, vaultContributionSchema, vaultPhases, type VaultCreateInput } from '@socially/contracts';
 import { contributionReason, fixed } from '@socially/domain';
+import { requireFundReader } from './paper-access.js';
 import { requireActor } from './auth.js';
 import { previewOrder,submitOrder,getOrder,cancelOrder,type OrderInput } from './orders.js';
 import { idempotencyKey } from './request.js';
@@ -13,6 +14,7 @@ import { vaultConfig, vaultDetail, vaultList, vaultPosition, createVault, contri
 const uuid = { type: 'string', pattern: '^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$' };
 const params = { type: 'object', required: ['id'], properties: { id: uuid } };
 const page = { type: 'object', additionalProperties: false, properties: {
+  query: { type:'string',maxLength:80 }, captainId:uuid, sort:{type:'string',enum:['RECENT','AUM']},
   after: uuid, limit: { type: 'string', pattern: '^(?:[1-9]|[1-4][0-9]|50)$' },
   phase: { type: 'string', enum: vaultPhases }, durationGroup: { type: 'string', enum: ['short','long'] },
 } };
@@ -34,13 +36,13 @@ export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
     const actor = await requireActor(req,db()); reply.header('cache-control','no-store');
     const result = await createVault(db(),actor,req.body,idempotencyKey(req.headers['idempotency-key'])); reply.code(201); return result;
   });
-  app.get<{ Querystring: { after?: string; limit?: string; phase?: string; durationGroup?: string } }>('/v1/vaults',{ schema: { querystring: page } },async req =>
+  app.get<{ Querystring: { after?: string; limit?: string; phase?: string; durationGroup?: string; query?:string; captainId?:string;sort?:string } }>('/v1/vaults',{ schema: { querystring: page } },async req =>
     vaultList(db(),{ ...req.query,limit: Number(req.query.limit ?? 20) }));
-  app.get<{ Querystring: { after?: string; limit?: string; phase?: string; durationGroup?: string } }>('/v1/me/vaults',{ schema: { querystring: page } },async (req,reply) => {
+  app.get<{ Querystring: { after?: string; limit?: string; phase?: string; durationGroup?: string; query?:string; captainId?:string;sort?:string } }>('/v1/me/vaults',{ schema: { querystring: page } },async (req,reply) => {
     const actor = await requireActor(req,db()); reply.header('cache-control','no-store');
     return vaultList(db(),{ ...req.query,limit: Number(req.query.limit ?? 20) },actor.id);
   });
-  app.get<{ Querystring: { after?: string; limit?: string; phase?: string; durationGroup?: string } }>('/v1/me/captain/vaults',{ schema:{ querystring:page } },async (req,reply) => {
+  app.get<{ Querystring: { after?: string; limit?: string; phase?: string; durationGroup?: string; query?:string; captainId?:string;sort?:string } }>('/v1/me/captain/vaults',{ schema:{ querystring:page } },async (req,reply) => {
     const actor=await requireActor(req,db()); reply.header('cache-control','no-store');
     return vaultList(db(),{ ...req.query,limit:Number(req.query.limit??20) },actor.id,true);
   });
@@ -55,7 +57,7 @@ export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
   },async (req,reply) => {
     const actor = await requireActor(req,db()); reply.header('cache-control','no-store');
     const vault = await vaultDetail(db(),req.params.id);
-    const reason = req.body.termsHash !== vault.termsHash ? 'terms_changed' : contributionReason({
+    const reason = vault.isDemo ? 'demo_read_only' : req.body.termsHash !== vault.termsHash ? 'terms_changed' : contributionReason({
       phase: vault.phase,now: Date.parse(vault.serverTime),fundingClosesAt: Date.parse(vault.fundingClosesAt),
       acceptedCapitalUsdc: vault.acceptedCapitalUsdc,amountUsdc: req.body.amountUsdc,isCaptain: vault.captainId === actor.id });
     return { vaultId: vault.id,amountUsdc: fixed(req.body.amountUsdc,6),shares: fixed(req.body.amountUsdc,6),termsHash: vault.termsHash,
@@ -94,11 +96,12 @@ export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
       const actor = await requireActor(req,db()); reply.header('cache-control','no-store');
       await vaultDetail(db(),req.params.id);
       if (preview) return previewOrder(db(),actor,req.params.id,req.body);
-      const result = await submitOrder(db(),actor,req.params.id,req.body,idempotencyKey(req.headers['idempotency-key'])); reply.code(202); return result;
+      const result = await submitOrder(db(),actor,req.params.id,req.body,idempotencyKey(req.headers['idempotency-key']),`POST /v1/vaults/${req.params.id}/orders`); reply.code(202); return result;
     });
   const orderParams = { type: 'object',required: ['id','orderId'],properties: { id: uuid,orderId: uuid } };
   app.get<{ Params: { id: string; orderId: string } }>('/v1/vaults/:id/orders/:orderId',{ schema: { params: orderParams } },async (req,reply) => {
     const actor = await requireActor(req,db()); reply.header('cache-control','no-store');
+    await requireFundReader(db(),actor,req.params.id);
     await vaultPosition(db(),actor,req.params.id);
     return { mode: 'PAPER',order: await getOrder(db(),req.params.id,req.params.orderId) };
   });
@@ -111,8 +114,9 @@ export function registerVaultRoutes(app: FastifyInstance, db: () => DbPool) {
   } } },async req => {
     await vaultDetail(db(),req.params.id);
     // Deliberately select no payload: old payloads contain private membership/payout information.
-    const rows = (await db().query(`SELECT id,sequence::text,type,recorded_at AS "recordedAt" FROM fund_events
-      WHERE fund_id=$1 AND sequence>$2 AND type IN ('vault_created','vault_active','vault_settling','vault_refunding','vault_finalized','order_filled')
+    const rows = (await db().query(`SELECT id,sequence::text,type,recorded_at AS "recordedAt",
+      CASE WHEN type='vault_asset_unwound' THEN jsonb_build_object('instrumentId',payload->'instrumentId','quantity',payload->'quantity','proceedsUsdc',payload->'proceedsUsdc','priceSource',payload->'priceSource','priceSourceAt',payload->'priceSourceAt','pricingPolicy',payload->'pricingPolicy') ELSE NULL END AS details FROM fund_events
+      WHERE fund_id=$1 AND sequence>$2 AND type IN ('vault_created','vault_active','vault_settling','vault_refunding','vault_finalized','order_filled','vault_asset_unwound')
       ORDER BY sequence LIMIT 51`,[req.params.id,req.query.after ?? '0'])).rows;
     return { events: rows.slice(0,50),nextCursor: rows.length>50 ? rows[49]!.sequence : null };
   });
