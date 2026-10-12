@@ -3,6 +3,8 @@
 Deploy `compose.coolify.yaml` from the repository root. It runs the API,
 worker, ingestor, PostgreSQL 17, and Redis 8.2. PostgreSQL and Redis use named
 volumes and have no published host ports. Keep these volumes when redeploying.
+Keep the stack on its application network; joining the shared `coolify` network
+can resolve generic datastore names to an unrelated application's containers.
 
 Set the custom start command to `sh scripts/start-coolify.sh <application-uuid>`
 to retain API startup errors in the deployment log if Compose startup fails.

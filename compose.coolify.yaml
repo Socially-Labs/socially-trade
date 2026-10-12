@@ -15,11 +15,9 @@ x-backend: &backend
     REDIS_URL: ${REDIS_URL:?REDIS_URL is required. Use the internal Redis URL.}
     SWAP_ENABLED: ${SWAP_ENABLED:?Set SWAP_ENABLED=false unless this API is on Solana devnet.}
   stop_grace_period: 30s
-  # Internal Postgres and Redis names resolve on the destination network.
-  # default stays so the Coolify proxy can still reach the API.
-  networks:
-    - default
-    - coolify
+  # Coolify connects this stack and its proxy through the application network.
+  # Do not join the shared coolify network: generic postgres/redis aliases there
+  # may resolve to another application's datastore.
 
 services:
   postgres:
@@ -86,11 +84,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-
-networks:
-  coolify:
-    name: ${COOLIFY_NETWORK:-coolify}
-    external: true
 
 volumes:
   socially-postgres:
