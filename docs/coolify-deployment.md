@@ -6,6 +6,12 @@ volumes and have no published host ports. Keep these volumes when redeploying.
 
 Set the custom start command to `sh scripts/start-coolify.sh <application-uuid>`
 to retain API startup errors in the deployment log if Compose startup fails.
+Use normal environment interpolation (leave Coolify's `is_literal` disabled)
+for the Compose connection variables. If the newly provisioned database was
+initialized with an incorrectly quoted password, append `repair-db-password`
+to the start command for one deployment. It updates the existing database role
+through the container-local connection without deleting data. Remove the
+argument after the successful repair.
 
 Set these runtime environment variables in Coolify:
 
