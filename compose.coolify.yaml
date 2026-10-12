@@ -1,4 +1,4 @@
-# Coolify production topology. compose.yaml is the local datastores and is not included.
+# Coolify production topology with private, persistent datastores.
 # Commands are role names. socially is the only starter.
 
 x-backend: &backend
@@ -22,10 +22,42 @@ x-backend: &backend
     - coolify
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: socially_trade
+      POSTGRES_USER: socially
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a unique database password in Coolify.}
+    volumes:
+      - socially-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "socially", "-d", "socially_trade"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8.2.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: unless-stopped
+    volumes:
+      - socially-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   api:
     <<: *backend
     command: ["api"]
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -41,12 +73,10 @@ services:
     <<: *backend
     command: ["worker"]
     restart: unless-stopped
-    # service_healthy marks a crash-loop unhealthy in about a second and
-    # compose up -d exits before the API stderr is kept. service_started
-    # leaves that stderr in the API logs.
+    # API liveness begins only after the database migrations complete.
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
 
   ingestor:
     <<: *backend
@@ -55,9 +85,13 @@ services:
     restart: always
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
 
 networks:
   coolify:
     name: ${COOLIFY_NETWORK:-coolify}
     external: true
+
+volumes:
+  socially-postgres:
+  socially-redis:
