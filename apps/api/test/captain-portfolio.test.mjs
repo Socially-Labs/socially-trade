@@ -118,6 +118,25 @@ test('Captain portfolio projects cash-flow-adjusted aggregate investment perform
         p = await portfolio('captain', range); assert.equal(p.netPnlUsdc, '80.000000'); assert.ok(p.points.length <= 401);
       }
     });
+    await t.test('vaults finalized before the period contribute zero without a historical baseline', async () => {
+      const before = (await pool.query('SELECT funding_started_at,funding_closes_at,trading_ends_at,finalized_at FROM vault_rounds WHERE fund_id=$1', [a])).rows[0];
+      await pool.query('ALTER TABLE vault_rounds DISABLE TRIGGER vault_terms_immutable');
+      try {
+        const start = new Date(Date.now() - 40 * 86400000), close = new Date(start.getTime() + 72 * 3600000), end = new Date(close.getTime() + 7 * 86400000);
+        await pool.query("UPDATE vault_rounds SET funding_started_at=$2,funding_closes_at=$3,trading_ends_at=$4,finalized_at=clock_timestamp()-interval '10 days' WHERE fund_id=$1", [a,start,close,end]);
+        const p = await portfolio('captain', '7D');
+        assert.equal(p.netPnlUsdc, '-10.000000');
+        assert.equal(p.settledVaultPnlUsdc, '0.000000');
+        const page = await call('GET', '/v1/me/captain/portfolio/vaults?range=7D', 'captain');
+        const closed = page.vaults.find(v => v.vaultId === a);
+        assert.equal(closed.netPnlUsdc, '0.000000');
+        assert.equal(closed.netReturnPercent, '0.000000');
+        assert.equal((await portfolio('captain', 'ALL')).netPnlUsdc, '80.000000');
+      } finally {
+        await pool.query('UPDATE vault_rounds SET funding_started_at=$2,funding_closes_at=$3,trading_ends_at=$4,finalized_at=$5 WHERE fund_id=$1', [a,before.funding_started_at,before.funding_closes_at,before.trading_ends_at,before.finalized_at]);
+        await pool.query('ALTER TABLE vault_rounds ENABLE TRIGGER vault_terms_immutable');
+      }
+    });
     await t.test('unknown valuations break returns; recovery never bridges the gap', async () => {
       const before = await portfolio();
       await mark(b, null);
@@ -291,7 +310,7 @@ test('Captain portfolio projects cash-flow-adjusted aggregate investment perform
     await t.test('demo seed is idempotent, reconciles, and rejects real contributions', async () => {
       assert.equal((await seedDiscoveryDemo(pool)).status, 'created');
       assert.equal((await seedDiscoveryDemo(pool)).status, 'already present');
-      const list=(await call('GET','/v1/discover/captains?query=demo_&limit=50')).captains;
+      const list=(await call('GET','/v1/discover/captains?limit=50')).captains.filter(c=>demoCaptains.some(seed=>seed.captainId===c.id));
       assert.equal(list.length,5);assert.ok(list.every(c=>c.isDemo));
       assert.ok(list.some(c=>Number(c.netReturnPercent)<0));assert.ok(list.some(c=>Number(c.netReturnPercent)>0));
       for(const c of demoCaptains){

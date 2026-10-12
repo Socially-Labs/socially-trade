@@ -18,9 +18,12 @@ const vaultPerformanceSql = `WITH performance AS (
        AND r.phase NOT IN ('SETTLING','REFUNDING') THEN 'STALE' ELSE 'UNAVAILABLE' END AS status,
    CASE WHEN r.finalized_at IS NOT NULL THEN r.distribution_pool_usdc-r.accepted_capital_usdc
      WHEN m.managed_usdc IS NOT NULL THEN m.managed_usdc-r.accepted_capital_usdc ELSE NULL END AS lifetime_pnl,
-   CASE WHEN $4::boolean OR r.funding_started_at>=$2::timestamptz THEN 0 ELSE baseline.source_fund_pnl_usdc END AS baseline_pnl,
-   CASE WHEN $4::boolean OR r.funding_started_at>=$2::timestamptz THEN r.funding_started_at ELSE baseline.recorded_at END AS baseline_at,
-   CASE WHEN $4::boolean OR r.funding_started_at>=$2::timestamptz THEN 1 ELSE baseline.source_unit_price END AS baseline_price,
+   CASE WHEN NOT $4::boolean AND r.finalized_at<=$2::timestamptz THEN r.distribution_pool_usdc-r.accepted_capital_usdc
+     WHEN $4::boolean OR r.funding_started_at>=$2::timestamptz THEN 0 ELSE baseline.source_fund_pnl_usdc END AS baseline_pnl,
+   CASE WHEN NOT $4::boolean AND r.finalized_at<=$2::timestamptz THEN r.finalized_at
+     WHEN $4::boolean OR r.funding_started_at>=$2::timestamptz THEN r.funding_started_at ELSE baseline.recorded_at END AS baseline_at,
+   CASE WHEN NOT $4::boolean AND r.finalized_at<=$2::timestamptz THEN r.distribution_pool_usdc/NULLIF(r.accepted_capital_usdc,0)
+     WHEN $4::boolean OR r.funding_started_at>=$2::timestamptz THEN 1 ELSE baseline.source_unit_price END AS baseline_price,
    CASE WHEN r.finalized_at IS NOT NULL THEN r.distribution_pool_usdc/NULLIF(r.accepted_capital_usdc,0)
      WHEN m.managed_usdc IS NOT NULL THEN m.managed_usdc/NULLIF(r.accepted_capital_usdc,0) ELSE NULL END AS unit_price
  FROM funds f JOIN vault_rounds r ON r.fund_id=f.id
@@ -105,4 +108,3 @@ export async function vaultPerformance(client: DbClient, captainId: string, rang
   return { schemaVersion: 1, mode: 'PAPER', range, revision: state?.revision ?? '0', serverTime: now.toISOString(),
     asOf: iso(state?.recorded_at), vaults, nextCursor: rows.length > limit ? rows[limit - 1]!.id : null };
 }
-
