@@ -2,14 +2,14 @@ import { ConnectionLeases,type ConnectionLease } from './connection-leases.js';
 import { streamQuery } from './stream-db.js';
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import type { DbPool } from "@socially/db";
+import type { DbPool, DbClient } from "@socially/db";
 import { MarketBus, currentPrice, compareCursor, cursorPattern, type MarketEvent } from "@socially/market-stream";
 import { registeredInstruments } from "@socially/market-data/registry";
 import { envInteger } from '@socially/domain';
 import { ApiFault } from "./errors.js";
 import { privyIdentity } from "./privy.js";
 
-type Client = { lease:ConnectionLease;userLease?:ConnectionLease; instruments?: string[]; socket: WebSocket; cursor?: string; actor?: string; expiresAt: number; notifications?: string;
+type Client = { lease:ConnectionLease;userLease?:ConnectionLease; instruments?: string[]; socket: WebSocket; cursor?: string; actor?: string; expiresAt: number; notifications?: string; notificationVersion?: number;
   vault?: {id:string; revision:string}; captain?: {revision:string}; alive: boolean; messages: number; window: number; pending: number; chain: Promise<void>; freshness?: string };
 const sequence = /^(0|[1-9][0-9]{0,18})$/;
 const validSequence = (value: string) => sequence.test(value) && BigInt(value) <= 9223372036854775807n;
@@ -18,6 +18,38 @@ const validSequence = (value: string) => sequence.test(value) && BigInt(value) <
 export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): void {
   let bus: MarketBus | undefined;
   const clients = new Set<Client>();
+  const notificationDirty = new Set<string>();
+  let listener: DbClient | undefined, listening = false;
+  let listenerRetry: ReturnType<typeof setTimeout> | undefined;
+  let notificationRecoveryAt = 0;
+  async function listenNotifications() {
+    if (stopped || listening || listener) return;
+    listening = true;
+    let connection: DbClient | undefined;
+    try {
+      connection = await db().connect();
+      if (stopped) { connection.release(); return; }
+      listener = connection;
+      connection.on('notification', message => {
+        if (message.channel === 'account_notifications' && message.payload) notificationDirty.add(message.payload);
+        if (message.channel === 'wallet_balance_changed' && message.payload) {
+          for (const client of clients) if (client.actor === message.payload && client.expiresAt > Date.now() && client.notifications !== undefined && client.notificationVersion === 2)
+            send(client, {type:'wallet.updated',channel:'account.notifications'});
+        }
+      });
+      connection.on('error', () => {
+        if (listener !== connection) return;
+        listener = undefined; connection!.release(true);
+        if (!stopped) listenerRetry = setTimeout(() => { void listenNotifications(); }, 3000);
+      });
+      await connection.query('LISTEN account_notifications');
+      await connection.query('LISTEN wallet_balance_changed');
+      for (const client of clients) if (client.actor) notificationDirty.add(client.actor);
+    } catch {
+      if (connection && listener === connection) { listener = undefined; connection.release(true); }
+      if (!stopped) listenerRetry = setTimeout(() => { void listenNotifications(); }, 3000);
+    } finally { listening = false; }
+  }
   let stopped = false;
   let busy: Promise<void> | undefined;
   const leases=new ConnectionLeases(db,'market-ws');
@@ -67,11 +99,11 @@ export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): vo
       throw new ApiFault(403, "origin_forbidden", "WebSocket origin is not allowed");
     }
     if (clients.size >= envInteger('PAPER_MARKET_WS_MAX_CONNECTIONS',1000)) throw new ApiFault(503, "gateway_busy", "Try another gateway");
-    market();
     admissions.set(request,await leases.acquire(request.ip));
   } }, (socket,request) => {
     const client: Client = { lease:admissions.get(request)!, socket, expiresAt: 0, alive: true, messages: 0, window: Date.now(), pending: 0, chain: Promise.resolve() };
     clients.add(client);
+    void listenNotifications();
     socket.on("pong", () => { client.alive = true; });
     socket.on("error", () => socket.close());
     socket.on("close", () => { clients.delete(client);void client.lease.release();void client.userLease?.release(); });
@@ -131,6 +163,10 @@ export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): vo
           const after = message.after ?? "0";
           if (typeof after !== "string" || !validSequence(after)) throw new Error("invalid_cursor");
           client.notifications = after;
+          client.notificationVersion = message.cursorVersion === 2 ? 2 : 1;
+          notificationDirty.add(client.actor);
+          // REST replay closes the initial subscribe race; v2 frames only invalidate.
+          if (client.notificationVersion === 2) send(client, {type:'resync_required',channel:'account.notifications'});
           send(client, { type: "subscribed", channel: "account.notifications", cursor: after });
         } else if (message.type === "unsubscribe") {
           if (message.channel === "market.prices") client.cursor = undefined;
@@ -216,23 +252,38 @@ export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): vo
         }
       }catch{for(const client of captainClients)send(client,{type:'stream_unavailable',channel:'captain.dashboard'});}
     }
-    const actors = new Set([...clients].filter(c => c.actor && c.notifications !== undefined).map(c => c.actor!));
+    const recovery = now >= notificationRecoveryAt;
+    if (recovery) notificationRecoveryAt = now + 15000;
+    const actors = new Set([...clients].filter(c => c.actor && c.notifications !== undefined && (recovery || notificationDirty.has(c.actor))).map(c => c.actor!));
     for (const actor of actors) {
-      const group = [...clients].filter(c => c.actor === actor && c.notifications !== undefined);
+      notificationDirty.delete(actor);
+      const subscribers = [...clients].filter(c => c.actor === actor && c.notifications !== undefined && c.expiresAt > Date.now());
+      const modern = subscribers.filter(c => c.notificationVersion === 2);
+      if (modern.length) {
+        try {
+          const state=(await streamQuery<{sequence:string}>(db(),'SELECT sequence::text FROM notification_stream_state WHERE user_id=$1',[actor])).rows[0]?.sequence??'0';
+          for (const client of modern) if (client.actor===actor && client.expiresAt>Date.now() && BigInt(state)>BigInt(client.notifications??'0')) {
+            send(client,{type:'resync_required',channel:'account.notifications'}); client.notifications=state;
+          }
+        } catch { for(const client of modern)send(client,{type:'stream_unavailable',channel:'account.notifications'}); }
+      }
+      const group = subscribers.filter(c => c.notificationVersion !== 2);
+      if (!group.length) continue;
       const after = group.reduce((a, c) => BigInt(c.notifications!) < BigInt(a) ? c.notifications! : a, group[0]!.notifications!);
       try {
       const rows = (await streamQuery<{ id: string; fund_id: string; type: string; payload: unknown; created_at: Date; read_at: Date | null }>(db(),
-        "SELECT id::text,fund_id,type,payload,created_at,read_at FROM notifications WHERE user_id=$1 AND id>$2 ORDER BY notifications.id LIMIT 100", [actor, after])).rows;
+        "SELECT id::text,fund_id,type,payload,created_at,read_at FROM notifications WHERE user_id=$1 AND fund_id IS NOT NULL AND id>$2 ORDER BY notifications.id LIMIT 100", [actor, after])).rows;
       for (const row of rows) for (const client of group) if (client.actor === actor && client.expiresAt > Date.now() && client.notifications !== undefined && BigInt(row.id) > BigInt(client.notifications)) {
         send(client, { type: "notification", channel: "account.notifications", cursor: row.id, notification: {
           id: row.id, fundId: row.fund_id, type: row.type, payload: row.payload, createdAt: row.created_at.toISOString(), readAt: row.read_at?.toISOString() ?? null } });
         client.notifications = row.id;
+        if (rows.length === 100) notificationDirty.add(actor);
       }
       }catch{for(const client of group)send(client,{type:'stream_unavailable',channel:'account.notifications'});}
     }
   }
   const heartbeatTimer=setInterval(()=>{
-    for(const client of clients){if(!client.alive){client.socket.terminate();continue;}client.alive=false;client.socket.ping();}
+    for(const client of clients){if(!client.alive){client.socket.terminate();continue;}client.alive=false;client.socket.ping();send(client,{type:'heartbeat'});}
   },envInteger('PAPER_WS_HEARTBEAT_MS',20000,100));heartbeatTimer.unref();
   const leaseTimer=setInterval(()=>{for(const client of clients)void Promise.all([client.lease.renew(),client.userLease?.renew()??true]).then(results=>{if(results.some(ok=>!ok))client.socket.close(1013,'Stream admission expired');});},leases.renewMs);leaseTimer.unref();
   const timer = setInterval(() => {
@@ -240,5 +291,5 @@ export function registerMarketRoutes(app: FastifyInstance, db: () => DbPool): vo
     busy = tick().catch(() => undefined).finally(() => { busy = undefined; });
   }, 500);
   timer.unref();
-  app.addHook("onClose", async () => { stopped = true; clearInterval(timer);clearInterval(heartbeatTimer);clearInterval(leaseTimer); await busy; bus?.close();leases.close(); });
+  app.addHook("onClose", async () => { stopped = true; clearInterval(timer);clearInterval(heartbeatTimer);clearInterval(leaseTimer); await busy; clearTimeout(listenerRetry); if (listener) { const connection=listener; listener=undefined; await connection.query('UNLISTEN *').catch(()=>undefined); connection.release(); } bus?.close();leases.close(); });
 }

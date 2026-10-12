@@ -338,7 +338,9 @@ test('seeded-price backend simulation (no Pyth)', { timeout: 120_000 }, async (t
       await Promise.all([deliverOutbox(pool), deliverOutbox(pool), deliverOutbox(pool)]);
       assert.equal(await deliverOutbox(pool), 0);
       const notifications = (await request('GET', '/v0/me/notifications', 'crew')).notifications;
-      assert.ok(notifications.every((item, i) => i === 0 || BigInt(item.id) > BigInt(notifications[i - 1].id)));
+      assert.ok(notifications.every((item, i) => i === 0 || BigInt(item.id) < BigInt(notifications[i - 1].id)));
+      const replay = (await request('GET', '/v0/me/notifications?afterCursor=0', 'crew')).notifications;
+      assert.ok(replay.every((item, i) => i === 0 || BigInt(item.cursor) > BigInt(replay[i - 1].cursor)));
       assert.ok(notifications.some(x => x.type === 'order_filled'));
       assert.ok(notifications.some(x => x.type === 'trade_note_posted'));
       const id = notifications[0].id;

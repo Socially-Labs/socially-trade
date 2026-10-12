@@ -95,7 +95,7 @@ export async function joinFundInTransaction(
     [fundId, actor.id, fixed(shares, SHARE_DECIMALS)],
   );
   const eventId = await appendFundEvent(client, fundId, "crew_joined", {
-    userId: actor.id, amountUsdc, shares: fixed(shares, SHARE_DECIMALS),
+    userId: actor.id, username: actor.username, displayName: actor.displayName, amountUsdc, shares: fixed(shares, SHARE_DECIMALS),
   });
   const userUsdc = await ledgerAccountId(client, "USER", actor.id, "USDC");
   const fundUsdc = await ledgerAccountId(client, "FUND", fundId, "USDC");

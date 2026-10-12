@@ -1,3 +1,4 @@
+import { deliverNotificationPush } from './notification-push.js';
 import { advanceDueVaultRounds } from "./vault-rounds.js";
 import { refreshCaptainDiscovery, type DbPool } from "@socially/db";
 import { processPendingOrders } from "./orders.js";
@@ -32,6 +33,7 @@ export async function runWorkerCycle(pool: DbPool, ingestPrice?: () => Promise<u
   catch (error) { failures.push({ job: "performance_fees", error }); }
   try { delivered = await deliverOutbox(pool); }
   catch (error) { failures.push({ job: "notification_delivery", error }); }
+  try { await deliverNotificationPush(pool); } catch(error) { failures.push({job:'notification_push',error}); }
   let reconciled=0;
   try { reconciled=await reconcilePaperFunds(pool); }
   catch(error){failures.push({job:'accounting_reconciliation',error});}

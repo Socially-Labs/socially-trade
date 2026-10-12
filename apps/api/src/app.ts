@@ -1,3 +1,5 @@
+import { registerWalletNotifications, startWalletNotificationScanner } from './wallet-notifications.js';
+import { registerNotificationDevices } from './notification-devices.js';
 import { registerCrewDiscovery } from './crew-discovery.js';
 import { registerReadiness } from './readiness.js';
 import { registerPaperActivity } from './paper-activity.js';
@@ -114,6 +116,10 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   registerAuthRoutes(app, db);
   registerAuthClientEvents(app);
   registerWalletRoutes(app, db);
+  registerWalletNotifications(app, db);
+  let stopWalletNotifications: (()=>Promise<void>) | undefined;
+  app.addHook('onReady',async()=>{if(pool && process.env.WALLET_NOTIFICATIONS_ENABLED==='true'){stopWalletNotifications=startWalletNotificationScanner(pool,error=>app.log.error(error));app.log.info({walletNotificationsEnabled:true,network:'devnet'},'Wallet notification observer started');}});
+  app.addHook('preClose',async()=>{await stopWalletNotifications?.();});
   registerSwapRoutes(app, db, options.swaps ?? null);
   let stopSwapWorker: (() => Promise<void>) | undefined;
   app.addHook("onReady", async () => {
@@ -131,6 +137,7 @@ export function createApp(pool: DbPool | null, options: AppOptions = {}) {
   registerFundEventRoutes(app, db);
   registerSocialRoutes(app, db);
   registerNotificationRoutes(app, db);
+  registerNotificationDevices(app, db);
   registerPerformanceRoutes(app, db);
   registerHistoryRoutes(app, db);
   registerPaperActivity(app, db);
